@@ -2,3 +2,5 @@ node_modules/
 runs/
 *.lock
 catalogos/
+registros/
+escrita-planilha.json

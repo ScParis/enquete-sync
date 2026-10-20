@@ -35,15 +35,30 @@ Na pasta `automacao`, execute `npm start` e abra `http://127.0.0.1:8766`. O serv
 - Se mais da metade dos CNPJs mapeados não aparece na Enquete, a planilha provavelmente é de outro escritório: o relatório avisa e a gravação é bloqueada.
 - Respostas sem código interno no catálogo são localizadas como coluna da grade da pergunta: o cabeçalho precisa ser idêntico ao texto da resposta e único, e todas as caixas da coluna precisam ter o mesmo código.
 
+## Registro na planilha
+
+Cada resposta gravada e confirmada no diálogo do G-Click (o cliente fica verde na lista do diálogo) entra no registro `registros/<empId>.json`, com CNPJ, tarefa, pergunta, resposta e horário. Ele pode ser baixado em **Baixar marcações registradas (CSV)**.
+
+Para o robô escrever direto na planilha, configure uma vez por planilha no cartão **Registro na planilha**:
+
+1. **Copiar script**: o script já contém a chave secreta desta conta.
+2. Na planilha, **Extensões → Apps Script**: apague o conteúdo, cole e salve.
+3. **Implantar → Nova implantação → App da Web**, executar como **Eu**, acesso **Qualquer pessoa**; autorize.
+4. Cole o endereço do app da web e clique em **Salvar e testar**.
+
+A partir daí, após cada gravação o robô preenche a coluna **Enquete G-Click** (criada no fim da aba, se não existir) nas linhas com o mesmo CNPJ e a mesma `Obrigação / Tarefa`, por exemplo `Marcado na Enquete: 02.03 → GIA ST em 20/10/2026, 12:13`. Falha na planilha não desfaz a gravação no G-Click: a marcação fica pendente e pode ser reenviada. O endereço e a chave ficam em `escrita-planilha.json` (fora do git).
+
 O G-Click avisa que alterar o perfil pode afetar a lista de obrigações do cliente; confira essas obrigações depois dos primeiros lotes.
 
 ## Dados por escritório
 
 | Arquivo | Conteúdo |
 |---|---|
-| `catalogos/<empId>.json` | Catálogo da Enquete capturado na última conexão com a conta |
+| `catalogos/<empId>.json` | Catálogo da Enquete capturado na última conexão com a conta (fora do git) |
 | `mapeamentos.json` | Tarefa → resposta (com os textos da pergunta e da resposta) e tarefas excluídas, por conta |
 | `contas.json` | Link da planilha de cada conta |
+| `registros/<empId>.json` | Marcações confirmadas no G-Click e situação na planilha (fora do git) |
+| `escrita-planilha.json` | Endereço e chave do Apps Script de cada conta (fora do git) |
 | `runs/` | Relatórios de conferência e gravação (fora do git) |
 
 ## Planilha privada sem download manual

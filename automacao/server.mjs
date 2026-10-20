@@ -7,7 +7,8 @@ import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { parseCsv, makePlan, scopeFromEligible, formatCnpj, normalizeCnpj, validCnpj } from './lib/data.mjs';
 import { LOGIN_URL, hasGclickSession, openBrowser, openQuestion, questionStillOpen, resolveColumnValue, readQuestionCatalog, inspectAll, applyQuestionWithOperator } from './lib/gclick.mjs';
-import { readPublicGoogleCsv, readWithServiceAccount } from './lib/google-service.mjs';
+import { readPublicGoogleCsv, readWithServiceAccount, parseSheetUrl } from './lib/google-service.mjs';
+import { appsScriptSource, validScriptUrl, testSheetWriter, writeMarks } from './lib/sheet-writer.mjs';
 import { listCsvDownloads, readCsvDownload } from './lib/downloads.mjs';
 
 const root = path.dirname(new URL(import.meta.url).pathname);
@@ -16,6 +17,8 @@ const port = Number(process.env.GCLICK_PORT ?? 8766);
 const profile = process.env.GCLICK_PROFILE_DIR ?? path.join(os.homedir(), '.local/share/gclick-enquete/browser-profile');
 const downloadsDir = path.join(os.homedir(), 'Downloads');
 const catalogsDir = path.join(root, 'catalogos');
+const ledgerDir = path.join(root, 'registros');
+const writersFile = path.join(root, 'escrita-planilha.json');
 const token = crypto.randomBytes(24).toString('hex');
 const accountsFile = path.join(root, 'contas.json');
 const mappingsFile = path.join(root, 'mapeamentos.json');
@@ -60,6 +63,67 @@ const catalogFile = accountId => path.join(catalogsDir, `${requireAccount(accoun
 async function readStoredCatalog(accountId) {
   try { return { ...JSON.parse(await fs.readFile(catalogFile(accountId), 'utf8')), source: 'reference' }; }
   catch (error) { if (error.code === 'ENOENT') return null; throw error; }
+}
+// Registro das marcações confirmadas no diálogo do G-Click, por escritório (fora do git: contém CNPJs).
+const ledgerFile = accountId => path.join(ledgerDir, `${requireAccount(accountId)}.json`);
+async function readLedger(accountId) {
+  try { return JSON.parse(await fs.readFile(ledgerFile(accountId), 'utf8')); }
+  catch (error) { if (error.code === 'ENOENT') return []; throw error; }
+}
+async function appendLedger(accountId, entries) {
+  if (!entries.length) return;
+  await fs.mkdir(ledgerDir, { recursive: true, mode: 0o700 });
+  const all = [...await readLedger(accountId), ...entries];
+  const temp = `${ledgerFile(accountId)}.tmp-${process.pid}-${crypto.randomBytes(3).toString('hex')}`;
+  await fs.writeFile(temp, JSON.stringify(all, null, 2) + '\n', { mode: 0o600 });
+  await fs.rename(temp, ledgerFile(accountId));
+}
+const ledgerLabel = entry => `Marcado na Enquete: ${entry.questionRef} → ${entry.answerLabel} em ${new Date(entry.at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`;
+function ledgerCsv(entries) {
+  const quote = x => `"${String(x ?? '').replace(/"/g, '""')}"`;
+  const header = ['CNPJ', 'EmpID', 'Empresa', 'Obrigação / Tarefa', 'Enquete G-Click', 'Pergunta', 'Resposta', 'Marcado em', 'Cliente no diálogo do G-Click'];
+  return '\uFEFF' + [header, ...entries.map(e => [e.cnpj, e.empId, e.empresa, e.task, ledgerLabel(e), e.questionRef, e.answerLabel, e.at, e.nomeNoDialogo])]
+    .map(row => row.map(quote).join(',')).join('\r\n') + '\r\n';
+}
+async function writeLedger(accountId, entries) {
+  await fs.mkdir(ledgerDir, { recursive: true, mode: 0o700 });
+  const temp = `${ledgerFile(accountId)}.tmp-${process.pid}-${crypto.randomBytes(3).toString('hex')}`;
+  await fs.writeFile(temp, JSON.stringify(entries, null, 2) + '\n', { mode: 0o600 });
+  await fs.rename(temp, ledgerFile(accountId));
+}
+// Endereço e chave do Apps Script de cada escritório (fora do git: a chave autoriza escrever na planilha).
+async function readWriters() {
+  try { return JSON.parse(await fs.readFile(writersFile, 'utf8')); }
+  catch (error) { if (error.code === 'ENOENT') return {}; throw error; }
+}
+async function saveWriters(writers) {
+  const temp = `${writersFile}.tmp-${process.pid}-${crypto.randomBytes(3).toString('hex')}`;
+  await fs.writeFile(temp, JSON.stringify(writers, null, 2) + '\n', { mode: 0o600 });
+  await fs.rename(temp, writersFile);
+}
+async function writerFor(accountId) {
+  const writer = (await readWriters())[accountId];
+  const sheetUrl = accountSettings[accountId]?.sheetUrl;
+  if (!writer?.url || !sheetUrl) return null;
+  return { url: writer.url, token: writer.token, gid: parseSheetUrl(sheetUrl).gid };
+}
+// Envia à planilha as marcações ainda não registradas nela; falha na planilha não desfaz a gravação no G-Click.
+async function pushPendingMarks(accountId) {
+  const writer = await writerFor(accountId);
+  const ledger = await readLedger(accountId);
+  const pending = ledger.filter(e => e.planilha !== 'gravado');
+  if (!writer) return { configured: false, pending: pending.length };
+  if (!pending.length) return { configured: true, pending: 0, linhas: 0 };
+  try {
+    const result = await writeMarks(writer, pending.map(e => ({ cnpj: e.cnpj, task: e.task, texto: ledgerLabel(e) })));
+    const missing = new Set(result.naoEncontrados ?? []);
+    const key = e => `${String(e.cnpj).replace(/\D/g, '')}|${String(e.task).trim()}`;
+    const now = new Date().toISOString();
+    await writeLedger(accountId, ledger.map(e => e.planilha === 'gravado' ? e : missing.has(key(e)) ? { ...e, planilha: 'linha_nao_encontrada' } : { ...e, planilha: 'gravado', planilhaEm: now }));
+    return { configured: true, pending: missing.size, linhas: result.linhas, naoEncontrados: [...missing] };
+  } catch (error) {
+    return { configured: true, pending: pending.length, error: error.message };
+  }
 }
 async function storeCatalog(catalog) {
   await fs.mkdir(catalogsDir, { recursive: true });
@@ -227,6 +291,10 @@ async function route(req, res) {
     accounts: await listStoredAccounts(), loginOpen: Boolean(loginContext), loginReady, sessionLostAt, catalog: loginReady ? catalogState : null, catalogLive: Boolean(catalogState && loginReady), busy });
   if (req.method === 'GET' && url.pathname === '/api/report.json') return lastReport ? send(res, 200, lastReport) : send(res, 404, { error: 'Nenhum relatório gerado' });
   if (req.method === 'GET' && url.pathname === '/api/report.csv') return lastReport ? send(res, 200, csvExport(lastReport), 'text/csv; charset=utf-8') : send(res, 404, { error: 'Nenhum relatório gerado' });
+  if (req.method === 'GET' && url.pathname === '/api/marcacoes.csv') {
+    const accountId = requireAccount(url.searchParams.get('account'));
+    return send(res, 200, ledgerCsv(await readLedger(accountId)), 'text/csv; charset=utf-8');
+  }
   if (req.method !== 'POST' || !url.pathname.startsWith('/api/')) return send(res, 404, { error: 'Rota não encontrada' });
   if (req.headers.host !== `${host}:${port}` || req.headers['x-gclick-token'] !== token || !String(req.headers['content-type']).startsWith('application/json')) return send(res, 403, { error: 'Sessão da interface expirada ou requisição não autorizada', code: 'invalid_session' });
   const payload = await body(req);
@@ -269,6 +337,48 @@ async function route(req, res) {
     return send(res, 200, { savedMappings });
   }
   if (url.pathname === '/api/audit/progress') return send(res, 200, auditProgress);
+  if (url.pathname === '/api/sheet-writer/status') {
+    const accountId = requireAccount(payload.accountId);
+    const writer = (await readWriters())[accountId];
+    const ledger = await readLedger(accountId);
+    return send(res, 200, { configured: Boolean(writer?.url), url: writer?.url ?? '', aba: writer?.aba ?? null, testedAt: writer?.testedAt ?? null,
+      hasSheetUrl: Boolean(accountSettings[accountId]?.sheetUrl), marks: ledger.length, pending: ledger.filter(e => e.planilha !== 'gravado').length });
+  }
+  if (url.pathname === '/api/sheet-writer/script') {
+    const accountId = requireAccount(payload.accountId);
+    const writers = await readWriters();
+    if (!writers[accountId]?.token) { writers[accountId] = { ...writers[accountId], token: crypto.randomBytes(24).toString('hex') }; await saveWriters(writers); }
+    return send(res, 200, { script: appsScriptSource(writers[accountId].token) });
+  }
+  if (url.pathname === '/api/sheet-writer/save') {
+    const accountId = requireAccount(payload.accountId);
+    const sheetUrl = accountSettings[accountId]?.sheetUrl;
+    if (!sheetUrl) throw new Error('Salve antes o link da aba da planilha desta conta');
+    const writers = await readWriters();
+    if (!writers[accountId]?.token) throw new Error('Copie o script primeiro: ele contém a chave desta conta');
+    const scriptUrl = validScriptUrl(payload.url);
+    const tested = await testSheetWriter({ url: scriptUrl, token: writers[accountId].token, gid: parseSheetUrl(sheetUrl).gid });
+    writers[accountId] = { ...writers[accountId], url: scriptUrl, aba: tested.aba, testedAt: new Date().toISOString() };
+    await saveWriters(writers);
+    return send(res, 200, { configured: true, aba: tested.aba, sync: await pushPendingMarks(accountId) });
+  }
+  if (url.pathname === '/api/sheet-writer/resend') return send(res, 200, await pushPendingMarks(requireAccount(payload.accountId)));
+  if (url.pathname === '/api/mappings/plan') {
+    const accountId = requireAccount(payload.accountId);
+    const task = String(payload.task ?? '').trim();
+    const saved = savedMappings.find(x => x.accountId === accountId && x.task === task);
+    if (!saved) throw new Error('Tarefa sem mapeamento salvo nesta conta');
+    const source = await loadSource(payload);
+    const rows = parseCsv(source.csv);
+    const derived = scopeFromEligible(rows, { allowedTasks: [task], excludedTasks: [] });
+    const plan = derived.scope.length ? makePlan(rows, derived.scope, { allowedTasks: [task], excludedTasks: [] }) : [];
+    const ledger = await readLedger(accountId);
+    return send(res, 200, { task, excluded: Boolean(saved.excluded), answerRef: saved.answerRef ?? null, invalid: derived.invalid,
+      rows: plan.map(item => {
+        const marked = ledger.filter(e => e.cnpj === item.cnpj && e.task === task).pop();
+        return { cnpj: item.cnpj, empId: item.empId, empresa: item.empresa, status: item.status, reason: item.reason, marcadoEm: marked?.at ?? null };
+      }) });
+  }
   if (url.pathname === '/api/downloads') return send(res, 200, { files: await listCsvDownloads(downloadsDir) });
   if (url.pathname === '/api/tasks') {
     const source = await loadSource(payload);
@@ -463,6 +573,11 @@ async function route(req, res) {
               for (const x of result.skipped.filter(c => c.answerRef === group.rules.answerRef)) statuses.set(x.cnpj, { uiStatus: x.uiStatus, currentValue: x.currentValue ?? null, uiReason: x.uiReason });
               updateCache(group.items[0]?.mappingTask, group.rules.answerRef, statuses);
             }
+            const confirmedAt = new Date().toISOString();
+            const entries = result.changed.map(x => ({ at: confirmedAt, accountId: state.accountId, cnpj: x.cnpj, empId: x.empId ?? null, empresa: x.empresa ?? null, task: x.mappingTask,
+              questionRef: x.questionRef, answerRef: x.answerRef, answerLabel: x.answerLabel, nomeNoDialogo: x.nomeNoDialogo, sourceSha256: state.sourceSha256 }));
+            await appendLedger(state.accountId, entries);
+            report.ledger = [...(report.ledger ?? []), ...entries];
             report.results.push({ questionRef, task: chunk.map(g => g.items[0]?.mappingTask).filter(Boolean).join(' | '), answerRef: chunk.map(g => g.rules.answerRef).join(' | '),
               changed: result.changed.map(x => x.cnpj), skipped: result.skipped.map(x => ({ cnpj: x.cnpj, uiStatus: x.uiStatus, reason: x.uiReason })), cancelled: result.cancelled });
             report.inspected.push(...result.changed.map(x => ({ cnpj: x.cnpj, mappingTask: x.mappingTask, uiStatus: 'ja_correto', uiReason: `Gravado (${x.answerRef}) e conferido após recarga` })),
@@ -478,9 +593,11 @@ async function route(req, res) {
       forgetTasks(state.mappings.map(m => m.task));
       if (e.partial) report.results.push({ questionRef: applyProgress.questionRef, changed: e.partial.changed.map(x => x.cnpj), failed: e.partial.failed.map(x => x.cnpj), skipped: [] });
       applyProgress = { running: false, error: report.error };
+      report.planilha = await pushPendingMarks(state.accountId).catch(error => ({ error: error.message }));
       await saveReport(report); throw Object.assign(e, { report });
     }
     applyProgress = { running: false, done: questions.length, questions: questions.length };
+    report.planilha = await pushPendingMarks(state.accountId);
     await saveReport(report);
     return { report };
   }));

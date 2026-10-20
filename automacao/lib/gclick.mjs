@@ -322,6 +322,12 @@ export async function applyQuestionWithOperator(page, groups, { confirmTimeoutMs
     throw new Error(outcome === 'timeout' ? `Sem confirmação em ${Math.round(confirmTimeoutMs / 60000)} min na pergunta ${question.questionRef}; marcações descartadas.` : `Gravação parcial na pergunta ${question.questionRef}: confira a Enquete.`);
   }
   onStage('conferindo');
+  // Lista do diálogo: cada cliente gravado pelo G-Click fica verde. É a confirmação de origem para o registro.
+  const confirmedInDialog = await page.evaluate(ids => ids.map(id => {
+    const el = document.getElementById(`cliente${id}`);
+    const color = el ? getComputedStyle(el).backgroundColor : '';
+    return { internalId: id, nome: el?.innerText.replace(/\s+/g, ' ').trim() ?? '', gravado: color === 'rgb(102, 205, 170)' || el?.style.backgroundColor === 'mediumaquamarine' };
+  }), expected);
   await modal.locator('.modal-footer button[data-dismiss="modal"], button.close[data-dismiss="modal"]').first().click().catch(() => {});
   const changed = [], failed = [];
   for (const group of groups) {
@@ -330,9 +336,11 @@ export async function applyQuestionWithOperator(page, groups, { confirmTimeoutMs
     await openQuestion(page, group.rules);
     for (const item of mine) {
       const after = await inspectClient(page, item, group.rules);
-      (after.uiStatus === 'ja_correto' ? changed : failed).push({ cnpj: item.cnpj, answerRef: group.rules.answerRef, mappingTask: item.mappingTask });
+      const dialog = confirmedInDialog.find(x => x.internalId === item.internalId);
+      (after.uiStatus === 'ja_correto' && dialog?.gravado ? changed : failed).push({ cnpj: item.cnpj, empId: item.empId, empresa: item.empresa, answerRef: group.rules.answerRef,
+        answerLabel: group.rules.answerLabel, questionRef: group.rules.questionRef, mappingTask: item.mappingTask, nomeNoDialogo: dialog?.nome ?? '' });
     }
   }
   if (failed.length) throw Object.assign(new Error(`Conferência após gravar falhou para ${failed.map(x => x.cnpj).join(', ')} na pergunta ${question.questionRef}`), { partial: { changed, failed, skipped } });
-  return { questionRef: question.questionRef, changed, skipped, cancelled: false };
+  return { questionRef: question.questionRef, changed, skipped, cancelled: false, confirmedInDialog };
 }

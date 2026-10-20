@@ -2,7 +2,8 @@ const $ = id => document.getElementById(id);
 let authToken = '', previewId = null, lastReport = null, working = false, downloadFiles = [], liveCatalog = null, catalogLive = false, taskCatalog = [], tasksAutoFilled = false, loginPoll = null, loginPollBusy = false, savedMappings = [], editingTask = null, selectedTasks = new Set();
 let sourceVersion = 0, lastAuditKey = '', auditPoll = null, resultsPage = 0;
 const RESULTS_PAGE_SIZE = 50;
-const labels = { vazio: 'Sem resposta', ja_correto: 'Já correto', divergente: 'Divergente', nao_encontrado: 'Não localizado', bloqueado: 'Bloqueado', sem_mapeamento: 'Sem mapeamento', nao_verificado: 'Não verificado', pronto: 'Elegível' };
+const labels = { vazio: 'Sem resposta', ja_correto: 'Já correto', divergente: 'Divergente', nao_encontrado: 'Não localizado', bloqueado: 'Bloqueado', sem_mapeamento: 'Sem mapeamento', nao_verificado: 'Não verificado', a_conferir: 'A conferir', pronto: 'Elegível' };
+let focusTask = null, auditRunning = false, auditMessage = '';
 const ACCOUNT_KEY = 'gclick.lastAccount';
 const currentAccount = () => $('accountId').value.trim();
 function status(message, kind = '') { $('status').textContent = message; $('status').className = `status ${kind}`; }
@@ -145,11 +146,30 @@ async function saveMapping(answerRef, excluded = false) {
     const result = await api('mappings/save', { accountId: currentAccount(), task: editingTask, answerRef, excluded });
     savedMappings = result.savedMappings;
     if (answerRef) selectedTasks.add(editingTask); else selectedTasks.delete(editingTask);
-    $('mappingEditor').hidden = true; editingTask = null; clearPreview(); renderQueue();
-    status(excluded ? 'Tarefa marcada como excluída para esta conta.' : answerRef ? catalogLive ? 'Mapeamento salvo após conferência no catálogo atual.' : 'Mapeamento provisório salvo. Conecte a Enquete para conferir antes da prévia.' : 'Associação removida.', 'ok');
+    const task = editingTask;
+    $('mappingEditor').hidden = true; editingTask = null; renderQueue();
+    status(excluded ? 'Tarefa marcada como excluída para esta conta.' : answerRef ? (result.unchanged ? 'Mapeamento já estava salvo.' : 'Mapeamento salvo.') : 'Associação removida.', 'ok');
+    if (answerRef) await showTaskOutput(task);
     maybeAutoAudit();
   } catch (error) { $('editorHint').textContent = error.message; }
 }
+// Depois de mapear, a saída mostra na hora os CNPJs da tarefa e a resposta que será gravada; a conferência completa o estado.
+async function showTaskOutput(task) {
+  focusTask = task; resultsPage = 0;
+  const audited = lastReport && ['account_audit', 'mapping_preview'].includes(lastReport.mode) && lastReport.accountId === currentAccount() && lastReport.mappings?.some(m => m.task === task);
+  if (audited) { render(lastReport); return; }
+  try {
+    const plan = await api('mappings/plan', { ...(await payload('plan')), accountId: currentAccount(), task });
+    const inspected = plan.rows.map(r => ({ cnpj: r.cnpj, empId: r.empId, empresa: r.empresa, mappingTask: task, mappingAnswer: plan.answerRef,
+      uiStatus: r.status === 'pronto' ? 'a_conferir' : 'bloqueado', uiReason: r.status === 'pronto' ? (r.marcadoEm ? `Já registrado pelo robô em ${new Date(r.marcadoEm).toLocaleString('pt-BR')}` : 'Aguardando conferência na Enquete') : r.reason }));
+    const keep = lastReport && ['account_audit', 'mapping_preview'].includes(lastReport.mode) ? lastReport : null;
+    render({ mode: 'mapping_plan', accountId: currentAccount(), rules: { inputType: 'mixed', allowedTasks: [task] }, inspected, invalidSource: plan.invalid,
+      summary: { total: inspected.length, a_conferir: inspected.filter(x => x.uiStatus === 'a_conferir').length, bloqueado: inspected.filter(x => x.uiStatus === 'bloqueado').length } });
+    // A conferência anterior continua valendo para a gravação; só a tabela mostra a tarefa recém-mapeada.
+    if (keep) { lastReport = keep; updateApply(); }
+  } catch (error) { status(`Mapeamento salvo, mas não foi possível listar os CNPJs: ${error.message}`, 'error'); }
+}
+function answerText(ref) { const found = catalogAnswer(ref); return found ? `${found.question.ref} → ${found.answer.display}` : ref; }
 function useCatalog(catalog, verified = false) {
   if (!catalog || String(catalog.accountId) !== $('accountId').value.trim()) throw new Error('O catálogo pertence a outra conta G-Click');
   liveCatalog = catalog; catalogLive = verified;
@@ -262,7 +282,8 @@ function render(report) {
 function renderResultRows(report) {
   const items = report.inspected ?? report.plan ?? [];
   const filter = $('filter').value;
-  const visible = items.filter(x => filter === 'all' || (x.uiStatus ?? x.status) === filter);
+  const visible = items.filter(x => (filter === 'all' || (x.uiStatus ?? x.status) === filter) && (!focusTask || x.mappingTask === focusTask));
+  $('focusChip').hidden = !focusTask; $('focusLabel').textContent = focusTask ? `Mostrando só: ${focusTask}` : '';
   const totalPages = Math.max(1, Math.ceil(visible.length / RESULTS_PAGE_SIZE));
   resultsPage = Math.min(resultsPage, totalPages - 1);
   const start = resultsPage * RESULTS_PAGE_SIZE;
@@ -272,7 +293,8 @@ function renderResultRows(report) {
     const tr = document.createElement('tr'); const identity = document.createElement('td'); const bold = document.createElement('strong'); bold.textContent = x.cnpj; const company = document.createElement('div'); company.className = 'company'; company.textContent = x.empresa ?? ''; identity.append(bold, company);
     const emp = document.createElement('td'); emp.textContent = x.empId ?? '—'; const task = document.createElement('td'); task.textContent = x.mappingTask ?? (x.tasks?.filter(t => report.rules.allowedTasks.includes(t)).join(' | ') || '—');
     const state = document.createElement('td'); const tag = document.createElement('span'); const code = x.uiStatus ?? x.status; tag.className = `status-tag ${code}`; tag.textContent = code === 'vazio' && report.rules.inputType === 'checkbox' ? 'Não marcada' : labels[code] ?? code; state.append(tag);
-    const detail = document.createElement('td'); detail.textContent = x.uiReason ?? x.reason ?? ''; tr.append(identity, emp, task, state, detail); fragment.append(tr);
+    const detail = document.createElement('td'); const ref = x.mappingAnswer ?? savedMappings.find(m => m.accountId === currentAccount() && m.task === x.mappingTask)?.answerRef;
+    detail.textContent = [ref ? `Resposta: ${answerText(ref)}` : '', x.uiReason ?? x.reason ?? ''].filter(Boolean).join(' · '); tr.append(identity, emp, task, state, detail); fragment.append(tr);
   }
   tbody.append(fragment);
   if (!visible.length) { const tr = document.createElement('tr'), td = document.createElement('td'); td.colSpan = 5; td.className = 'empty'; td.textContent = 'Nenhum CNPJ neste filtro.'; tr.append(td); tbody.append(tr); }
@@ -292,6 +314,8 @@ function applyContext() {
 }
 function nextStep(ctx) {
   if (applyRunning) return applyMessage;
+  if (auditRunning) return auditMessage;
+  if (lastReport?.mode === 'mapping_plan') return catalogLive ? 'Mapeamento salvo. A conferência na Enquete começa em seguida e atualiza o estado de cada CNPJ.' : 'Mapeamento salvo. Abra o login do G-Click para o robô conferir estes CNPJs na Enquete.';
   if (!lastReport) return '';
   if (lastReport.mode === 'mapping_apply') return lastReport.status === 'verificado' ? 'Gravação concluída e conferida. Próximo passo: mapear as tarefas sem associação.' : `Gravação interrompida: ${lastReport.error ?? 'confira a Enquete'}`;
   if (!['mapping_preview', 'account_audit'].includes(lastReport.mode)) return '';
@@ -313,17 +337,19 @@ function updateApply() {
 }
 function auditKey() { return `${currentAccount()}:${liveCatalog?.capturedAt}:${sourceVersion}:${JSON.stringify(savedMappings)}`; }
 async function maybeAutoAudit() {
-  if (!catalogLive) { $('auditStatus').textContent = 'Aguardando a Enquete atual da conta. O catálogo anterior serve apenas para preparar associações.'; return; }
+  if (!catalogLive) { $('auditStatus').textContent = 'Aguardando o login: a conferência começa quando o robô ler a Enquete da conta.'; return; }
   if (!taskCatalog.length) { $('auditStatus').textContent = 'Informe ou selecione a planilha para carregar os CNPJs.'; return; }
   if (working) return;
   const key = auditKey();
   if (key === lastAuditKey) return;
   lastAuditKey = key;
   try {
-    setBusy(true); renderQueue(); clearPreview();
+    setBusy(true); renderQueue(); previewId = null; // a tabela atual fica visível até o resultado novo chegar
     $('auditStatus').textContent = 'Conferindo automaticamente as tarefas mapeadas para todos os CNPJs da planilha…';
     $('auditProgress').hidden = false; $('auditProgress').value = 0;
-    auditPoll = setInterval(async () => { try { const progress = await api('audit/progress', {}); if (progress.total) { $('auditProgress').value = Math.round(100 * progress.completed / progress.total); $('auditStatus').textContent = `${progress.completed}/${progress.total} tarefas avaliadas${progress.task ? ` · ${progress.task}` : ''}`; } } catch { /* A requisição principal exibirá a falha. */ } }, 1500);
+    auditRunning = true; auditMessage = 'Conferindo na Enquete do G-Click…'; updateApply();
+    auditPoll = setInterval(async () => { try { const progress = await api('audit/progress', {}); if (progress.total) { $('auditProgress').value = Math.round(100 * progress.completed / progress.total); $('auditStatus').textContent = `${progress.completed}/${progress.total} tarefas avaliadas${progress.task ? ` · ${progress.task}` : ''}`;
+      auditMessage = `Conferindo na Enquete: ${progress.task || 'preparando'} (${progress.completed}/${progress.total} tarefas). As tarefas já lidas são reaproveitadas.`; updateApply(); } } catch { /* A requisição principal exibirá a falha. */ } }, 1500);
     const request = await payload('account_audit'); request.accountId = currentAccount(); request.autoAudit = true;
     const result = await api('mappings/preview', request);
     previewId = result.previewId;
@@ -333,7 +359,7 @@ async function maybeAutoAudit() {
     status(lastApplySummary ? `${lastApplySummary} Conferência atualizada com o estado atual da Enquete.` : 'Conferência automática concluída. Nada foi gravado; veja o próximo passo abaixo.', 'ok');
     lastApplySummary = '';
   } catch (error) { $('auditStatus').textContent = `Não foi possível conferir automaticamente: ${error.message}`; status(error.message, 'error'); }
-  finally { if (auditPoll) clearInterval(auditPoll); auditPoll = null; $('auditProgress').hidden = true; setBusy(false); renderQueue(); if (auditKey() !== key) maybeAutoAudit(); }
+  finally { auditRunning = false; if (auditPoll) clearInterval(auditPoll); auditPoll = null; $('auditProgress').hidden = true; setBusy(false); renderQueue(); if (auditKey() !== key) maybeAutoAudit(); }
 }
 let applyRunning = false, applyMessage = '', lastApplySummary = '';
 const STAGES = { iniciando: 'Preparando a gravação…', abrindo: 'Abrindo a pergunta {q} no G-Click…', marcando: 'Marcando as respostas na pergunta {q}…',
@@ -354,7 +380,8 @@ async function apply() {
     const result = await api(ctx.endpoint, { previewId });
     previewId = null; applyRunning = false; render(result.report);
     const changed = result.report.results.reduce((n, x) => n + x.changed.length, 0), cancelled = result.report.results.filter(x => x.cancelled).length;
-    lastApplySummary = `Gravação concluída: ${changed} resposta(s) marcada(s) e conferida(s) após recarga${cancelled ? `; ${cancelled} pergunta(s) cancelada(s) por você` : ''}.`;
+    lastApplySummary = `Gravação concluída: ${changed} resposta(s) marcada(s) e conferida(s) após recarga${cancelled ? `; ${cancelled} pergunta(s) cancelada(s) por você` : ''}.${planilhaText(result.report.planilha)}`;
+    refreshWriterStatus();
     status(lastApplySummary, 'ok');
   } catch (e) { applyRunning = false; status(`${e.message} Confira o relatório e a Enquete antes de repetir.`, 'error'); previewId = null; }
   finally { clearInterval(poll); applyRunning = false; setBusy(false); lastAuditKey = ''; setTimeout(maybeAutoAudit, 500); }
@@ -431,6 +458,7 @@ async function saveSheetUrl(event) {
     config.accounts = result.accounts; renderAccountList();
     setSheetUrl(sheetUrl);
     status(sheetUrl ? `Link da planilha salvo para a conta ${accountId}.` : `Link da planilha removido da conta ${accountId}.`, 'ok');
+    refreshWriterStatus();
   } catch (error) { status(error.message, 'error'); }
 }
 function renderAccountList() {
@@ -486,6 +514,48 @@ async function loadAccountCatalog() {
   selectedTasks.clear(); renderQueue(); maybeAutoAudit();
 }
 $('accountId').addEventListener('change', loadAccountCatalog);
+$('clearFocus').addEventListener('click', () => { focusTask = null; resultsPage = 0; if (lastReport) renderResultRows(lastReport); });
+async function refreshWriterStatus() {
+  const accountId = currentAccount();
+  if (!/^\d+$/.test(accountId)) { $('writerStatus').textContent = 'Informe a conta para ver a configuração.'; $('resendMarks').hidden = true; return; }
+  try {
+    const w = await api('sheet-writer/status', { accountId });
+    $('writerUrl').value = w.url;
+    $('writerStatus').textContent = !w.hasSheetUrl ? 'Salve primeiro o link da aba da planilha desta conta.' : w.configured
+      ? `Ativo na aba “${w.aba ?? '?'}” (testado em ${new Date(w.testedAt).toLocaleString('pt-BR')}). ${w.marks} marcação(ões) registrada(s)${w.pending ? `, ${w.pending} pendente(s) na planilha` : ''}.`
+      : `Não configurado: as marcações ficam só no CSV “Baixar marcações registradas”.${w.marks ? ` ${w.marks} marcação(ões) aguardando a planilha.` : ''}`;
+    $('writerSetup').open = w.hasSheetUrl && !w.configured;
+    $('resendMarks').hidden = !(w.configured && w.pending);
+  } catch (error) { $('writerStatus').textContent = error.message; }
+}
+$('copyScript').addEventListener('click', async () => {
+  try {
+    const { script } = await api('sheet-writer/script', { accountId: currentAccount() });
+    try { await navigator.clipboard.writeText(script); $('copyStatus').textContent = 'Script copiado.'; $('scriptFallback').hidden = true; }
+    catch { $('scriptFallback').value = script; $('scriptFallback').hidden = false; $('scriptFallback').select(); $('copyStatus').textContent = 'Copie o texto abaixo (Ctrl+C).'; }
+  } catch (error) { $('copyStatus').textContent = error.message; }
+});
+$('saveWriter').addEventListener('click', async () => {
+  try {
+    $('writerStatus').textContent = 'Testando o Apps Script…';
+    const r = await api('sheet-writer/save', { accountId: currentAccount(), url: $('writerUrl').value.trim() });
+    status(`Registro na planilha ativo (aba “${r.aba}”).${r.sync?.linhas ? ` ${r.sync.linhas} linha(s) atualizadas com marcações anteriores.` : ''}`, 'ok');
+  } catch (error) { status(error.message, 'error'); }
+  refreshWriterStatus();
+});
+$('resendMarks').addEventListener('click', async () => {
+  try { const r = await api('sheet-writer/resend', { accountId: currentAccount() }); status(r.error ? `Planilha: ${r.error}` : `Planilha: ${r.linhas ?? 0} linha(s) atualizada(s)${r.pending ? `; ${r.pending} sem linha correspondente` : ''}.`, r.error ? 'error' : 'ok'); }
+  catch (error) { status(error.message, 'error'); }
+  refreshWriterStatus();
+});
+function planilhaText(p) {
+  if (!p) return '';
+  if (!p.configured) return ' Planilha: registro não configurado; use “Baixar marcações registradas”.';
+  if (p.error) return ` Planilha: falhou (${p.error}); use “Reenviar marcações pendentes”.`;
+  return ` Planilha: ${p.linhas ?? 0} linha(s) atualizada(s) na coluna “Enquete G-Click”${p.pending ? `; ${p.pending} sem linha correspondente` : ''}.`;
+}
+function updateLedgerLink() { const a = currentAccount(); $('ledgerLink').hidden = !/^\d+$/.test(a); $('ledgerLink').href = `/api/marcacoes.csv?account=${encodeURIComponent(a)}`; $('ledgerLink').setAttribute('download', `marcacoes-enquete-${a}.csv`); }
+$('accountId').addEventListener('change', () => { updateLedgerLink(); refreshWriterStatus(); });
 $('filter').addEventListener('change', () => { resultsPage = 0; if (lastReport) renderResultRows(lastReport); });
 $('resultsPrev').addEventListener('click', () => { if (lastReport && resultsPage > 0) { resultsPage--; renderResultRows(lastReport); } });
 $('resultsNext').addEventListener('click', () => { if (lastReport) { resultsPage++; renderResultRows(lastReport); } });
@@ -503,5 +573,7 @@ if (config.loginReady) status('Sessão da Enquete pronta. Mantenha a janela do C
 else if (config.loginOpen) { status('Janela de login aberta. A captura ocorrerá quando a Enquete da conta estiver disponível.'); startLoginPoll(); }
 else status(config.sessionLostAt ? 'A janela do Chrome da automação foi fechada. Clique em Abrir janela de login e entre de novo.' : 'Informe a conta e clique em Abrir janela de login. As perguntas aparecem depois que o robô ler a Enquete do escritório.', config.sessionLostAt ? 'error' : '');
 updateRecentSheetLinks();
+updateLedgerLink();
+refreshWriterStatus();
 renderQueue();
 if (sourceType() === 'recent') refreshDownloads();

@@ -15,3 +15,5 @@
 .status-tag.nao_verificado{background:#fbecea;color:#a24942}
 .next-step{margin:0;background:#edf4fb;border:1px solid #c9dcef;border-left:4px solid #2b7bb9;border-radius:10px;padding:13px 15px;color:#1f4e73;font-weight:700;font-size:13px;line-height:1.45}
 .queue-detail.pending{color:#a76a1c;font-weight:700}
+.focus-chip{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:700;color:#176e65}.focus-chip[hidden]{display:none}.focus-chip button{padding:5px 9px}
+.writer-steps{padding-left:18px;margin:10px 0;font-size:12px;color:#40535c;line-height:1.6}.writer-steps li{margin:6px 0}.writer-steps input{margin:6px 0}#writerSetup summary{cursor:pointer;font-size:12px;font-weight:700;color:#176e65}#scriptFallback{font-family:monospace;font-size:11px}
