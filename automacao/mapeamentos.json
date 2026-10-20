@@ -49,5 +49,32 @@
     "answerLabel": "GIA ST",
     "catalogSource": "live",
     "updatedAt": "2026-10-20T15:03:02.513Z"
+  },
+  {
+    "accountId": "6581",
+    "task": "ISS RETIDO - OUTROS MUNICIPIOS",
+    "answerRef": "02.07.01",
+    "questionLabel": "Como funciona o ISS deste cliente ?",
+    "answerLabel": "ISS Retido",
+    "catalogSource": "live",
+    "updatedAt": "2026-10-20T15:32:50.856Z"
+  },
+  {
+    "accountId": "6581",
+    "task": "ISS TOMADOR",
+    "answerRef": "02.07.02",
+    "questionLabel": "Como funciona o ISS deste cliente ?",
+    "answerLabel": "ISS Tomador",
+    "catalogSource": "live",
+    "updatedAt": "2026-10-20T15:33:45.749Z"
+  },
+  {
+    "accountId": "6581",
+    "task": "ISS",
+    "answerRef": "02.07.03",
+    "questionLabel": "Como funciona o ISS deste cliente ?",
+    "answerLabel": "ISS Próprio",
+    "catalogSource": "live",
+    "updatedAt": "2026-10-20T15:34:47.023Z"
   }
 ]
