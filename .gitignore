@@ -6,3 +6,9 @@ automacao/runs/
 *.tmp*
 __pycache__/
 *.pyc
+
+# Dados de clientes (CNPJs, prints, planilhas): ficam só no disco
+*.xlsx
+*.jpg
+*.png
+2026-10-17_relatorio-piloto-enquete-das.md
