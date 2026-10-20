@@ -13,6 +13,8 @@ const catalog = { accountId: '6581', capturedAt: '2026-10-18T12:00:00Z', questio
   { ref: '02.02', label: destda.question, category: destda.category, answers: [{ ref: '02.02.01', value: '409', label: 'DeSTDA', display: '01 - DeSTDA' }, { ref: '02.02.02', value: '379', label: 'DAC', display: '02 - DAC' }] }
 ] };
 
+const known = [{ accountId: '6581', task: 'DAS - Mensal', answerRef: '01.02.04' }, { accountId: '6581', task: 'DeSTDA', answerRef: '02.02.01' }, { accountId: '6581', task: 'DeSTDA - Declaração mensal', answerRef: '02.02.01' }];
+
 test('login carrega catálogo e escolha da resposta preenche a regra', async () => {
   const server = http.createServer(async (req, res) => {
     const file = req.url === '/' ? 'ui/index.html' : req.url === '/ui/app.js' ? 'ui/app.js' : 'ui/style.css';
@@ -25,14 +27,15 @@ test('login carrega catálogo e escolha da resposta preenche a regra', async () 
     browser = await chromium.launch({ channel: 'chrome', headless: true });
     const page = await browser.newPage();
     page.on('pageerror', error => { throw error; });
-    await page.route('**/api/config', route => route.fulfill({ json: { token: 'test', rules: das, presets: [{ name: 'DAS / Simples', rules: das }, { name: 'DeSTDA', rules: destda }] } }));
+    await page.route('**/api/config', route => route.fulfill({ json: { token: 'test', rules: das, presets: [{ name: 'DAS / Simples', rules: das }, { name: 'DeSTDA', rules: destda }], savedMappings: known } }));
     await page.route('**/api/login/open', route => route.fulfill({ json: { open: true } }));
     await page.route('**/api/login/close', route => route.fulfill({ json: { ready: true, catalog } }));
-    await page.route('**/api/mappings/save', route => route.fulfill({ json: { savedMappings: [{ accountId: '6581', task: 'DAC - Mensal', answerRef: '02.02.02' }] } }));
+    await page.route('**/api/mappings/save', route => route.fulfill({ json: { savedMappings: [...known, { accountId: '6581', task: 'DAC - Mensal', answerRef: '02.02.02' }] } }));
     await page.route('**/api/downloads', route => route.fulfill({ json: { files: [{ name: 'obrigações.csv', modifiedAt: new Date().toISOString(), size: 100, stale: false }] } }));
     await page.route('**/api/tasks', route => route.fulfill({ json: { source: 'obrigações.csv', rowCount: 4, tasks: ['DeSTDA', 'DeSTDA - Declaração mensal', 'DAC - Mensal', 'DAS - Mensal'].map(name => ({ name, count: 1 })) } }));
     await page.goto(`http://127.0.0.1:${server.address().port}/`);
     await page.getByRole('radio', { name: 'Navegador integrado' }).click();
+    await page.locator('#accountId').fill('6581');
     await page.getByRole('button', { name: 'Abrir janela de login' }).click();
     await page.waitForFunction(() => document.querySelector('#queueSummary').textContent.includes('1 sugestões para revisar'), null, { timeout: 10000 });
     assert.match(await page.locator('#queueSummary').innerText(), /1 sugestões para revisar/);
@@ -47,8 +50,6 @@ test('login carrega catálogo e escolha da resposta preenche a regra', async () 
     await page.locator('#confirmMapping').click();
     await page.waitForFunction(() => document.querySelector('#queueSummary').textContent.includes('4 verificadas na conta'));
     assert.equal(await page.locator('.queue-item').count(), 0);
-    assert.match(await page.locator('#queueSummary').innerText(), /1 selecionada/);
-    assert.equal(await page.locator('#previewMappings').isEnabled(), true);
   } finally {
     if (browser) await browser.close();
     await new Promise(resolve => server.close(resolve));

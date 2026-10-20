@@ -3,9 +3,8 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import readline from 'node:readline/promises';
 import { parseCsv, readScope, makePlan } from './lib/data.mjs';
-import { LOGIN_URL, hasGclickSession, openBrowser, readGoogleCsv, openQuestion, inspectAll, applyBatch } from './lib/gclick.mjs';
+import { LOGIN_URL, waitForEnquete, openBrowser, readGoogleCsv, openQuestion, inspectAll, applyQuestionWithOperator } from './lib/gclick.mjs';
 
 const root = path.dirname(new URL(import.meta.url).pathname);
 const args = process.argv.slice(2);
@@ -14,8 +13,13 @@ const get = key => { const i = args.indexOf(key); return i < 0 ? null : args[i +
 const has = key => args.includes(key);
 const profile = process.env.GCLICK_PROFILE_DIR || path.join(os.homedir(), '.local/share/gclick-enquete/browser-profile');
 const outputDir = path.join(root, 'runs');
-const rules = JSON.parse(await fs.readFile(get('--rules') ?? path.join(root, 'regras.json'), 'utf8'));
-if (!/^\d+$/.test(rules.accountId) || !/^\d+(?:\.\d+)+$/.test(rules.questionRef) || !/^\d+$/.test(rules.answerValue) || !rules.question || !rules.answerRef) throw new Error('regras.json inválido');
+// Regra de uma única tarefa → resposta, para uso pontual; o fluxo principal é a interface (fila de mapeamentos).
+if (command && !get('--rules')) { console.error('Erro: informe --rules <arquivo.json> (veja exemplos/)'); process.exit(1); }
+const rules = command ? JSON.parse(await fs.readFile(get('--rules'), 'utf8')) : {};
+// A conta (empId do escritório) vem sempre da linha de comando; as regras são modelos reutilizáveis.
+rules.accountId = get('--account') ?? '';
+if (command && command !== 'help' && !/^\d+$/.test(rules.accountId)) { console.error('Erro: informe --account <empId do escritório>'); process.exit(1); }
+if (command && (!/^\d+(?:\.\d+)+$/.test(rules.questionRef) || !/^\d*$/.test(String(rules.answerValue ?? '')) || !rules.question || !rules.answerRef)) throw new Error('Arquivo de regra inválido');
 
 async function audit(payload) {
   await fs.mkdir(outputDir, { recursive: true });
@@ -31,15 +35,8 @@ async function openQuestionWithLogin(context, page) {
   try { return await openQuestion(page, rules); }
   catch (error) { if (!error.message.includes('Sessão do G-Click ausente/expirada')) throw error; }
   await page.goto(LOGIN_URL);
-  console.log(`Entre no G-Click, selecione a conta ${rules.accountId} e abra a Enquete nesta janela.`);
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  try {
-    while (true) {
-      await rl.question('Pressione Enter após abrir a Enquete.');
-      if (await hasGclickSession(context, rules.accountId)) break;
-      console.log('A Enquete ainda não abriu nesta janela. Selecione a conta e tente novamente.');
-    }
-  } finally { rl.close(); }
+  console.log('Entre no G-Click nesta janela. Depois do login, a Enquete da conta abre sozinha.');
+  await waitForEnquete(context, rules.accountId, { onStatus: console.log });
   return openQuestion(page, rules);
 }
 async function lock(fn) {
@@ -53,22 +50,16 @@ async function lock(fn) {
 }
 
 try {
-  if (!['login', 'plan', 'preview', 'apply'].includes(command)) throw new Error('Uso: node cli.mjs <login|plan|preview|apply> --cnpjs lote.txt (--csv arquivo.csv | --sheet-url URL) [--apply]');
+  if (!['login', 'plan', 'preview', 'apply'].includes(command)) throw new Error('Uso: node cli.mjs <login|plan|preview|apply> --account EMPID --rules regra.json --cnpjs lote.txt (--csv arquivo.csv | --sheet-url URL) [--apply]');
   if (command === 'login') {
     await lock(async () => {
       const context = await openBrowser(profile, true);
       try {
         const page = context.pages()[0] ?? await context.newPage();
         await page.goto(LOGIN_URL);
-        console.log(`Entre no G-Click, selecione a conta ${rules.accountId} e abra a Enquete nessa janela.`);
-        const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-        try {
-          while (true) {
-            await rl.question('Pressione Enter para verificar o acesso à Enquete.');
-            if (await hasGclickSession(context, rules.accountId)) break;
-            console.log('A Enquete ainda não abriu nessa sessão. Selecione a conta e tente novamente.');
-          }
-        } finally { rl.close(); }
+        console.log('Entre no G-Click nesta janela. Depois do login, a Enquete da conta abre sozinha.');
+        await waitForEnquete(context, rules.accountId, { onStatus: console.log });
+        console.log(`Acesso à Enquete da conta ${rules.accountId} confirmado.`);
       } finally { await context.close(); }
     });
     process.exit(0);
@@ -93,27 +84,34 @@ try {
       const hash = crypto.createHash('sha256').update(csv).digest('hex');
       const plan = makePlan(parseCsv(csv), scope, rules);
       if (command === 'plan') {
-        print(plan); await audit({ command, time: new Date().toISOString(), sourceSha256: hash, rules, plan });
+        print(plan); await audit({ command, accountId: rules.accountId, time: new Date().toISOString(), sourceSha256: hash, rules, plan });
         return;
       }
       context ??= await openBrowser(profile, true);
       const page = context.pages()[0] ?? await context.newPage();
-      const detectedType = await openQuestionWithLogin(context, page);
-      const resolvedRules = { ...rules, inputType: detectedType };
+      const opened = await openQuestionWithLogin(context, page);
+      const resolvedRules = { ...rules, ...opened };
       const inspected = await inspectAll(page, plan, resolvedRules);
       print(inspected);
       if (command === 'preview') {
-        await audit({ command, time: new Date().toISOString(), sourceSha256: hash, rules: resolvedRules, inspected });
+        await audit({ command, accountId: rules.accountId, time: new Date().toISOString(), sourceSha256: hash, rules: resolvedRules, inspected });
         return;
       }
       let result;
-      try { result = await applyBatch(page, inspected, resolvedRules); }
+      try {
+        const blockers = inspected.filter(x => ['bloqueado', 'divergente', 'nao_encontrado'].includes(x.uiStatus));
+        if (blockers.length) throw new Error(`Lote contém ${blockers.length} conflito(s). Nada foi selecionado.`);
+        const pending = inspected.filter(x => x.uiStatus === 'vazio');
+        console.log(pending.length ? `Marcando ${pending.length} resposta(s). Confira o diálogo na janela do G-Click e clique em Confirmar.` : 'Nada a marcar.');
+        result = pending.length ? await applyQuestionWithOperator(page, [{ rules: resolvedRules, items: pending }], { onStage: stage => stage === 'aguardando_confirmacao' && console.log('Aguardando sua confirmação no G-Click…') }) : { changed: [], skipped: [] };
+        if (result.cancelled) throw new Error('Gravação cancelada no diálogo do G-Click; nada foi gravado.');
+      }
       catch (error) {
-        await audit({ command, time: new Date().toISOString(), sourceSha256: hash, rules: resolvedRules, inspected, error: error.message, status: 'verificar_manualmente' });
+        await audit({ command, accountId: rules.accountId, time: new Date().toISOString(), sourceSha256: hash, rules: resolvedRules, inspected, error: error.message, status: 'verificar_manualmente' });
         throw error;
       }
-      await audit({ command, time: new Date().toISOString(), sourceSha256: hash, rules: resolvedRules, inspected, result, status: 'verificado' });
-      console.log(`Gravados: ${result.changed.length}; verificados após recarga: ${result.verified.length}`);
+      await audit({ command, accountId: rules.accountId, time: new Date().toISOString(), sourceSha256: hash, rules: resolvedRules, inspected, result, status: 'verificado' });
+      console.log(`Gravadas e conferidas após recarga: ${result.changed.length}`);
     } finally { if (context) await context.close(); }
   });
 } catch (error) { console.error(`Erro: ${error.message}`); process.exitCode = 1; }

@@ -7,7 +7,7 @@ import { makePlan, parseCsv, scopeFromEligible } from '../lib/data.mjs';
 import { validateAnswerMapping } from '../lib/answer-map.mjs';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const rules = JSON.parse(fs.readFileSync(path.join(root, 'regras-destda.json'), 'utf8'));
+const rules = JSON.parse(fs.readFileSync(path.join(root, 'exemplos/regra-destda-6581.json'), 'utf8'));
 
 test('DeSTDA usa a resposta 02.02.01 e checkbox interno 409', () => {
   assert.equal(rules.inputType, 'checkbox');

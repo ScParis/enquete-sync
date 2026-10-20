@@ -20,7 +20,7 @@ export function buildCatalog(rows, accountId, capturedAt = new Date().toISOStrin
       const val = match ? match[1] : child.ref.split('.').pop();
       const lab = match ? match[2] : child.label;
       const displayOrdinal = String(index + 1).padStart(2, '0');
-      return { ref: child.ref, value: val, label: lab, display: `${displayOrdinal} - ${lab}`, type: child.type };
+      return { ref: child.ref, value: val, valueKnown: Boolean(match), label: lab, display: `${displayOrdinal} - ${lab}`, type: child.type };
     });
     return { ref: row.ref, label: row.label, category: groups.get(row.ref.split('.')[0]) ?? 'Sem categoria', answers };
   }).filter(question => question.answers.length);
@@ -37,4 +37,14 @@ export function suggestTasks(tasks, answerLabel) {
     const name = normalize(task.name);
     return name === target || name.startsWith(`${target} - `);
   });
+}
+
+export const labelKey = value => compact(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('pt-BR');
+
+// Procura no catálogo desta conta a mesma pergunta e resposta, pelo texto, de um mapeamento feito em outro escritório.
+export function findByLabels(catalog, questionLabel, answerLabel) {
+  const q = labelKey(questionLabel), a = labelKey(answerLabel);
+  if (!q || !a) return [];
+  return (catalog?.questions ?? []).flatMap(question => labelKey(question.label) !== q ? [] :
+    question.answers.filter(answer => labelKey(answer.label) === a).map(answer => ({ question, answer })));
 }

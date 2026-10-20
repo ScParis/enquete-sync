@@ -1,9 +1,53 @@
 [
   {
     "accountId": "6581",
+    "task": "DAS - Mensal",
+    "answerRef": "01.02.04",
+    "questionLabel": "Qual é o atual Regime Tributário desta empresa?",
+    "answerLabel": "Simples",
+    "catalogSource": "migrado",
+    "updatedAt": "2026-10-17T00:00:00.000Z"
+  },
+  {
+    "accountId": "6581",
+    "task": "DAS - Mensal - Sem Movimento",
+    "answerRef": "01.02.04",
+    "questionLabel": "Qual é o atual Regime Tributário desta empresa?",
+    "answerLabel": "Simples",
+    "catalogSource": "migrado",
+    "updatedAt": "2026-10-17T00:00:00.000Z"
+  },
+  {
+    "accountId": "6581",
+    "task": "DeSTDA - Declaração mensal",
+    "answerRef": "02.02.01",
+    "questionLabel": "Qual dessas Obrigações Estaduais são entregues para esse cliente ? (Part 1)",
+    "answerLabel": "DeSTDA",
+    "catalogSource": "migrado",
+    "updatedAt": "2026-10-17T00:00:00.000Z"
+  },
+  {
+    "accountId": "6581",
+    "task": "DeSTDA",
+    "answerRef": "02.02.01",
+    "questionLabel": "Qual dessas Obrigações Estaduais são entregues para esse cliente ? (Part 1)",
+    "answerLabel": "DeSTDA",
+    "catalogSource": "migrado",
+    "updatedAt": "2026-10-17T00:00:00.000Z"
+  },
+  {
+    "accountId": "6581",
+    "task": "DAS - Mensal - CDB",
+    "excluded": true,
+    "updatedAt": "2026-10-17T00:00:00.000Z"
+  },
+  {
+    "accountId": "6581",
     "task": "GIA-ST",
     "answerRef": "02.03.08",
+    "questionLabel": "Qual dessas Obrigações Estaduais são entregues para esse cliente ? (Part 2)",
+    "answerLabel": "GIA ST",
     "catalogSource": "live",
-    "updatedAt": "2026-10-20T02:21:37.925Z"
+    "updatedAt": "2026-10-20T15:03:02.513Z"
   }
 ]

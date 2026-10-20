@@ -1,17 +1,28 @@
 import { chromium } from 'playwright';
-import { formatCnpj, normalizeCnpj } from './data.mjs';
+import { normalizeCnpj } from './data.mjs';
 import { validateAnswerMapping } from './answer-map.mjs';
 import { buildCatalog } from './catalog.mjs';
 
 const BASE = 'https://app.gclick.com.br/Listar.do?obj=enqueteopen&tipo=0&empId=';
 export const LOGIN_URL = 'https://appp.gclick.com.br/autenticacao';
-const radioSelector = rules => `input[type=\"radio\"][name$=\"-${rules.questionRef}\"]`;
+const radioSelector = rules => `input[type="radio"][name$="-${rules.questionRef}"]`;
 const checkboxSelector = rules => `input[type="checkbox"][value="${rules.answerValue}"][id^="cb."]`;
 const targetSelector = rules => rules.inputType === 'checkbox' ? checkboxSelector(rules) : `${radioSelector(rules)}[value="${rules.answerValue}"]`;
+// Oscilações de rede (troca de Wi-Fi, VPN, DNS) não devem derrubar uma conferência inteira: tenta de novo antes de desistir.
+const TRANSIENT = /net::ERR_(NETWORK_CHANGED|INTERNET_DISCONNECTED|CONNECTION_RESET|CONNECTION_CLOSED|CONNECTION_REFUSED|TIMED_OUT|NAME_NOT_RESOLVED|ADDRESS_UNREACHABLE)|Timeout \d+ms exceeded/;
+export async function gotoWithRetry(page, url, { attempts = 3, delayMs = 3000 } = {}) {
+  for (let attempt = 1; ; attempt++) {
+    try { return await page.goto(url, { waitUntil: 'domcontentloaded' }); }
+    catch (error) {
+      if (attempt >= attempts || !TRANSIENT.test(error.message) || page.isClosed()) throw error;
+      await new Promise(resolve => setTimeout(resolve, delayMs * attempt));
+    }
+  }
+}
 export async function hasGclickSession(context, accountId) {
   const page = await context.newPage();
   try {
-    await page.goto(BASE + encodeURIComponent(accountId), { waitUntil: 'domcontentloaded' });
+    await gotoWithRetry(page, BASE + encodeURIComponent(accountId));
     if (!page.url().startsWith('https://app.gclick.com.br/')) return false;
     try {
       await page.getByText('Respondendo Enquete', { exact: false }).first().waitFor({ state: 'visible', timeout: 5000 });
@@ -20,6 +31,22 @@ export async function hasGclickSession(context, accountId) {
       return false;
     }
   } finally { await page.close(); }
+}
+const loggedInUrl = url => { try { const u = new URL(url); return /(^|\.)gclick\.com\.br$/.test(u.hostname) && !u.pathname.startsWith('/autenticacao'); } catch { return false; } };
+// Espera o operador entrar no G-Click e abre sozinho a Enquete da conta; não depende de navegação manual até o módulo.
+export async function waitForEnquete(context, accountId, { timeoutMs = 10 * 60 * 1000, intervalMs = 3000, onStatus = () => {} } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  let lastTry = 0;
+  while (Date.now() < deadline) {
+    if (context.pages().some(page => loggedInUrl(page.url())) && Date.now() - lastTry > 20000) {
+      lastTry = Date.now();
+      onStatus(`Login detectado. Abrindo a Enquete da conta ${accountId}…`);
+      if (await hasGclickSession(context, accountId)) return true;
+      onStatus(`A Enquete da conta ${accountId} não abriu. Confira se o usuário tem acesso a esse escritório; nova tentativa em 20 s.`);
+    }
+    await new Promise(resolve => setTimeout(resolve, intervalMs));
+  }
+  throw new Error(`Tempo esgotado aguardando o login e a Enquete da conta ${accountId}`);
 }
 export async function openBrowser(profile, headed = false) {
   return chromium.launchPersistentContext(profile, {
@@ -43,7 +70,7 @@ export async function readGoogleCsv(context, url) {
 export async function readQuestionCatalog(context, accountId) {
   const page = await context.newPage();
   try {
-    await page.goto(BASE + encodeURIComponent(accountId), { waitUntil: 'domcontentloaded' });
+    await gotoWithRetry(page, BASE + encodeURIComponent(accountId));
     if (!page.url().includes('app.gclick.com.br') || (await page.getByText('Respondendo Enquete', { exact: true }).count()) === 0)
       throw new Error('A sessão do G-Click expirou antes da leitura das perguntas');
     const table = page.locator('#DataTables_Table_0');
@@ -69,7 +96,7 @@ export async function readQuestionCatalog(context, accountId) {
 }
 
 export async function openQuestion(page, rules) {
-  await page.goto(BASE + encodeURIComponent(rules.accountId), { waitUntil: 'domcontentloaded' });
+  await gotoWithRetry(page, BASE + encodeURIComponent(rules.accountId));
   if (!page.url().includes('app.gclick.com.br') || (await page.getByText('Respondendo Enquete', { exact: true }).count()) === 0) throw new Error('Sessão do G-Click ausente/expirada. Execute o comando login.');
   const search = page.locator('#DataTables_Table_0_filter input');
   await search.waitFor({ state: 'visible', timeout: 15000 });
@@ -116,19 +143,50 @@ export async function openQuestion(page, rules) {
   if (matches.length !== 1 || !matches[0].visible)
     throw new Error(`Pergunta ${rules.questionRef} indisponível na aba Respondendo Enquete: ${JSON.stringify(matches)}`);
   await questionLinks.nth(matches[0].index).evaluate(el => el.click());
-  const radioTarget = page.locator(`${radioSelector(rules)}[value="${rules.answerValue}"]`);
-  const checkboxTarget = page.locator(checkboxSelector(rules));
-  await page.locator(`${radioSelector(rules)}[value="${rules.answerValue}"], ${checkboxSelector(rules)}`).first().waitFor({ state: 'attached', timeout: 15000 });
-  const radioCount = await radioTarget.count(), checkboxCount = await checkboxTarget.count();
-  if (Boolean(radioCount) === Boolean(checkboxCount)) throw new Error('Tipo de resposta ambíguo ou não encontrado na pergunta');
-  const detectedType = checkboxCount ? 'checkbox' : 'radio';
-  if (rules.inputType && rules.inputType !== 'auto' && rules.inputType !== detectedType)
-    throw new Error(`A resposta configurada como ${rules.inputType} aparece como ${detectedType} no G-Click`);
+  await page.locator(`${radioSelector(rules)}, input[type="checkbox"][id^="cb."]`).first().waitFor({ state: 'attached', timeout: 15000 });
   const lengthSelect = page.locator('select[name$=\"_length\"]');
   if (await lengthSelect.count() === 1 && await lengthSelect.locator('option[value=\"-1\"]').count()) await lengthSelect.selectOption('-1');
   const activeNext = page.locator('.dataTables_paginate:visible .next:not(.disabled)');
   if (await activeNext.count()) throw new Error('A tabela da pergunta continua paginada; leitura incompleta dos CNPJs. Nenhum cliente foi classificado como ausente.');
-  return detectedType;
+  const answerValue = rules.answerValue ? String(rules.answerValue) : await resolveColumnValue(page, rules);
+  const resolved = { ...rules, answerValue };
+  const radioCount = await page.locator(`${radioSelector(resolved)}[value="${answerValue}"]`).count();
+  const checkboxCount = await page.locator(checkboxSelector(resolved)).count();
+  if (Boolean(radioCount) === Boolean(checkboxCount)) throw new Error('Tipo de resposta ambíguo ou não encontrado na pergunta');
+  const detectedType = checkboxCount ? 'checkbox' : 'radio';
+  if (rules.inputType && rules.inputType !== 'auto' && rules.inputType !== detectedType)
+    throw new Error(`A resposta configurada como ${rules.inputType} aparece como ${detectedType} no G-Click`);
+  return { inputType: detectedType, answerValue };
+}
+const headerKey = text => String(text ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+// Respostas sem código interno no catálogo (ex.: 02.03.08 "GIA ST") aparecem como coluna da grade.
+// A coluna precisa ter cabeçalho idêntico e único, e todas as caixas dela precisam compartilhar o mesmo valor.
+export async function resolveColumnValue(page, rules) {
+  const ordinal = String(rules.answerRef).split('.').pop();
+  const label = String(rules.answerLabel ?? '').replace(/^\d+\s*-\s*/, '');
+  const accepted = new Set([headerKey(`${ordinal} ${label}`), headerKey(label)].filter(Boolean));
+  const columns = await page.locator('table').filter({ has: page.locator('input[type="checkbox"][id^="cb."]') }).evaluateAll((tables, keys) => {
+    const key = text => String(text ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const out = [];
+    tables.forEach((table, tableIndex) => {
+      const headers = [...(table.tHead?.rows[table.tHead.rows.length - 1]?.cells ?? [])].map(cell => cell.innerText.replace(/\s+/g, ' ').trim());
+      headers.forEach((header, index) => {
+        if (!keys.includes(key(header))) return;
+        const values = [...table.tBodies].flatMap(body => [...body.rows]).map(row => row.cells[index]?.querySelector('input[type="checkbox"][id^="cb."]')?.value).filter(Boolean);
+        out.push({ tableIndex, header, values: [...new Set(values)] });
+      });
+    });
+    return out;
+  }, [...accepted]);
+  if (columns.length !== 1) throw new Error(`Coluna "${ordinal} ${label}" ${columns.length ? 'aparece mais de uma vez' : 'não encontrada'} na grade da pergunta ${rules.questionRef}`);
+  const [column] = columns;
+  if (column.values.length !== 1 || !/^\d+$/.test(column.values[0]))
+    throw new Error(`Coluna "${column.header}" sem código interno único (${column.values.join(', ') || 'nenhuma caixa'})`);
+  return column.values[0];
+}
+export async function questionStillOpen(page, rules) {
+  if (page.isClosed() || !page.url().startsWith('https://app.gclick.com.br/')) return false;
+  try { return (await page.locator(targetSelector(rules)).count()) > 0; } catch { return false; }
 }
 function rowFor(page, item) {
   return page.locator('tr').filter({ hasText: item.cnpj });
@@ -174,255 +232,107 @@ export async function inspectAll(page, plan, rules) {
   }
   return out;
 }
-export async function applyBatch(page, inspected, rules) {
-  const pending = inspected.filter(x => x.uiStatus === 'vazio');
-  const blockers = inspected.filter(x => x.uiStatus === 'bloqueado' || x.uiStatus === 'divergente' || x.uiStatus === 'nao_encontrado');
-  if (blockers.length) throw new Error(`Lote contém ${blockers.length} conflito(s). Nada foi selecionado.`);
-  if (!pending.length) return { changed: [], verified: inspected.filter(x => x.uiStatus === 'ja_correto').map(x => x.cnpj) };
-  const pendingIndicators = await page.locator('input[name="marcados"], input[name="desmarcados"]').evaluateAll(els => els.map(e => e.value).filter(v => v && v !== ';'));
-  if (pendingIndicators.length) throw new Error('A tela já contém alterações não salvas. Reabra o navegador após resolver esse estado.');
-  for (const item of pending) {
-    await rowFor(page, item).first().locator(targetSelector(rules)).click();
+
+async function pendingChanges(page) {
+  return page.evaluate(() => ['marcados', 'desmarcados'].map(id => document.getElementById(id)?.value ?? ';').filter(v => v.split(';').some(Boolean)));
+}
+const OPERATOR_BANNER = 'gclick-robo-aviso';
+async function showOperatorBanner(page, text) {
+  await page.evaluate(([id, message]) => {
+    document.getElementById(id)?.remove();
+    const div = document.createElement('div');
+    div.id = id; div.textContent = message;
+    div.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:2147483647;background:#123c44;color:#fff;font:600 15px/1.4 system-ui,sans-serif;padding:12px 18px;text-align:center;box-shadow:0 2px 8px #0005';
+    document.body.append(div);
+  }, [OPERATOR_BANNER, text]).catch(() => {});
+}
+// Marca, numa pergunta, todas as respostas pendentes de todos os clientes do grupo e clica em Alterar.
+// A decisão de gravar é do operador: ele clica em Confirmar no diálogo do G-Click. O robô confere a lista
+// do diálogo antes, espera a decisão e confere a gravação depois de recarregar.
+// groups: [{ rules, items: [{ cnpj, empId, ... }] }], todos da mesma pergunta.
+export async function applyQuestionWithOperator(page, groups, { confirmTimeoutMs = 15 * 60 * 1000, onStage = () => {} } = {}) {
+  const question = groups[0].rules;
+  if (groups.some(g => g.rules.questionRef !== question.questionRef)) throw new Error('Grupo com perguntas diferentes');
+  onStage('abrindo');
+  await openQuestion(page, question);
+  if ((await pendingChanges(page)).length) throw new Error('A tela já contém alterações não salvas. Recarregue a Enquete antes de continuar.');
+  onStage('marcando');
+  const clicked = [], skipped = [], perClient = new Map();
+  for (const group of groups) {
+    for (const item of group.items) {
+      const fresh = await inspectClient(page, item, group.rules);
+      if (fresh.uiStatus !== 'vazio') { skipped.push({ ...fresh, answerRef: group.rules.answerRef, uiReason: fresh.uiReason ?? (fresh.uiStatus === 'ja_correto' ? 'Já estava marcada' : 'Estado mudou desde a conferência') }); continue; }
+      // Pergunta de escolha única: um cliente não pode receber duas respostas diferentes no mesmo lote.
+      if (group.rules.inputType === 'radio' && perClient.has(fresh.internalId) && perClient.get(fresh.internalId) !== group.rules.answerValue) {
+        skipped.push({ ...fresh, answerRef: group.rules.answerRef, uiStatus: 'bloqueado', uiReason: 'Duas tarefas pedem respostas diferentes nesta pergunta de escolha única' });
+        continue;
+      }
+      await rowFor(page, fresh).first().locator(targetSelector(group.rules)).click();
+      perClient.set(fresh.internalId, group.rules.answerValue);
+      clicked.push({ ...fresh, rules: group.rules });
+    }
   }
+  if (!clicked.length) return { questionRef: question.questionRef, changed: [], skipped, cancelled: false };
   await page.getByRole('button', { name: 'Alterar', exact: true }).click();
   const modal = page.locator('#dialogoEnqueteClientesAlterarPerfil');
-  await modal.waitFor({ state: 'visible' });
-  const shown = await modal.locator('div[id^="cliente"]').evaluateAll(els => els.filter(e => getComputedStyle(e).display !== 'none').map(e => e.id.replace('cliente', '')));
-  const expected = pending.map(x => x.internalId).sort();
-  if (JSON.stringify(shown.sort()) !== JSON.stringify(expected)) throw new Error(`Confirmação contém clientes inesperados (${shown.length} exibidos, ${expected.length} esperados). Não confirme.`);
-  await modal.locator('#botaoConfirmar').click();
-  await modal.locator('#progressConfirmar').waitFor({ state: 'hidden', timeout: 120000 });
-  const colors = await Promise.all(expected.map(async id => modal.locator(`#cliente${id}`).evaluate(el => getComputedStyle(el).backgroundColor)));
-  if (colors.some(x => x !== 'rgb(102, 205, 170)' && x !== 'mediumaquamarine')) throw new Error('Nem todos os clientes receberam confirmação visual de gravação. Verifique manualmente.');
-  await modal.locator('.modal-footer button[data-dismiss="modal"]').click();
-  await openQuestion(page, rules);
-  const after = await inspectAll(page, inspected, rules);
-  const failures = after.filter(x => x.uiStatus !== 'ja_correto');
-  if (failures.length) throw new Error(`Pós-verificação falhou para ${failures.map(x => x.cnpj).join(', ')}`);
-  return { changed: pending.map(x => x.cnpj), verified: after.map(x => x.cnpj) };
-}
-
-export async function applyClientOnboarding(context, accountId, client, answersList) {
-  const page = await context.newPage();
-  const results = [];
-  try {
-    for (const item of answersList) {
-      const rules = {
-        accountId,
-        category: item.category ?? 'Qualificação Geral do Cliente',
-        question: item.question,
-        questionRef: item.questionRef,
-        answerRef: item.answerRef,
-        answerValue: item.answerValue,
-        answerLabel: item.answerLabel,
-        inputType: item.inputType ?? 'auto',
-        allowedTasks: [],
-        excludedTasks: []
-      };
-      const detectedType = await openQuestion(page, rules);
-      const resolvedRules = { ...rules, inputType: detectedType };
-      const inspected = await inspectClient(page, { cnpj: formatCnpj(client.cnpj), empId: client.empId ?? null }, resolvedRules);
-      if (inspected.uiStatus === 'vazio') {
-        const res = await applyBatch(page, [inspected], resolvedRules);
-        results.push({ questionRef: item.questionRef, answerRef: item.answerRef, status: 'alterado', changed: res.changed });
-      } else if (inspected.uiStatus === 'ja_correto') {
-        results.push({ questionRef: item.questionRef, answerRef: item.answerRef, status: 'ja_correto' });
-      } else {
-        results.push({ questionRef: item.questionRef, answerRef: item.answerRef, status: inspected.uiStatus, reason: inspected.uiReason });
-      }
-    }
-    return results;
-  } finally {
-    await page.close();
-  }
-}
-
-export async function applyByColumnMatrix(page, {
-  accountId = '6581',
-  category = 'Dpto. Fiscal/Tributário',
-  questionRef = '02.03',
-  question = 'Qual dessas Obrigações Estaduais são entregues para esse cliente ? (Part 2)',
-  columnName = '08 GIA ST',
-  cnpjs = [],
-  onModalReady = null,
-  autoConfirm = false
-}) {
-  const norm = s => String(s ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
-  const url = BASE + encodeURIComponent(accountId);
-  if (!page.url().includes('obj=enqueteopen') || !page.url().includes(`empId=${accountId}`)) {
-    await page.goto(url, { waitUntil: 'domcontentloaded' });
-  }
-  if (!page.url().includes('app.gclick.com.br')) {
-    throw new Error('Sessão do G-Click ausente ou expirada.');
-  }
-
-  const btnAlterarCheck = page.getByRole('button', { name: 'Alterar', exact: true });
-  const alreadyOnMatrix = (await btnAlterarCheck.count()) > 0 && (await btnAlterarCheck.isVisible());
-
-  if (!alreadyOnMatrix) {
-    // Passo 1: Clicar na aba "Respondendo Enquete"
-    console.log('Passo 1: Clicando na aba "Respondendo Enquete"...');
-    const tabBtn = page.locator('a, li').filter({ hasText: /^Respondendo Enquete$/i }).first();
-    await tabBtn.waitFor({ state: 'visible', timeout: 15000 });
-    await tabBtn.click();
-    await page.waitForTimeout(1000);
-
-    // Passo 2: Clicar no departamento 02 (Dpto. Fiscal/Tributário) para expandir
-    console.log('Passo 2: Clicando no departamento 02 (Dpto. Fiscal/Tributário)...');
-    const rowFiscal = page.locator('tr').filter({ hasText: 'Dpto. Fiscal/Tributário' }).first();
-    await rowFiscal.waitFor({ state: 'visible', timeout: 15000 });
-
-    const q0203 = page.locator('tr').filter({ hasText: '02.03' }).first();
-    if (!(await q0203.count()) || !(await q0203.isVisible())) {
-      await rowFiscal.locator('td').first().click();
-      await page.waitForTimeout(800);
-      if (!(await q0203.count()) || !(await q0203.isVisible())) {
-        await rowFiscal.click();
-        await page.waitForTimeout(800);
-      }
-    }
-
-    // Passo 3: Clicar na pergunta 02.03 para abrir a grade de respostas
-    console.log('Passo 3: Clicando na pergunta 02.03 para abrir a grade de respostas...');
-    const questionRow = page.locator('tr').filter({ hasText: '02.03' }).first();
-    await questionRow.waitFor({ state: 'visible', timeout: 15000 });
-    const targetCell = questionRow.locator('td').filter({ hasText: /Obrigações Estaduais/i }).first();
-    if (await targetCell.count()) {
-      await targetCell.click();
-    } else {
-      await questionRow.click();
-    }
-  }
-
-  // Passo 4: Aguardar a grade da pergunta 02.03 carregar
-  console.log('Passo 4: Aguardando grade de respostas da pergunta 02.03...');
-  const btnAlterar = page.getByRole('button', { name: 'Alterar', exact: true });
-  await btnAlterar.waitFor({ state: 'visible', timeout: 30000 });
-  await page.waitForTimeout(1000);
-
-  const lengthSelect = page.locator('select[name$="_length"]:visible');
-  if (await lengthSelect.count() === 1 && await lengthSelect.locator('option[value="-1"]').count()) {
-    await lengthSelect.selectOption('-1');
-    await page.waitForTimeout(800);
-  }
-
-  // Tabela da grade de respostas (contendo os checkboxes dos clientes)
-  const matrixTable = page.locator('table').filter({ has: page.locator('input[type="checkbox"][id^="cb."]') }).first();
-  const headers = await matrixTable.locator('thead th').evaluateAll(els =>
-    els.map(el => el.innerText.replace(/\s+/g, ' ').trim())
-  );
-
-  const targetNorm = norm(columnName);
-  let colIndex = headers.findIndex(h => norm(h) && norm(h) === targetNorm);
-  if (colIndex === -1) {
-    colIndex = headers.findIndex(h => norm(h) && (norm(h).includes(targetNorm) || targetNorm.includes(norm(h))));
-  }
-  if (colIndex === -1) {
-    throw new Error(`Coluna "${columnName}" não encontrada nos cabeçalhos da grade: [${headers.join(' | ')}]`);
-  }
-
-  const results = [];
-  const clientsToMark = [];
-
-  for (const rawCnpj of cnpjs) {
-    const formatted = formatCnpj(rawCnpj);
-    const row = matrixTable.locator('tbody tr').filter({ hasText: formatted });
-    const count = await row.count();
-    if (count === 0) {
-      results.push({ cnpj: formatted, status: 'nao_encontrado', reason: 'CNPJ não encontrado na tabela da enquete' });
-      continue;
-    }
-    if (count > 1) {
-      results.push({ cnpj: formatted, status: 'bloqueado', reason: `CNPJ encontrado em ${count} linhas` });
-      continue;
-    }
-
-    const rowEl = row.first();
-    const rowText = await rowEl.innerText();
-    const cell = rowEl.locator('td').nth(colIndex);
-    const checkbox = cell.locator('input[type="checkbox"]');
-    if (await checkbox.count() === 0) {
-      results.push({ cnpj: formatted, status: 'bloqueado', reason: `Checkbox ausente na coluna ${headers[colIndex]}` });
-      continue;
-    }
-
-    const isChecked = await checkbox.isChecked();
-    const checkboxId = await checkbox.getAttribute('id');
-    const matchId = checkboxId?.match(/^cb\.(\d+)-/);
-    const internalId = matchId ? matchId[1] : null;
-
-    if (isChecked) {
-      results.push({ cnpj: formatted, internalId, status: 'ja_correto', reason: 'Obrigação já estava selecionada' });
-    } else {
-      await checkbox.click();
-      clientsToMark.push({ cnpj: formatted, internalId, rowText: rowText.slice(0, 80) });
-      results.push({ cnpj: formatted, internalId, status: 'selecionado_para_alterar' });
-    }
-  }
-
-  if (!clientsToMark.length) {
-    return {
-      success: true,
-      column: headers[colIndex],
-      colIndex,
-      changed: [],
-      results,
-      message: 'Todos os clientes solicitados já estavam com a opção marcada.'
-    };
-  }
-
-  await btnAlterar.click();
-
-  const modal = page.locator('#dialogoEnqueteClientesAlterarPerfil');
   await modal.waitFor({ state: 'visible', timeout: 15000 });
-
-  const shownIds = await modal.locator('div[id^="cliente"]').evaluateAll(els =>
-    els.filter(e => getComputedStyle(e).display !== 'none').map(e => e.id.replace('cliente', ''))
-  );
-
-  if (onModalReady) {
-    await onModalReady({
-      modal,
-      page,
-      column: headers[colIndex],
-      clientsToMark,
-      shownIds,
-      confirm: async () => {
-        await modal.locator('#botaoConfirmar').click();
-      }
+  // O próprio G-Click diz o que vai gravar: #marcados (cliente-resposta), #desmarcados e #csalterar (clientes).
+  const plan = await page.evaluate(() => ({
+    marcados: (document.getElementById('marcados')?.value ?? '').split(';').filter(Boolean).map(x => x.split('-').slice(0, 2).join('-')),
+    desmarcados: (document.getElementById('desmarcados')?.value ?? '').split(';').filter(Boolean),
+    clientes: (document.getElementById('csalterar')?.value ?? '').split(',').filter(Boolean)
+  }));
+  const expectedPairs = [...new Set(clicked.map(x => `${x.internalId}-${x.rules.answerValue}`))].sort();
+  const expected = [...new Set(clicked.map(x => x.internalId))].sort();
+  const problems = [];
+  if (JSON.stringify([...new Set(plan.marcados)].sort()) !== JSON.stringify(expectedPairs)) problems.push(`marcaria ${plan.marcados.length} resposta(s), esperadas ${expectedPairs.length}`);
+  if (plan.desmarcados.length) problems.push(`desmarcaria ${plan.desmarcados.length} resposta(s)`);
+  if (JSON.stringify([...new Set(plan.clientes)].sort()) !== JSON.stringify(expected)) problems.push(`alteraria ${plan.clientes.length} cliente(s), esperados ${expected.length}`);
+  if (problems.length) {
+    await modal.locator('.modal-footer button[data-dismiss="modal"], button.close[data-dismiss="modal"]').first().click().catch(() => {});
+    await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
+    throw new Error(`O G-Click ${problems.join(' e ')} na pergunta ${question.questionRef}. Nada foi gravado.`);
+  }
+  onStage('aguardando_confirmacao', { count: expected.length });
+  await showOperatorBanner(page, `Robô: ${clicked.length} resposta(s) marcada(s) para ${expected.length} cliente(s) na pergunta ${question.questionRef}. Confira e clique em Confirmar (ou feche para cancelar).`);
+  await page.bringToFront().catch(() => {});
+  const deadline = Date.now() + confirmTimeoutMs;
+  let outcome = null, lastRemaining = null, lastChange = Date.now();
+  while (!outcome) {
+    const state = await page.evaluate(() => {
+      const modalEl = document.getElementById('dialogoEnqueteClientesAlterarPerfil');
+      const visible = Boolean(modalEl && getComputedStyle(modalEl).display !== 'none');
+      const progress = document.getElementById('progressConfirmar');
+      const saving = Boolean(progress && getComputedStyle(progress).display !== 'none');
+      const remaining = (document.getElementById('csalterar')?.value ?? '').split(',').filter(Boolean).length;
+      const reset = (document.getElementById('marcados')?.value ?? '') === ';';
+      return { visible, saving, remaining, reset };
     });
-  } else if (autoConfirm) {
-    await modal.locator('#botaoConfirmar').click();
-  } else {
-    await Promise.race([
-      modal.locator('#progressConfirmar').waitFor({ state: 'visible', timeout: 300000 }),
-      page.waitForEvent('close', { timeout: 300000 }).catch(() => {})
-    ]);
+    if (state.remaining !== lastRemaining) { lastRemaining = state.remaining; lastChange = Date.now(); }
+    if (state.remaining === 0 && state.reset && !state.saving) outcome = 'confirmed';
+    else if (state.saving && Date.now() - lastChange > 120000) outcome = 'partial';
+    else if (!state.visible && !state.saving) outcome = state.remaining < expected.length ? 'partial' : 'cancelled';
+    else if (Date.now() > deadline) outcome = 'timeout';
+    else await page.waitForTimeout(500);
   }
-
-  await modal.locator('#progressConfirmar').waitFor({ state: 'hidden', timeout: 120000 });
-
-  const colors = await Promise.all(
-    clientsToMark.filter(c => c.internalId).map(async c => {
-      const el = modal.locator(`#cliente${c.internalId}`);
-      if (await el.count()) {
-        return el.evaluate(e => getComputedStyle(e).backgroundColor);
-      }
-      return null;
-    })
-  );
-
-  const closeBtn = modal.locator('.modal-footer button[data-dismiss="modal"]');
-  if (await closeBtn.count()) {
-    await closeBtn.click();
+  if (outcome !== 'confirmed') {
+    await modal.locator('.modal-footer button[data-dismiss="modal"], button.close[data-dismiss="modal"]').first().click().catch(() => {});
+    await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
+    if (outcome === 'cancelled') return { questionRef: question.questionRef, changed: [], skipped, cancelled: true };
+    throw new Error(outcome === 'timeout' ? `Sem confirmação em ${Math.round(confirmTimeoutMs / 60000)} min na pergunta ${question.questionRef}; marcações descartadas.` : `Gravação parcial na pergunta ${question.questionRef}: confira a Enquete.`);
   }
-
-  return {
-    success: true,
-    column: headers[colIndex],
-    colIndex,
-    changed: clientsToMark.map(c => c.cnpj),
-    results,
-    confirmedColors: colors
-  };
+  onStage('conferindo');
+  await modal.locator('.modal-footer button[data-dismiss="modal"], button.close[data-dismiss="modal"]').first().click().catch(() => {});
+  const changed = [], failed = [];
+  for (const group of groups) {
+    const mine = clicked.filter(x => x.rules === group.rules);
+    if (!mine.length) continue;
+    await openQuestion(page, group.rules);
+    for (const item of mine) {
+      const after = await inspectClient(page, item, group.rules);
+      (after.uiStatus === 'ja_correto' ? changed : failed).push({ cnpj: item.cnpj, answerRef: group.rules.answerRef, mappingTask: item.mappingTask });
+    }
+  }
+  if (failed.length) throw Object.assign(new Error(`Conferência após gravar falhou para ${failed.map(x => x.cnpj).join(', ')} na pergunta ${question.questionRef}`), { partial: { changed, failed, skipped } });
+  return { questionRef: question.questionRef, changed, skipped, cancelled: false };
 }

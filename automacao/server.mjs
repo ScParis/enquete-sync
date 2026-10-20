@@ -6,44 +6,96 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { parseCsv, makePlan, scopeFromEligible, formatCnpj, normalizeCnpj, validCnpj } from './lib/data.mjs';
-import { LOGIN_URL, hasGclickSession, openBrowser, openQuestion, readQuestionCatalog, inspectAll, applyBatch, applyClientOnboarding, applyByColumnMatrix } from './lib/gclick.mjs';
+import { LOGIN_URL, hasGclickSession, openBrowser, openQuestion, questionStillOpen, resolveColumnValue, readQuestionCatalog, inspectAll, applyQuestionWithOperator } from './lib/gclick.mjs';
 import { readPublicGoogleCsv, readWithServiceAccount } from './lib/google-service.mjs';
 import { listCsvDownloads, readCsvDownload } from './lib/downloads.mjs';
-import { buildCatalog } from './lib/catalog.mjs';
-import { diagnoseClient } from './lib/tax-engine.mjs';
-import { translateDiagnosisToEnquete } from './lib/enquete-translator.mjs';
 
 const root = path.dirname(new URL(import.meta.url).pathname);
 const host = '127.0.0.1';
 const port = Number(process.env.GCLICK_PORT ?? 8766);
 const profile = process.env.GCLICK_PROFILE_DIR ?? path.join(os.homedir(), '.local/share/gclick-enquete/browser-profile');
 const downloadsDir = path.join(os.homedir(), 'Downloads');
+const catalogsDir = path.join(root, 'catalogos');
 const token = crypto.randomBytes(24).toString('hex');
-const defaultRules = validateRules(JSON.parse(await fs.readFile(path.join(root, 'regras.json'), 'utf8')));
-const destdaRules = validateRules(JSON.parse(await fs.readFile(path.join(root, 'regras-destda.json'), 'utf8')));
-const catalogSnapshotFile = path.join(root, 'enquete-catalogo.json');
-const snapshotRows = JSON.parse(await fs.readFile(catalogSnapshotFile, 'utf8'));
-const referenceCatalog = { ...buildCatalog(snapshotRows.map(row => ({ ...row, ref: row.code })), defaultRules.accountId,
-  (await fs.stat(catalogSnapshotFile)).mtime.toISOString()), source: 'reference' };
+const accountsFile = path.join(root, 'contas.json');
 const mappingsFile = path.join(root, 'mapeamentos.json');
+const APPLY_CHUNK = 100;
+const PREVIEW_TTL = 2 * 60 * 60 * 1000;
 let savedMappings = [];
 try { savedMappings = JSON.parse(await fs.readFile(mappingsFile, 'utf8')); }
 catch (error) { if (error.code !== 'ENOENT') throw error; }
 if (!Array.isArray(savedMappings)) throw new Error('mapeamentos.json inválido');
+// Dados de cada escritório que não vêm da Enquete, como o link da planilha de obrigações.
+let accountSettings = {};
+try { accountSettings = JSON.parse(await fs.readFile(accountsFile, 'utf8')); }
+catch (error) { if (error.code !== 'ENOENT') throw error; }
+if (!accountSettings || typeof accountSettings !== 'object' || Array.isArray(accountSettings)) throw new Error('contas.json inválido');
 let busy = false, loginContext = null, loginLock = null, loginReady = false, catalogState = null, lastReport = null, previewState = null;
 let auditProgress = { running: false, completed: 0, total: 0, task: '', error: null };
+let lastAutoOpen = 0;
+let applyProgress = { running: false };
+// Leitura de cada tarefa na Enquete, reaproveitada enquanto planilha, catálogo e mapeamento não mudam.
+const auditCache = new Map();
+const AUDIT_CACHE_TTL = 20 * 60 * 1000;
 
 function validateRules(r) {
+  const columnAnswer = !r?.answerValue && (r?.inputType ?? 'auto') !== 'radio';
   if (!r || !/^\d+$/.test(String(r.accountId)) || !/^\d+(?:\.\d+)+$/.test(String(r.questionRef)) ||
-      !/^\d+$/.test(String(r.answerValue)) || !['radio', 'checkbox', 'auto'].includes(r.inputType ?? 'auto') || !/^\d+(?:\.\d+)+$/.test(String(r.answerRef)) ||
+      !(columnAnswer || /^\d+$/.test(String(r.answerValue))) || !['radio', 'checkbox', 'auto'].includes(r.inputType ?? 'auto') || !/^\d+(?:\.\d+)+$/.test(String(r.answerRef)) ||
       !String(r.answerRef).startsWith(`${r.questionRef}.`) || !String(r.answerLabel ?? '').trim() ||
       typeof r.question !== 'string' || !r.question.trim() || !Array.isArray(r.allowedTasks) || !r.allowedTasks.length ||
       !r.allowedTasks.every(x => typeof x === 'string' && x.trim()) || !Array.isArray(r.excludedTasks) ||
       !r.excludedTasks.every(x => typeof x === 'string') || r.allowedTasks.some(x => r.excludedTasks.includes(x)))
     throw new Error('Parâmetros da regra inválidos ou conflitantes');
   return { accountId: String(r.accountId), category: String(r.category ?? 'Qualificação Geral do Cliente').trim(), question: r.question.trim(), questionRef: r.questionRef,
-    answerRef: r.answerRef, answerValue: String(r.answerValue), answerLabel: String(r.answerLabel ?? ''), inputType: r.inputType ?? 'auto',
+    answerRef: r.answerRef, answerValue: r.answerValue ? String(r.answerValue) : '', answerLabel: String(r.answerLabel ?? ''), inputType: r.inputType ?? 'auto',
     allowedTasks: r.allowedTasks.map(x => x.trim()), excludedTasks: r.excludedTasks.map(x => x.trim()) };
+}
+function requireAccount(value) {
+  const accountId = String(value ?? '').trim();
+  if (!/^\d+$/.test(accountId)) throw new Error('Informe o código numérico da conta G-Click (empId do escritório)');
+  return accountId;
+}
+const catalogFile = accountId => path.join(catalogsDir, `${requireAccount(accountId)}.json`);
+async function readStoredCatalog(accountId) {
+  try { return { ...JSON.parse(await fs.readFile(catalogFile(accountId), 'utf8')), source: 'reference' }; }
+  catch (error) { if (error.code === 'ENOENT') return null; throw error; }
+}
+async function storeCatalog(catalog) {
+  await fs.mkdir(catalogsDir, { recursive: true });
+  const file = catalogFile(catalog.accountId);
+  const temp = `${file}.tmp-${process.pid}-${crypto.randomBytes(3).toString('hex')}`;
+  const { source, ...data } = catalog;
+  await fs.writeFile(temp, JSON.stringify(data, null, 2) + '\n', { mode: 0o600 });
+  await fs.rename(temp, file);
+}
+async function listStoredAccounts() {
+  let files = [];
+  try { files = (await fs.readdir(catalogsDir)).filter(name => /^\d+\.json$/.test(name)); }
+  catch (error) { if (error.code !== 'ENOENT') throw error; }
+  const ids = new Set([...files.map(name => name.replace(/\.json$/, '')), ...Object.keys(accountSettings)]);
+  return Promise.all([...ids].sort().map(async accountId => ({ accountId, capturedAt: (await readStoredCatalog(accountId))?.capturedAt ?? null,
+    sheetUrl: accountSettings[accountId]?.sheetUrl ?? '', mappings: savedMappings.filter(m => m.accountId === accountId).length })));
+}
+function validSheetUrl(value) {
+  if (!value) return '';
+  let url;
+  try { url = new URL(String(value)); } catch { throw new Error('Link da planilha inválido'); }
+  const gid = url.searchParams.get('gid') ?? new URLSearchParams(url.hash.slice(1)).get('gid');
+  if (url.protocol !== 'https:' || url.hostname !== 'docs.google.com' || !/^\/spreadsheets\/d\/[A-Za-z0-9_-]+(?:\/|$)/.test(url.pathname) || !/^\d+$/.test(gid ?? ''))
+    throw new Error('Informe o link de uma aba do Google Sheets (com gid)');
+  return url.toString();
+}
+async function saveAccountSettings() {
+  const temp = `${accountsFile}.tmp-${process.pid}-${crypto.randomBytes(3).toString('hex')}`;
+  await fs.writeFile(temp, JSON.stringify(accountSettings, null, 2) + '\n', { mode: 0o600 });
+  await fs.rename(temp, accountsFile);
+}
+async function captureCatalog(accountId) {
+  catalogState = await readQuestionCatalog(loginContext, accountId);
+  await storeCatalog(catalogState);
+  previewState = null;
+  return catalogState;
 }
 function parseScope(text) {
   const entries = String(text ?? '').split(/[\r\n;,]+/).map(x => x.trim()).filter(Boolean);
@@ -83,9 +135,11 @@ async function loadSource(payload) {
     return { csv: result.stdout, label: `${name} (${JSON.parse(result.stderr).sheet})`, stale };
   } finally { await fs.rm(tempDir, { recursive: true, force: true }); }
 }
+const sha256 = text => crypto.createHash('sha256').update(text).digest('hex');
+const STATUSES = ['vazio', 'ja_correto', 'divergente', 'nao_encontrado', 'bloqueado', 'sem_mapeamento', 'nao_verificado'];
 function summarize(report) {
   const items = report.inspected ?? report.plan ?? [];
-  const byStatus = Object.fromEntries(['vazio', 'ja_correto', 'divergente', 'nao_encontrado', 'bloqueado', 'sem_mapeamento'].map(s => [s, items.filter(x => (x.uiStatus ?? x.status) === s).length]));
+  const byStatus = Object.fromEntries(STATUSES.map(s => [s, items.filter(x => (x.uiStatus ?? x.status) === s).length]));
   return { total: items.length, ...byStatus, invalidSource: report.invalidSource?.length ?? 0 };
 }
 async function saveReport(report) {
@@ -137,72 +191,85 @@ async function body(req) {
 }
 function csvExport(report) {
   const rows = report.inspected ?? report.plan ?? [];
-  const header = ['CNPJ','EmpID','Empresa','Mapeamento','Tarefas','Status planilha','Status enquete','Resposta atual','Motivo','Linhas planilha'];
+  const header = ['Conta','CNPJ','EmpID','Empresa','Mapeamento','Tarefas','Status planilha','Status enquete','Resposta atual','Motivo','Linhas planilha'];
   const quote = x => `"${String(x ?? '').replace(/"/g, '""')}"`;
-  return '\uFEFF' + [header, ...rows.map(x => [x.cnpj,x.empId,x.empresa,x.mappingTask ?? '',x.tasks?.join(' | '),x.status,x.uiStatus,x.currentValue,x.uiReason ?? x.reason,x.matchingRows?.join(' | ')])].map(row => row.map(quote).join(',')).join('\r\n') + '\r\n';
+  return '﻿' + [header, ...rows.map(x => [report.accountId ?? report.rules?.accountId,x.cnpj,x.empId,x.empresa,x.mappingTask ?? '',x.tasks?.join(' | '),x.status,x.uiStatus,x.currentValue,x.uiReason ?? x.reason,x.matchingRows?.join(' | ')])].map(row => row.map(quote).join(',')).join('\r\n') + '\r\n';
+}
+const sessionError = error => /sess[aã]o|expirad|closed|Target page|context or browser|janela/i.test(String(error?.message ?? error));
+const WINDOW_CLOSED = 'A janela do Chrome da automação foi fechada. Clique em Abrir janela de login e entre de novo; mantenha a janela aberta até o fim da conferência ou da gravação.';
+const humanError = error => /Target page, context or browser has been closed|Browser has been closed|browserContext\.newPage/i.test(String(error?.message ?? error)) ? WINDOW_CLOSED : String(error?.message ?? error);
+let sessionLostAt = null;
+// Se o operador fecha a janela (ou o Chrome cai), a sessão deixa de existir: o estado é limpo na hora.
+function watchLoginContext(context) {
+  context.on('close', async () => {
+    if (loginContext !== context) return;
+    loginContext = null; loginReady = false; catalogState = null; previewState = null; sessionLostAt = new Date().toISOString();
+    if (loginLock) { const release = loginLock; loginLock = null; await release().catch(() => {}); }
+  });
+}
+function unverified(plan, task, reason) {
+  return plan.map(item => ({ ...item, mappingTask: task, uiStatus: 'nao_verificado', uiReason: reason }));
+}
+function mappingRules(accountId, task, mapping) {
+  const question = catalogState.questions.find(q => q.answers.some(a => a.ref === mapping.answerRef));
+  const answer = question?.answers.find(a => a.ref === mapping.answerRef);
+  if (!question || !answer) return null;
+  return validateRules({ accountId, category: question.category, question: question.label,
+    questionRef: question.ref, answerRef: answer.ref, answerValue: answer.valueKnown === false ? '' : answer.value, answerLabel: answer.display,
+    inputType: answer.valueKnown === false ? 'checkbox' : 'auto', allowedTasks: [task], excludedTasks: [] });
 }
 async function route(req, res) {
   const url = new URL(req.url, `http://${host}:${port}`);
   if (req.method === 'GET' && url.pathname === '/') return send(res, 200, await fs.readFile(path.join(root, 'ui/index.html'), 'utf8'), 'text/html; charset=utf-8');
   if (req.method === 'GET' && url.pathname === '/ui/app.js') return send(res, 200, await fs.readFile(path.join(root, 'ui/app.js'), 'utf8'), 'text/javascript; charset=utf-8');
   if (req.method === 'GET' && url.pathname === '/ui/style.css') return send(res, 200, await fs.readFile(path.join(root, 'ui/style.css'), 'utf8'), 'text/css; charset=utf-8');
-  if (req.method === 'GET' && url.pathname === '/api/config') return send(res, 200, { token, rules: defaultRules, presets: [{ name: 'DAS / Simples', rules: defaultRules }, { name: 'DeSTDA', rules: destdaRules }], savedMappings, loginOpen: Boolean(loginContext), loginReady, catalog: catalogState ?? referenceCatalog, referenceCatalog, catalogLive: Boolean(catalogState && loginReady), busy });
+  if (req.method === 'GET' && url.pathname === '/api/config') return send(res, 200, { token, savedMappings,
+    accounts: await listStoredAccounts(), loginOpen: Boolean(loginContext), loginReady, sessionLostAt, catalog: loginReady ? catalogState : null, catalogLive: Boolean(catalogState && loginReady), busy });
   if (req.method === 'GET' && url.pathname === '/api/report.json') return lastReport ? send(res, 200, lastReport) : send(res, 404, { error: 'Nenhum relatório gerado' });
   if (req.method === 'GET' && url.pathname === '/api/report.csv') return lastReport ? send(res, 200, csvExport(lastReport), 'text/csv; charset=utf-8') : send(res, 404, { error: 'Nenhum relatório gerado' });
   if (req.method !== 'POST' || !url.pathname.startsWith('/api/')) return send(res, 404, { error: 'Rota não encontrada' });
   if (req.headers.host !== `${host}:${port}` || req.headers['x-gclick-token'] !== token || !String(req.headers['content-type']).startsWith('application/json')) return send(res, 403, { error: 'Sessão da interface expirada ou requisição não autorizada', code: 'invalid_session' });
   const payload = await body(req);
+  if (url.pathname === '/api/catalog/reference') {
+    const accountId = requireAccount(payload.accountId);
+    const sheetUrl = accountSettings[accountId]?.sheetUrl ?? '';
+    // Perguntas só existem para a interface depois da leitura da Enquete desta conta na sessão atual.
+    return send(res, 200, { catalog: catalogState?.accountId === accountId && loginReady ? catalogState : null, live: true, sheetUrl });
+  }
+  if (url.pathname === '/api/accounts/save') {
+    const accountId = requireAccount(payload.accountId);
+    const sheetUrl = validSheetUrl(payload.sheetUrl);
+    accountSettings[accountId] = { ...accountSettings[accountId], sheetUrl, updatedAt: new Date().toISOString() };
+    await saveAccountSettings();
+    return send(res, 200, { accounts: await listStoredAccounts() });
+  }
   if (url.pathname === '/api/mappings/save') {
-    const accountId = String(payload.accountId ?? '');
+    const accountId = requireAccount(payload.accountId);
     const task = String(payload.task ?? '').trim();
     const answerRef = String(payload.answerRef ?? '');
-    const availableCatalog = catalogState?.accountId === accountId ? catalogState : referenceCatalog.accountId === accountId ? referenceCatalog : null;
-    if (!availableCatalog || !task || task.length > 250)
-      throw new Error('Nenhum catálogo disponível para esta conta');
-    if (answerRef && !availableCatalog.questions.some(q => q.answers.some(a => a.ref === answerRef)))
-      throw new Error('Resposta não encontrada no catálogo disponível');
+    const excluded = payload.excluded === true;
+    const availableCatalog = catalogState?.accountId === accountId && loginReady ? catalogState : null;
+    if (!task || task.length > 250) throw new Error('Tarefa inválida');
+    if (answerRef && excluded) throw new Error('Uma tarefa excluída não pode ter resposta associada');
+    let found = null;
+    if (answerRef) {
+      if (!availableCatalog) throw new Error('Conecte a Enquete desta conta: as perguntas e respostas são lidas dela antes de mapear.');
+      for (const question of availableCatalog.questions) { const answer = question.answers.find(a => a.ref === answerRef); if (answer) found = { question, answer }; }
+      if (!found) throw new Error('Resposta não encontrada no catálogo desta conta');
+    }
+    const current = savedMappings.find(x => x.accountId === accountId && x.task === task);
+    if (current && ((found && !current.excluded && current.answerRef === answerRef) || (excluded && current.excluded)))
+      return send(res, 200, { savedMappings, unchanged: true });
     savedMappings = savedMappings.filter(x => !(x.accountId === accountId && x.task === task));
-    if (answerRef) savedMappings.push({ accountId, task, answerRef, catalogSource: availableCatalog === catalogState ? 'live' : 'reference', updatedAt: new Date().toISOString() });
+    if (found) savedMappings.push({ accountId, task, answerRef, questionLabel: found.question.label, answerLabel: found.answer.label,
+      catalogSource: 'live', updatedAt: new Date().toISOString() });
+    else if (excluded) savedMappings.push({ accountId, task, excluded: true, updatedAt: new Date().toISOString() });
     await saveMappings();
     previewState = null;
     return send(res, 200, { savedMappings });
   }
   if (url.pathname === '/api/audit/progress') return send(res, 200, auditProgress);
   if (url.pathname === '/api/downloads') return send(res, 200, { files: await listCsvDownloads(downloadsDir) });
-  if (url.pathname === '/api/onboarding/diagnostico') {
-    const client = payload.client ?? {};
-    if (!client.cnpj && !client.cnaePrincipal) throw new Error('Informe ao menos o CNPJ ou CNAE Principal');
-    const diagnosis = diagnoseClient(client);
-    const enqueteAnswers = translateDiagnosisToEnquete(diagnosis, client);
-    return send(res, 200, { diagnosis, enqueteAnswers });
-  }
-  if (url.pathname === '/api/onboarding/apply') {
-    return send(res, 200, await exclusive(async () => {
-      if (!loginContext || !loginReady) throw new Error('Valide o acesso ao G-Click para gravar a Enquete');
-      const accountId = /^\d+$/.test(String(payload.accountId)) ? String(payload.accountId) : defaultRules.accountId;
-      if (!payload.client || !payload.client.cnpj) throw new Error('Cliente sem CNPJ para gravação');
-      if (!Array.isArray(payload.enqueteAnswers) || !payload.enqueteAnswers.length) throw new Error('Nenhuma resposta selecionada');
-      const results = await applyClientOnboarding(loginContext, accountId, payload.client, payload.enqueteAnswers);
-      return { success: true, results };
-    }));
-  }
-  if (url.pathname === '/api/matrix/apply') {
-    return send(res, 200, await exclusive(async () => {
-      if (!loginContext || !loginReady) throw new Error('Valide o acesso ao G-Click para gravar a Enquete');
-      const accountId = /^\d+$/.test(String(payload.accountId)) ? String(payload.accountId) : defaultRules.accountId;
-      const page = loginContext.pages()[0] ?? await loginContext.newPage();
-      const result = await applyByColumnMatrix(page, {
-        accountId,
-        category: payload.category ?? 'Dpto. Fiscal/Tributário',
-        questionRef: payload.questionRef ?? '02.03',
-        question: payload.question ?? 'Qual dessas Obrigações Estaduais são entregues para esse cliente ? (Part 2)',
-        columnName: payload.columnName ?? '08 GIA ST',
-        cnpjs: payload.cnpjs ?? [],
-        autoConfirm: payload.autoConfirm === true
-      });
-      return { success: true, result };
-    }));
-  }
   if (url.pathname === '/api/tasks') {
     const source = await loadSource(payload);
     const rows = parseCsv(source.csv);
@@ -223,23 +290,19 @@ async function route(req, res) {
   }
   if (url.pathname === '/api/catalog') return send(res, 200, await exclusive(async () => {
     if (!loginContext || !loginReady) throw new Error('Valide o acesso ao G-Click para carregar as perguntas');
-    const accountId = /^\d+$/.test(String(payload.accountId)) ? String(payload.accountId) : defaultRules.accountId;
-    if (!catalogState || catalogState.accountId !== accountId || payload.refresh) {
-      catalogState = await readQuestionCatalog(loginContext, accountId);
-      previewState = null;
-    }
+    const accountId = requireAccount(payload.accountId);
+    if (!catalogState || catalogState.accountId !== accountId || payload.refresh) await captureCatalog(accountId);
     return { catalog: catalogState };
   }));
   if (url.pathname === '/api/mappings/preview') return send(res, 200, await exclusive(async () => {
     if (!loginContext || !loginReady || !catalogState) throw new Error('Abra a Enquete da conta para capturar o catálogo antes da prévia');
-    const accountId = String(payload.accountId ?? '');
+    const accountId = requireAccount(payload.accountId);
     if (accountId !== catalogState.accountId) throw new Error('A conta selecionada difere da Enquete conectada');
     previewState = null;
     const source = await loadSource(payload);
     const rows = parseCsv(source.csv);
     if (!rows.length || !('Obrigação / Tarefa' in rows[0])) throw new Error('Planilha sem coluna Obrigação / Tarefa');
-    if (payload.autoAudit && ['Empresa', 'EmpID', 'CNPJ'].some(column => !(column in rows[0]))) throw new Error('Planilha sem colunas Empresa, EmpID ou CNPJ');
-    const presets = [defaultRules, destdaRules];
+    if (['Empresa', 'EmpID', 'CNPJ'].some(column => !(column in rows[0]))) throw new Error('Planilha sem colunas Empresa, EmpID ou CNPJ');
     const sourceTasks = new Set(rows.map(row => String(row['Obrigação / Tarefa'] ?? '').trim()).filter(Boolean));
     const autoAudit = payload.autoAudit === true;
     if (!autoAudit && (!Array.isArray(payload.selectedTasks) || !payload.selectedTasks.length || payload.selectedTasks.length > 30 ||
@@ -250,22 +313,16 @@ async function route(req, res) {
     try {
     const mappings = [], pending = [], excluded = [];
     for (const task of taskNames) {
-      if (presets.some(rule => rule.accountId === accountId && rule.excludedTasks.includes(task))) { excluded.push(task); if (autoAudit) auditProgress.completed++; continue; }
-      const custom = savedMappings.find(x => x.accountId === accountId && x.task === task);
-      const preset = presets.find(rule => rule.accountId === accountId && rule.allowedTasks.includes(task));
-      const answerRef = custom?.answerRef ?? preset?.answerRef;
-      const question = catalogState.questions.find(q => q.answers.some(a => a.ref === answerRef));
-      const answer = question?.answers.find(a => a.ref === answerRef);
-      if (!question || !answer) { pending.push(task); if (autoAudit) auditProgress.completed++; continue; }
-      mappings.push({ task, rules: validateRules({ accountId, category: question.category, question: question.label,
-        questionRef: question.ref, answerRef: answer.ref, answerValue: answer.value, answerLabel: answer.display,
-        inputType: 'auto', allowedTasks: [task], excludedTasks: [] }) });
+      const saved = savedMappings.find(x => x.accountId === accountId && x.task === task);
+      if (saved?.excluded) { excluded.push(task); if (autoAudit) auditProgress.completed++; continue; }
+      const rules = saved ? mappingRules(accountId, task, saved) : null;
+      if (!rules) { pending.push(task); if (autoAudit) auditProgress.completed++; continue; }
+      mappings.push({ task, rules });
     }
     if (!autoAudit && (pending.length || excluded.length)) throw new Error(`Há ${pending.length + excluded.length} tarefa(s) selecionada(s) sem mapeamento válido; revise a fila`);
     if (!autoAudit && !mappings.length) throw new Error('Nenhum mapeamento confirmado foi encontrado na planilha');
-    if (!autoAudit && mappings.length > 30) throw new Error('Prévia limitada a 30 mapeamentos por lote; filtre a fonte');
-    const context = loginContext;
-    const results = [], inspected = [], invalidSource = [], failedTasks = [];
+    const results = [], inspected = [], invalidSource = [], failedTasks = [], applicable = [];
+    let incompleteReason = null;
     if (autoAudit) for (const task of pending) {
       const seen = new Set();
       for (const row of rows.filter(item => String(item['Obrigação / Tarefa'] ?? '').trim() === task)) {
@@ -278,48 +335,166 @@ async function route(req, res) {
       }
     }
     const listScope = !autoAudit && payload.scopeMode === 'list' ? parseScope(payload.cnpjsText) : null;
+    const summarizeChecked = checked => Object.fromEntries(['vazio','ja_correto','divergente','nao_encontrado','bloqueado'].map(status => [status, checked.filter(x => x.uiStatus === status).length]));
+    const work = [];
     for (const mapping of mappings) {
-      if (autoAudit) auditProgress.task = mapping.task;
       const derived = scopeFromEligible(rows, mapping.rules);
       invalidSource.push(...derived.invalid.map(item => ({ ...item, task: mapping.task })));
       const scope = listScope ?? derived.scope;
       if (!scope.length) { if (autoAudit) auditProgress.completed++; continue; }
       const plan = makePlan(rows, scope, mapping.rules);
-      const page = await context.newPage();
-      try {
-        const detectedType = await openQuestion(page, mapping.rules);
-        const rules = { ...mapping.rules, inputType: detectedType };
-        const checked = (await inspectAll(page, plan, rules)).map(item => ({ ...item, mappingTask: mapping.task, mappingAnswer: rules.answerRef }));
-        inspected.push(...checked);
-        results.push({ task: mapping.task, questionRef: rules.questionRef, answerRef: rules.answerRef,
-          clients: checked.length, summary: Object.fromEntries(['vazio','ja_correto','divergente','nao_encontrado','bloqueado'].map(status => [status, checked.filter(x => x.uiStatus === status).length])) });
-      } catch (error) {
-        if (!autoAudit) throw error;
-        failedTasks.push({ task: mapping.task, reason: error.message });
-      } finally { await page.close(); if (autoAudit) auditProgress.completed++; }
+      const cacheKey = `${accountId}|${sha256(source.csv)}|${catalogState.capturedAt}|${mapping.task}|${mapping.rules.answerRef}|${JSON.stringify(listScope)}`;
+      const cached = auditCache.get(cacheKey);
+      if (cached && Date.now() - cached.at < AUDIT_CACHE_TTL) {
+        inspected.push(...cached.checked); applicable.push(cached.applicable); results.push(cached.result);
+        if (autoAudit) auditProgress.completed++;
+        continue;
+      }
+      work.push({ mapping, plan, cacheKey });
     }
-    const report = { mode: autoAudit ? 'account_audit' : 'mapping_preview', createdAt: new Date().toISOString(), source: source.label, sourceStale: source.stale,
-      accountId, rules: { inputType: 'mixed', allowedTasks: mappings.map(x => x.task) }, mappings: results, pendingTasks: pending,
+    // Cada pergunta é aberta uma única vez; todas as tarefas que caem nela são lidas na mesma página.
+    const byQuestion = new Map();
+    for (const item of work) byQuestion.set(item.mapping.rules.questionRef, [...(byQuestion.get(item.mapping.rules.questionRef) ?? []), item]);
+    for (const [questionRef, items] of byQuestion) {
+      const pendingItems = [...items];
+      const fail = (item, error) => {
+        failedTasks.push({ task: item.mapping.task, reason: humanError(error) });
+        inspected.push(...unverified(item.plan, item.mapping.task, incompleteReason ?? `Leitura não concluída: ${humanError(error)}`));
+        if (autoAudit) auditProgress.completed++;
+      };
+      if (incompleteReason) { for (const item of pendingItems) { inspected.push(...unverified(item.plan, item.mapping.task, incompleteReason)); if (autoAudit) auditProgress.completed++; } continue; }
+      if (autoAudit) auditProgress.task = `${questionRef} · ${items.map(i => i.mapping.task).join(' | ')}`;
+      const page = await loginContext.newPage();
+      try {
+        const opened = await openQuestion(page, items[0].mapping.rules);
+        while (pendingItems.length) {
+          const item = pendingItems[0];
+          try {
+            const answerValue = item === items[0] ? opened.answerValue : item.mapping.rules.answerValue || await resolveColumnValue(page, item.mapping.rules);
+            const rules = { ...item.mapping.rules, inputType: opened.inputType, answerValue };
+            const checked = (await inspectAll(page, item.plan, rules)).map(x => ({ ...x, mappingTask: item.mapping.task, mappingAnswer: rules.answerRef }));
+            if (!(await questionStillOpen(page, rules))) throw new Error('Sessão do G-Click perdida durante a leitura desta tarefa');
+            const result = { task: item.mapping.task, questionRef: rules.questionRef, answerRef: rules.answerRef, clients: checked.length, summary: summarizeChecked(checked) };
+            inspected.push(...checked); applicable.push({ task: item.mapping.task, rules, plan: item.plan }); results.push(result);
+            auditCache.set(item.cacheKey, { at: Date.now(), checked, applicable: { task: item.mapping.task, rules, plan: item.plan }, result });
+            if (autoAudit) auditProgress.completed++;
+          } catch (error) {
+            if (sessionError(error)) throw error;
+            if (!autoAudit) throw error;
+            fail(item, error);
+          }
+          pendingItems.shift();
+        }
+      } catch (error) {
+        if (!autoAudit && !sessionError(error)) throw error;
+        if (sessionError(error)) incompleteReason = humanError(error) === WINDOW_CLOSED ? `Não verificado: a janela do Chrome da automação foi fechada durante a pergunta ${questionRef}. Abra o login de novo e mantenha a janela aberta.` : `Não verificado: a sessão do G-Click caiu durante a pergunta ${questionRef}`;
+        for (const item of pendingItems) fail(item, error);
+      } finally { await page.close().catch(() => {}); }
+    }
+    const report = { mode: autoAudit ? 'account_audit' : 'mapping_preview', createdAt: new Date().toISOString(), source: source.label, sourceSha256: sha256(source.csv), sourceStale: source.stale,
+      accountId, complete: !incompleteReason && !failedTasks.length, incompleteReason, rules: { inputType: 'mixed', allowedTasks: mappings.map(x => x.task) }, mappings: results, pendingTasks: pending,
       excludedTasks: excluded, failedTasks, sourceTaskCount: sourceTasks.size, sourceCnpjCount: new Set(rows.filter(row => validCnpj(row.CNPJ)).map(row => normalizeCnpj(row.CNPJ))).size,
       invalidSource, inspected };
+    const toWrite = inspected.filter(x => x.uiStatus === 'vazio').length;
+    // Muitos CNPJs ausentes na Enquete costumam indicar planilha de outro escritório: a gravação fica bloqueada.
+    const located = inspected.filter(x => ['vazio', 'ja_correto', 'divergente', 'bloqueado', 'nao_encontrado'].includes(x.uiStatus));
+    const missing = located.filter(x => x.uiStatus === 'nao_encontrado').length;
+    if (located.length >= 10 && missing / located.length > 0.5)
+      report.sourceWarning = `${missing} de ${located.length} CNPJs da planilha não aparecem na Enquete da conta ${accountId}. Confira se a planilha é deste escritório; a gravação fica bloqueada.`;
+    if (report.complete && toWrite && !report.sourceWarning) {
+      previewState = { kind: 'mappings', id: crypto.randomBytes(16).toString('hex'), at: Date.now(), accountId, catalogCapturedAt: catalogState.capturedAt,
+        sourceStale: source.stale, sourceSha256: report.sourceSha256, sourceType: payload.sourceType, downloadFile: payload.sourceType === 'recent' ? payload.downloadFile : null,
+        toWrite, mappings: applicable.map(m => ({ ...m, plan: m.plan.filter(item => inspected.some(x => x.mappingTask === m.task && x.cnpj === item.cnpj && x.uiStatus === 'vazio')) })).filter(m => m.plan.length) };
+      report.previewId = previewState.id;
+    }
+    report.toWrite = toWrite;
     await saveReport(report);
-    if (autoAudit) auditProgress = { running: false, completed: taskNames.length, total: taskNames.length, task: '', error: null };
-    return { report };
+    if (autoAudit) auditProgress = { running: false, completed: taskNames.length, total: taskNames.length, task: '', error: incompleteReason };
+    return { report, previewId: report.previewId ?? null };
     } catch (error) {
       if (autoAudit) auditProgress = { ...auditProgress, running: false, error: error.message };
       throw error;
     }
+  }));
+  if (url.pathname === '/api/apply/progress') return send(res, 200, applyProgress);
+  if (url.pathname === '/api/mappings/apply') return send(res, 200, await exclusive(async () => {
+    const state = previewState;
+    if (!state || state.kind !== 'mappings' || state.id !== payload.previewId || Date.now() - state.at > PREVIEW_TTL) throw new Error('Conferência ausente ou vencida. Recarregue a planilha para conferir de novo.');
+    if (!loginContext || !loginReady || catalogState?.accountId !== state.accountId || catalogState.capturedAt !== state.catalogCapturedAt)
+      throw new Error('A Enquete conectada mudou desde a conferência. Confira de novo.');
+    if (state.sourceType === 'recent') {
+      const current = await readCsvDownload(downloadsDir, state.downloadFile);
+      if (sha256(current.csv) !== state.sourceSha256) { previewState = null; throw new Error('O CSV mudou depois da conferência. Confira de novo antes de marcar.'); }
+    }
+    previewState = null;
+    // O resultado conferido após a gravação atualiza a leitura guardada; a tela não precisa reabrir as perguntas.
+    const updateCache = (task, answerRef, cnpjStatus) => {
+      for (const [key, entry] of auditCache) {
+        if (!key.includes(`|${task}|${answerRef}|`)) continue;
+        const checked = entry.checked.map(x => cnpjStatus.has(x.cnpj) ? { ...x, ...cnpjStatus.get(x.cnpj) } : x);
+        auditCache.set(key, { ...entry, checked, result: { ...entry.result, summary: Object.fromEntries(['vazio','ja_correto','divergente','nao_encontrado','bloqueado'].map(st => [st, checked.filter(x => x.uiStatus === st).length])) } });
+      }
+    };
+    const forgetTasks = tasks => { for (const key of auditCache.keys()) if (tasks.some(task => key.includes(`|${task}|`))) auditCache.delete(key); };
+    // Agrupa por pergunta: o operador confirma uma vez por pergunta, com todas as respostas e clientes dela.
+    const byQuestion = new Map();
+    for (const mapping of state.mappings) {
+      const list = byQuestion.get(mapping.rules.questionRef) ?? [];
+      list.push({ rules: mapping.rules, items: mapping.plan.map(item => ({ ...item, mappingTask: mapping.task })) });
+      byQuestion.set(mapping.rules.questionRef, list);
+    }
+    const report = { mode: 'mapping_apply', createdAt: new Date().toISOString(), accountId: state.accountId, sourceSha256: state.sourceSha256, sourceStale: state.sourceStale,
+      rules: { inputType: 'mixed', allowedTasks: state.mappings.map(m => m.task) }, results: [], inspected: [], status: 'em_andamento' };
+    const questions = [...byQuestion.entries()];
+    applyProgress = { running: true, questions: questions.length, done: 0, questionRef: null, stage: 'iniciando', count: 0 };
+    try {
+      for (const [questionRef, groups] of questions) {
+        // Lotes grandes são divididos; cada lote pede uma confirmação.
+        const total = Math.max(...groups.map(g => g.items.length));
+        for (let i = 0; i < total; i += APPLY_CHUNK) {
+          const chunk = groups.map(g => ({ rules: g.rules, items: g.items.slice(i, i + APPLY_CHUNK) })).filter(g => g.items.length);
+          applyProgress = { ...applyProgress, questionRef, stage: 'abrindo', count: chunk.reduce((n, g) => n + g.items.length, 0) };
+          const page = await loginContext.newPage();
+          try {
+            const result = await applyQuestionWithOperator(page, chunk, { onStage: (stage, info) => { applyProgress = { ...applyProgress, stage, ...(info ?? {}) }; } });
+            for (const group of chunk) {
+              const statuses = new Map();
+              for (const x of result.changed.filter(c => c.answerRef === group.rules.answerRef)) statuses.set(x.cnpj, { uiStatus: 'ja_correto', currentValue: group.rules.answerValue, uiReason: 'Gravado e conferido após recarga' });
+              for (const x of result.skipped.filter(c => c.answerRef === group.rules.answerRef)) statuses.set(x.cnpj, { uiStatus: x.uiStatus, currentValue: x.currentValue ?? null, uiReason: x.uiReason });
+              updateCache(group.items[0]?.mappingTask, group.rules.answerRef, statuses);
+            }
+            report.results.push({ questionRef, task: chunk.map(g => g.items[0]?.mappingTask).filter(Boolean).join(' | '), answerRef: chunk.map(g => g.rules.answerRef).join(' | '),
+              changed: result.changed.map(x => x.cnpj), skipped: result.skipped.map(x => ({ cnpj: x.cnpj, uiStatus: x.uiStatus, reason: x.uiReason })), cancelled: result.cancelled });
+            report.inspected.push(...result.changed.map(x => ({ cnpj: x.cnpj, mappingTask: x.mappingTask, uiStatus: 'ja_correto', uiReason: `Gravado (${x.answerRef}) e conferido após recarga` })),
+              ...result.skipped.map(x => ({ cnpj: x.cnpj, empId: x.empId, empresa: x.empresa, mappingTask: x.mappingTask, uiStatus: x.uiStatus, uiReason: x.uiReason })),
+              ...(result.cancelled ? chunk.flatMap(g => g.items.map(x => ({ cnpj: x.cnpj, empId: x.empId, empresa: x.empresa, mappingTask: x.mappingTask, uiStatus: 'vazio', uiReason: 'Cancelado pelo operador no diálogo do G-Click' }))) : []));
+          } finally { await page.close().catch(() => {}); }
+        }
+        applyProgress = { ...applyProgress, done: applyProgress.done + 1 };
+      }
+      report.status = 'verificado';
+    } catch (e) {
+      report.status = 'verificar_manualmente'; report.error = humanError(e);
+      forgetTasks(state.mappings.map(m => m.task));
+      if (e.partial) report.results.push({ questionRef: applyProgress.questionRef, changed: e.partial.changed.map(x => x.cnpj), failed: e.partial.failed.map(x => x.cnpj), skipped: [] });
+      applyProgress = { running: false, error: report.error };
+      await saveReport(report); throw Object.assign(e, { report });
+    }
+    applyProgress = { running: false, done: questions.length, questions: questions.length };
+    await saveReport(report);
+    return { report };
   }));
   if (url.pathname === '/api/login/open') {
     if (busy) throw new Error('Outra operação está em andamento');
     busy = true;
     try {
       if (loginContext) await loginContext.close();
-      loginContext = null; loginReady = false; catalogState = null; previewState = null;
+      loginContext = null; loginReady = false; catalogState = null; previewState = null; lastAutoOpen = 0; auditCache.clear();
       if (loginLock) await loginLock();
       loginLock = null;
       loginLock = await acquireLock();
       loginContext = await openBrowser(profile, true);
+      watchLoginContext(loginContext); sessionLostAt = null;
       const page = loginContext.pages()[0] ?? await loginContext.newPage();
       await page.goto(LOGIN_URL);
       return send(res, 200, { open: true });
@@ -329,80 +504,29 @@ async function route(req, res) {
   if (url.pathname === '/api/login/close') {
     if (busy) throw new Error('Outra operação está em andamento');
     if (!loginContext) throw new Error('Abra primeiro a janela de login da automação.');
+    const accountId = requireAccount(payload.accountId);
     busy = true;
     try {
-      const accountId = /^\d+$/.test(String(payload.accountId)) ? String(payload.accountId) : defaultRules.accountId;
-      if (payload.auto && !loginContext.pages().some(page => {
-        const current = new URL(page.url());
-        return current.hostname === 'app.gclick.com.br' && current.pathname.endsWith('/Listar.do') &&
-          current.searchParams.get('obj') === 'enqueteopen' && current.searchParams.get('empId') === accountId;
-      })) return send(res, 200, { open: true, ready: false });
-      if (!(await hasGclickSession(loginContext, accountId)))
-        throw new Error(`A conta ${accountId} ainda não abriu a Enquete no Chrome da automação. Selecione essa conta no painel e tente concluir novamente.`);
-      catalogState = await readQuestionCatalog(loginContext, accountId);
-      previewState = null;
+      if (payload.auto) {
+        const urls = loginContext.pages().map(page => { try { return new URL(page.url()); } catch { return null; } }).filter(Boolean);
+        const onEnquete = urls.some(current => current.hostname === 'app.gclick.com.br' && current.pathname.endsWith('/Listar.do') &&
+          current.searchParams.get('obj') === 'enqueteopen' && current.searchParams.get('empId') === accountId);
+        // Após o login o G-Click abre o painel (appp.gclick.com.br); dali a Enquete abre direto pelo endereço da conta.
+        const loggedIn = urls.some(current => /(^|\.)gclick\.com\.br$/.test(current.hostname) && !current.pathname.startsWith('/autenticacao'));
+        if (!onEnquete && !loggedIn) return send(res, 200, { open: true, ready: false, stage: 'login', message: 'Aguardando o login no Chrome da automação.' });
+        if (!onEnquete && Date.now() - lastAutoOpen < 20000) return send(res, 200, { open: true, ready: false, stage: 'opening', message: `Login detectado. Abrindo a Enquete da conta ${accountId}…` });
+        lastAutoOpen = Date.now();
+        if (!(await hasGclickSession(loginContext, accountId)))
+          return send(res, 200, { open: true, ready: false, stage: 'no_access', message: `Login detectado, mas a Enquete da conta ${accountId} não abriu. Confira se o usuário tem acesso a esse escritório; nova tentativa em 20 s.` });
+      } else if (!(await hasGclickSession(loginContext, accountId)))
+        throw new Error(`A Enquete da conta ${accountId} não abriu no Chrome da automação. Confira o login e o acesso a esse escritório.`);
+      await captureCatalog(accountId);
       loginReady = true;
       return send(res, 200, { open: true, ready: true, catalog: catalogState });
     } finally { busy = false; }
   }
-  if (url.pathname === '/api/run') return send(res, 200, await exclusive(async () => {
-    const mode = payload.mode;
-    if (!['plan', 'preview'].includes(mode)) throw new Error('Modo inválido');
-    previewState = null;
-    const rules = validateRules(payload.rules);
-    const source = await loadSource(payload);
-    const rows = parseCsv(source.csv);
-    const derived = scopeFromEligible(rows, rules);
-    const scope = payload.scopeMode === 'list' ? parseScope(payload.cnpjsText) : derived.scope;
-    if (!scope.length) throw new Error('Nenhum CNPJ elegível encontrado na planilha');
-    const plan = makePlan(rows, scope, rules);
-    const report = { mode, createdAt: new Date().toISOString(), source: source.label,
-      sourceSha256: crypto.createHash('sha256').update(source.csv).digest('hex'), sourceStale: source.stale,
-      rules, scopeMode: payload.scopeMode, invalidSource: derived.invalid, plan };
-    if (mode === 'preview') {
-      const context = loginContext ?? await openBrowser(profile);
-      try {
-        const page = await context.newPage();
-        try { const detectedType = await openQuestion(page, rules); report.rules = { ...rules, inputType: detectedType }; report.inspected = await inspectAll(page, plan, report.rules); }
-        finally { await page.close(); }
-      } finally { if (context !== loginContext) await context.close(); }
-      previewState = { id: crypto.randomBytes(16).toString('hex'), at: Date.now(), plan, rules: report.rules, sourceStale: source.stale, sourceSha256: report.sourceSha256,
-        sourceType: payload.sourceType, downloadFile: payload.sourceType === 'recent' ? payload.downloadFile : null };
-    } else previewState = null;
-    await saveReport(report);
-    return { report, previewId: mode === 'preview' ? previewState.id : null };
-  }, payload.mode === 'plan'));
-  if (url.pathname === '/api/apply') return send(res, 200, await exclusive(async () => {
-    if (!previewState || previewState.id !== payload.previewId || Date.now() - previewState.at > 30 * 60 * 1000) throw new Error('Prévia ausente ou vencida. Gere uma nova prévia.');
-    if (previewState.sourceStale) throw new Error('Arquivo enviado tem mais de 24 horas. Envie uma exportação atual.');
-    if (previewState.sourceType === 'recent') {
-      const current = await readCsvDownload(downloadsDir, previewState.downloadFile);
-      const hash = crypto.createHash('sha256').update(current.csv).digest('hex');
-      if (current.stale || hash !== previewState.sourceSha256) {
-        previewState = null;
-        throw new Error('O CSV baixado mudou ou ficou antigo após a prévia. Gere uma nova prévia antes de gravar.');
-      }
-    }
-    const plan = previewState.plan, rules = previewState.rules;
-    if (payload.confirmText !== `APLICAR ${plan.length}`) throw new Error(`Digite APLICAR ${plan.length} para confirmar`);
-    const context = loginContext ?? await openBrowser(profile);
-    const report = { mode: 'apply', createdAt: new Date().toISOString(), sourceSha256: previewState.sourceSha256, rules, plan };
-    try {
-      const page = await context.newPage();
-      try {
-        const detectedType = await openQuestion(page, rules);
-        if (detectedType !== rules.inputType) throw new Error('Tipo de resposta mudou desde a prévia');
-        report.inspected = await inspectAll(page, plan, rules);
-        report.result = await applyBatch(page, report.inspected, rules);
-      } finally { await page.close(); }
-      report.status = 'verificado';
-      previewState = null;
-    } catch (e) { report.status = 'verificar_manualmente'; report.error = e.message; throw Object.assign(e, { report }); }
-    finally { if (context !== loginContext) await context.close(); await saveReport(report); }
-    return { report };
-  }));
   return send(res, 404, { error: 'Rota não encontrada' });
 }
-const server = http.createServer((req, res) => { route(req, res).catch(async e => { if (e.report) lastReport = e.report; send(res, 400, { error: e.message, report: e.report ?? null }); }); });
+const server = http.createServer((req, res) => { route(req, res).catch(async e => { if (e.report) lastReport = e.report; send(res, 400, { error: humanError(e), report: e.report ?? null }); }); });
 server.listen(port, host, () => console.log(`G-Click local: http://${host}:${port}`));
 for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, async () => { try { if (loginContext) await loginContext.close(); if (loginLock) await loginLock(); } finally { server.close(() => process.exit(0)); } });

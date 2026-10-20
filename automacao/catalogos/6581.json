@@ -1,0 +1,2548 @@
+{
+  "accountId": "6581",
+  "capturedAt": "2026-10-20T15:11:39.053Z",
+  "rowCount": 343,
+  "questionCount": 61,
+  "answerCount": 264,
+  "questions": [
+    {
+      "ref": "01.01",
+      "label": "Que tipo de cliente é este? Fixo ou Eventual?",
+      "category": "Qualificação Geral do Cliente",
+      "answers": [
+        {
+          "ref": "01.01.01",
+          "value": "1",
+          "valueKnown": true,
+          "label": "Fixo",
+          "display": "01 - Fixo",
+          "type": "R"
+        },
+        {
+          "ref": "01.01.02",
+          "value": "2",
+          "valueKnown": true,
+          "label": "Eventual",
+          "display": "02 - Eventual",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "01.01.01.01",
+      "label": "Qual o tipo dessa empresa ?",
+      "category": "Qualificação Geral do Cliente",
+      "answers": [
+        {
+          "ref": "01.01.01.01.01",
+          "value": "13",
+          "valueKnown": true,
+          "label": "Matriz",
+          "display": "01 - Matriz",
+          "type": "R"
+        },
+        {
+          "ref": "01.01.01.01.02",
+          "value": "14",
+          "valueKnown": true,
+          "label": "Filial",
+          "display": "02 - Filial",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "01.02",
+      "label": "Qual é o atual Regime Tributário desta empresa?",
+      "category": "Qualificação Geral do Cliente",
+      "answers": [
+        {
+          "ref": "01.02.01",
+          "value": "6",
+          "valueKnown": true,
+          "label": "Pessoa Física",
+          "display": "01 - Pessoa Física",
+          "type": "R"
+        },
+        {
+          "ref": "01.02.02",
+          "value": "7",
+          "valueKnown": true,
+          "label": "Lucro Real",
+          "display": "02 - Lucro Real",
+          "type": "R"
+        },
+        {
+          "ref": "01.02.03",
+          "value": "8",
+          "valueKnown": true,
+          "label": "Lucro Presumido",
+          "display": "03 - Lucro Presumido",
+          "type": "R"
+        },
+        {
+          "ref": "01.02.04",
+          "value": "9",
+          "valueKnown": true,
+          "label": "Simples",
+          "display": "04 - Simples",
+          "type": "R"
+        },
+        {
+          "ref": "01.02.05",
+          "value": "10",
+          "valueKnown": true,
+          "label": "Imune",
+          "display": "05 - Imune",
+          "type": "R"
+        },
+        {
+          "ref": "01.02.06",
+          "value": "11",
+          "valueKnown": true,
+          "label": "Isenta",
+          "display": "06 - Isenta",
+          "type": "R"
+        },
+        {
+          "ref": "01.02.07",
+          "value": "12",
+          "valueKnown": true,
+          "label": "MEI",
+          "display": "07 - MEI",
+          "type": "R"
+        },
+        {
+          "ref": "01.02.08",
+          "value": "221",
+          "valueKnown": true,
+          "label": "Sem Tributação",
+          "display": "08 - Sem Tributação",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "01.02.02.01",
+      "label": "Qual a forma de Entrega do CSLL e IPRJ do LR?",
+      "category": "Qualificação Geral do Cliente",
+      "answers": [
+        {
+          "ref": "01.02.02.01.01",
+          "value": "464",
+          "valueKnown": true,
+          "label": "CSLL e IRPJ - LR (Mensal)",
+          "display": "01 - CSLL e IRPJ - LR (Mensal)",
+          "type": "R"
+        },
+        {
+          "ref": "01.02.02.01.02",
+          "value": "465",
+          "valueKnown": true,
+          "label": "CSLL e IRPJ - LR (Trimestral)",
+          "display": "02 - CSLL e IRPJ - LR (Trimestral)",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "01.02.03.01",
+      "label": "Qual a forma de Entrega do CSLL e IPRJ do LP?",
+      "category": "Qualificação Geral do Cliente",
+      "answers": [
+        {
+          "ref": "01.02.03.01.01",
+          "value": "376",
+          "valueKnown": true,
+          "label": "CSLL e IRPJ - LP (Mensal)",
+          "display": "01 - CSLL e IRPJ - LP (Mensal)",
+          "type": "R"
+        },
+        {
+          "ref": "01.02.03.01.02",
+          "value": "377",
+          "valueKnown": true,
+          "label": "CSLL e IRPJ - LP (Trimestral 3 Cotas)",
+          "display": "02 - CSLL e IRPJ - LP (Trimestral 3 Cotas)",
+          "type": "R"
+        },
+        {
+          "ref": "01.02.03.01.03",
+          "value": "378",
+          "valueKnown": true,
+          "label": "CSLL e IRPJ - LP (Trimestral)",
+          "display": "03 - CSLL e IRPJ - LP (Trimestral)",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "01.03",
+      "label": "Quais são os Ramos de Atividades deste cliente?",
+      "category": "Qualificação Geral do Cliente",
+      "answers": [
+        {
+          "ref": "01.03.01",
+          "value": "54",
+          "valueKnown": true,
+          "label": "Comércio",
+          "display": "01 - Comércio",
+          "type": "R"
+        },
+        {
+          "ref": "01.03.02",
+          "value": "56",
+          "valueKnown": true,
+          "label": "Indústria",
+          "display": "02 - Indústria",
+          "type": "R"
+        },
+        {
+          "ref": "01.03.03",
+          "value": "55",
+          "valueKnown": true,
+          "label": "Prestador de Serviço",
+          "display": "03 - Prestador de Serviço",
+          "type": "R"
+        },
+        {
+          "ref": "01.03.04",
+          "value": "57",
+          "valueKnown": true,
+          "label": "Sem Fins Lucrativos",
+          "display": "04 - Sem Fins Lucrativos",
+          "type": "R"
+        },
+        {
+          "ref": "01.03.05",
+          "value": "58",
+          "valueKnown": true,
+          "label": "Importação de Produtos ou Equiparação a Indústria",
+          "display": "05 - Importação de Produtos ou Equiparação a Indústria",
+          "type": "R"
+        },
+        {
+          "ref": "01.03.06",
+          "value": "206",
+          "valueKnown": true,
+          "label": "Produtor Rural",
+          "display": "06 - Produtor Rural",
+          "type": "R"
+        },
+        {
+          "ref": "01.03.07",
+          "value": "469",
+          "valueKnown": true,
+          "label": "Holding",
+          "display": "07 - Holding",
+          "type": "R"
+        },
+        {
+          "ref": "01.03.08",
+          "value": "531",
+          "valueKnown": true,
+          "label": "Transportes / Transportadora",
+          "display": "08 - Transportes / Transportadora",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "01.03.03.01",
+      "label": "Quais destes serviços este cliente presta?",
+      "category": "Qualificação Geral do Cliente",
+      "answers": [
+        {
+          "ref": "01.03.03.01.01",
+          "value": "59",
+          "valueKnown": true,
+          "label": "PS - Demais Serviços",
+          "display": "01 - PS - Demais Serviços",
+          "type": "R"
+        },
+        {
+          "ref": "01.03.03.01.02",
+          "value": "61",
+          "valueKnown": true,
+          "label": "PS - Profissionais da Saúde",
+          "display": "02 - PS - Profissionais da Saúde",
+          "type": "R"
+        },
+        {
+          "ref": "01.03.03.01.03",
+          "value": "62",
+          "valueKnown": true,
+          "label": "PS - Serviços Médicos",
+          "display": "03 - PS - Serviços Médicos",
+          "type": "R"
+        },
+        {
+          "ref": "01.03.03.01.04",
+          "value": "63",
+          "valueKnown": true,
+          "label": "PS - Administração de Bens/Imobiliárias",
+          "display": "04 - PS - Administração de Bens/Imobiliárias",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "01.04",
+      "label": "O cliente possui movimento?",
+      "category": "Qualificação Geral do Cliente",
+      "answers": [
+        {
+          "ref": "01.04.01",
+          "value": "533",
+          "valueKnown": true,
+          "label": "Com Movimentação",
+          "display": "01 - Com Movimentação",
+          "type": "R"
+        },
+        {
+          "ref": "01.04.02",
+          "value": "534",
+          "valueKnown": true,
+          "label": "Sem Movimentação",
+          "display": "02 - Sem Movimentação",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "01.05",
+      "label": "Qual o meio de comunicação com o cliente?",
+      "category": "Qualificação Geral do Cliente",
+      "answers": [
+        {
+          "ref": "01.05.01",
+          "value": "539",
+          "valueKnown": true,
+          "label": "WhatsApp",
+          "display": "01 - WhatsApp",
+          "type": "R"
+        },
+        {
+          "ref": "01.05.02",
+          "value": "540",
+          "valueKnown": true,
+          "label": "E-mail",
+          "display": "02 - E-mail",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "01.06",
+      "label": "Quais os serviços prestados ao cliente?",
+      "category": "Qualificação Geral do Cliente",
+      "answers": [
+        {
+          "ref": "01.06.01",
+          "value": "543",
+          "valueKnown": true,
+          "label": "Fiscal",
+          "display": "01 - Fiscal",
+          "type": "R"
+        },
+        {
+          "ref": "01.06.02",
+          "value": "544",
+          "valueKnown": true,
+          "label": "Contábil",
+          "display": "02 - Contábil",
+          "type": "R"
+        },
+        {
+          "ref": "01.06.03",
+          "value": "545",
+          "valueKnown": true,
+          "label": "DP",
+          "display": "03 - DP",
+          "type": "R"
+        },
+        {
+          "ref": "01.06.04",
+          "value": "546",
+          "valueKnown": true,
+          "label": "BPO Financeiro",
+          "display": "04 - BPO Financeiro",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "01.07",
+      "label": "A qual estado esse cliente pertence ?",
+      "category": "Qualificação Geral do Cliente",
+      "answers": [
+        {
+          "ref": "01.07.01",
+          "value": "590",
+          "valueKnown": true,
+          "label": "CE",
+          "display": "01 - CE",
+          "type": "R"
+        },
+        {
+          "ref": "01.07.02",
+          "value": "591",
+          "valueKnown": true,
+          "label": "DF",
+          "display": "02 - DF",
+          "type": "R"
+        },
+        {
+          "ref": "01.07.03",
+          "value": "592",
+          "valueKnown": true,
+          "label": "ES",
+          "display": "03 - ES",
+          "type": "R"
+        },
+        {
+          "ref": "01.07.04",
+          "value": "593",
+          "valueKnown": true,
+          "label": "GO",
+          "display": "04 - GO",
+          "type": "R"
+        },
+        {
+          "ref": "01.07.05",
+          "value": "594",
+          "valueKnown": true,
+          "label": "MG",
+          "display": "05 - MG",
+          "type": "R"
+        },
+        {
+          "ref": "01.07.06",
+          "value": "595",
+          "valueKnown": true,
+          "label": "MS",
+          "display": "06 - MS",
+          "type": "R"
+        },
+        {
+          "ref": "01.07.07",
+          "value": "596",
+          "valueKnown": true,
+          "label": "MT",
+          "display": "07 - MT",
+          "type": "R"
+        },
+        {
+          "ref": "01.07.08",
+          "value": "597",
+          "valueKnown": true,
+          "label": "PA",
+          "display": "08 - PA",
+          "type": "R"
+        },
+        {
+          "ref": "01.07.09",
+          "value": "598",
+          "valueKnown": true,
+          "label": "PR",
+          "display": "09 - PR",
+          "type": "R"
+        },
+        {
+          "ref": "01.07.10",
+          "value": "599",
+          "valueKnown": true,
+          "label": "RJ",
+          "display": "10 - RJ",
+          "type": "R"
+        },
+        {
+          "ref": "01.07.11",
+          "value": "600",
+          "valueKnown": true,
+          "label": "RO",
+          "display": "11 - RO",
+          "type": "R"
+        },
+        {
+          "ref": "01.07.12",
+          "value": "601",
+          "valueKnown": true,
+          "label": "TO",
+          "display": "12 - TO",
+          "type": "R"
+        },
+        {
+          "ref": "01.07.13",
+          "value": "602",
+          "valueKnown": true,
+          "label": "SC",
+          "display": "13 - SC",
+          "type": "R"
+        },
+        {
+          "ref": "01.07.14",
+          "value": "603",
+          "valueKnown": true,
+          "label": "RS",
+          "display": "14 - RS",
+          "type": "R"
+        },
+        {
+          "ref": "01.07.15",
+          "value": "604",
+          "valueKnown": true,
+          "label": "SP",
+          "display": "15 - SP",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "01.07.01.01",
+      "label": "Qual município ?",
+      "category": "Qualificação Geral do Cliente",
+      "answers": [
+        {
+          "ref": "01.07.01.01.01",
+          "value": "605",
+          "valueKnown": true,
+          "label": "Fortaleza",
+          "display": "01 - Fortaleza",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "01.07.02.01",
+      "label": "Qual município ?",
+      "category": "Qualificação Geral do Cliente",
+      "answers": [
+        {
+          "ref": "01.07.02.01.01",
+          "value": "606",
+          "valueKnown": true,
+          "label": "Brasília",
+          "display": "01 - Brasília",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "01.07.03.01",
+      "label": "Qual município ?",
+      "category": "Qualificação Geral do Cliente",
+      "answers": [
+        {
+          "ref": "01.07.03.01.01",
+          "value": "607",
+          "valueKnown": true,
+          "label": "Barra de são Francisco",
+          "display": "01 - Barra de são Francisco",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "01.07.04.01",
+      "label": "Qual município ?",
+      "category": "Qualificação Geral do Cliente",
+      "answers": [
+        {
+          "ref": "01.07.04.01.01",
+          "value": "608",
+          "valueKnown": true,
+          "label": "Goiânia",
+          "display": "01 - Goiânia",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "01.07.05.01",
+      "label": "Qual município ?",
+      "category": "Qualificação Geral do Cliente",
+      "answers": [
+        {
+          "ref": "01.07.05.01.01",
+          "value": "609",
+          "valueKnown": true,
+          "label": "UBERLANDIA",
+          "display": "01 - UBERLANDIA",
+          "type": "R"
+        },
+        {
+          "ref": "01.07.05.01.02",
+          "value": "610",
+          "valueKnown": true,
+          "label": "MANTENA",
+          "display": "02 - MANTENA",
+          "type": "R"
+        },
+        {
+          "ref": "01.07.05.01.03",
+          "value": "611",
+          "valueKnown": true,
+          "label": "ALPINOPOLIS",
+          "display": "03 - ALPINOPOLIS",
+          "type": "R"
+        },
+        {
+          "ref": "01.07.05.01.04",
+          "value": "612",
+          "valueKnown": true,
+          "label": "BELO HORIZONTE",
+          "display": "04 - BELO HORIZONTE",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "02.01",
+      "label": "Qual dessas Obrigações Federais são entregues para esse cliente ?",
+      "category": "Dpto. Fiscal/Tributário",
+      "answers": [
+        {
+          "ref": "02.01.01",
+          "value": "419",
+          "valueKnown": true,
+          "label": "DIFAL",
+          "display": "01 - DIFAL",
+          "type": "R"
+        },
+        {
+          "ref": "02.01.02",
+          "value": "311",
+          "valueKnown": true,
+          "label": "RECIBO DE ALUGUEL",
+          "display": "02 - RECIBO DE ALUGUEL",
+          "type": "R"
+        },
+        {
+          "ref": "02.01.03",
+          "value": "421",
+          "valueKnown": true,
+          "label": "PMS/IBGE",
+          "display": "03 - PMS/IBGE",
+          "type": "R"
+        },
+        {
+          "ref": "02.01.04",
+          "value": "434",
+          "valueKnown": true,
+          "label": "EFD ICMS/IPI",
+          "display": "04 - EFD ICMS/IPI",
+          "type": "R"
+        },
+        {
+          "ref": "02.01.05",
+          "value": "441",
+          "valueKnown": true,
+          "label": "EFD Reinf (Ativo)",
+          "display": "05 - EFD Reinf (Ativo)",
+          "type": "R"
+        },
+        {
+          "ref": "02.01.06",
+          "value": "535",
+          "valueKnown": true,
+          "label": "EFD Reinf ( Inativo)",
+          "display": "06 - EFD Reinf ( Inativo)",
+          "type": "R"
+        },
+        {
+          "ref": "02.01.07",
+          "value": "532",
+          "valueKnown": true,
+          "label": "DIRBI",
+          "display": "07 - DIRBI",
+          "type": "R"
+        },
+        {
+          "ref": "02.01.08",
+          "value": "373",
+          "valueKnown": true,
+          "label": "PIS/COFINS Unico",
+          "display": "08 - PIS/COFINS Unico",
+          "type": "R"
+        },
+        {
+          "ref": "02.01.09",
+          "value": "621",
+          "valueKnown": true,
+          "label": "PIS/COFINS Separado",
+          "display": "09 - PIS/COFINS Separado",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "02.01.04.01",
+      "label": "Qual a data de vencimento do EFD ICMS/IPI de seus clientes ?",
+      "category": "Dpto. Fiscal/Tributário",
+      "answers": [
+        {
+          "ref": "02.01.04.01.01",
+          "value": "440",
+          "valueKnown": true,
+          "label": "EFD ICMS/IPI (Dia 08)",
+          "display": "01 - EFD ICMS/IPI (Dia 08)",
+          "type": "R"
+        },
+        {
+          "ref": "02.01.04.01.02",
+          "value": "435",
+          "valueKnown": true,
+          "label": "EFD ICMS/IPI (Dia 12)",
+          "display": "02 - EFD ICMS/IPI (Dia 12)",
+          "type": "R"
+        },
+        {
+          "ref": "02.01.04.01.03",
+          "value": "436",
+          "valueKnown": true,
+          "label": "EFD ICMS/IPI (Dia 14)",
+          "display": "03 - EFD ICMS/IPI (Dia 14)",
+          "type": "R"
+        },
+        {
+          "ref": "02.01.04.01.04",
+          "value": "437",
+          "valueKnown": true,
+          "label": "EFD ICMS/IPI (Dia 15)",
+          "display": "04 - EFD ICMS/IPI (Dia 15)",
+          "type": "R"
+        },
+        {
+          "ref": "02.01.04.01.05",
+          "value": "438",
+          "valueKnown": true,
+          "label": "EFD ICMS/IPI (Dia 20)",
+          "display": "05 - EFD ICMS/IPI (Dia 20)",
+          "type": "R"
+        },
+        {
+          "ref": "02.01.04.01.06",
+          "value": "439",
+          "valueKnown": true,
+          "label": "EFD ICMS/IPI (Dia 25)",
+          "display": "06 - EFD ICMS/IPI (Dia 25)",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "02.02",
+      "label": "Qual dessas Obrigações Estaduais são entregues para esse cliente ? (Part 1)",
+      "category": "Dpto. Fiscal/Tributário",
+      "answers": [
+        {
+          "ref": "02.02.01",
+          "value": "409",
+          "valueKnown": true,
+          "label": "DeSTDA",
+          "display": "01 - DeSTDA",
+          "type": "R"
+        },
+        {
+          "ref": "02.02.02",
+          "value": "379",
+          "valueKnown": true,
+          "label": "DAC",
+          "display": "02 - DAC",
+          "type": "R"
+        },
+        {
+          "ref": "02.02.03",
+          "value": "383",
+          "valueKnown": true,
+          "label": "DAM",
+          "display": "03 - DAM",
+          "type": "R"
+        },
+        {
+          "ref": "02.02.04",
+          "value": "388",
+          "valueKnown": true,
+          "label": "DAMEF-VAF",
+          "display": "04 - DAMEF-VAF",
+          "type": "R"
+        },
+        {
+          "ref": "02.02.05",
+          "value": "397",
+          "valueKnown": true,
+          "label": "DCIP - SC",
+          "display": "05 - DCIP - SC",
+          "type": "R"
+        },
+        {
+          "ref": "02.02.06",
+          "value": "399",
+          "valueKnown": true,
+          "label": "DDE - SC",
+          "display": "06 - DDE - SC",
+          "type": "R"
+        },
+        {
+          "ref": "02.02.07",
+          "value": "400",
+          "valueKnown": true,
+          "label": "SINTEGRA",
+          "display": "07 - SINTEGRA",
+          "type": "R"
+        },
+        {
+          "ref": "02.02.08",
+          "value": "401",
+          "valueKnown": true,
+          "label": "DECLAN-IPM - RJ",
+          "display": "08 - DECLAN-IPM - RJ",
+          "type": "R"
+        },
+        {
+          "ref": "02.02.09",
+          "value": "411",
+          "valueKnown": true,
+          "label": "DIAP (LP - AM)",
+          "display": "09 - DIAP (LP - AM)",
+          "type": "R"
+        },
+        {
+          "ref": "02.02.10",
+          "value": "412",
+          "valueKnown": true,
+          "label": "DIAP (LR - AM)",
+          "display": "10 - DIAP (LR - AM)",
+          "type": "R"
+        },
+        {
+          "ref": "02.02.11",
+          "value": "413",
+          "valueKnown": true,
+          "label": "SEF - PE",
+          "display": "11 - SEF - PE",
+          "type": "R"
+        },
+        {
+          "ref": "02.02.12",
+          "value": "414",
+          "valueKnown": true,
+          "label": "DIEF",
+          "display": "12 - DIEF",
+          "type": "R"
+        },
+        {
+          "ref": "02.02.13",
+          "value": "416",
+          "valueKnown": true,
+          "label": "REDF - SE",
+          "display": "13 - REDF - SE",
+          "type": "R"
+        },
+        {
+          "ref": "02.02.14",
+          "value": "422",
+          "valueKnown": true,
+          "label": "DIME - SC",
+          "display": "14 - DIME - SC",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "02.02.02.01",
+      "label": "Qual a forma de entrega da DAC ?",
+      "category": "Dpto. Fiscal/Tributário",
+      "answers": [
+        {
+          "ref": "02.02.02.01.01",
+          "value": "380",
+          "valueKnown": true,
+          "label": "DAC (Anual - AL)",
+          "display": "01 - DAC (Anual - AL)",
+          "type": "R"
+        },
+        {
+          "ref": "02.02.02.01.02",
+          "value": "381",
+          "valueKnown": true,
+          "label": "DAC (Mensal - AL)",
+          "display": "02 - DAC (Mensal - AL)",
+          "type": "R"
+        },
+        {
+          "ref": "02.02.02.01.03",
+          "value": "382",
+          "valueKnown": true,
+          "label": "DAC (Quadrimestral - AL)",
+          "display": "03 - DAC (Quadrimestral - AL)",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "02.02.03.01",
+      "label": "Qual a data de entrega desta obrigação: DAM?",
+      "category": "Dpto. Fiscal/Tributário",
+      "answers": [
+        {
+          "ref": "02.02.03.01.01",
+          "value": "385",
+          "valueKnown": true,
+          "label": "DAM (Dia 5)",
+          "display": "01 - DAM (Dia 5)",
+          "type": "R"
+        },
+        {
+          "ref": "02.02.03.01.02",
+          "value": "387",
+          "valueKnown": true,
+          "label": "DAM (Dia 7)",
+          "display": "02 - DAM (Dia 7)",
+          "type": "R"
+        },
+        {
+          "ref": "02.02.03.01.03",
+          "value": "384",
+          "valueKnown": true,
+          "label": "DAM (Dia 30)",
+          "display": "03 - DAM (Dia 30)",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "02.02.07.01",
+      "label": "Qual a data de entrega desta obrigação: SINTEGRA ?",
+      "category": "Dpto. Fiscal/Tributário",
+      "answers": [
+        {
+          "ref": "02.02.07.01.01",
+          "value": "408",
+          "valueKnown": true,
+          "label": "SINTEGRA (Dia 15)",
+          "display": "01 - SINTEGRA (Dia 15)",
+          "type": "R"
+        },
+        {
+          "ref": "02.02.07.01.02",
+          "value": "410",
+          "valueKnown": true,
+          "label": "SINTEGRA (Dia 10)",
+          "display": "02 - SINTEGRA (Dia 10)",
+          "type": "R"
+        },
+        {
+          "ref": "02.02.07.01.03",
+          "value": "406",
+          "valueKnown": true,
+          "label": "SINTEGRA (Último Dia)",
+          "display": "03 - SINTEGRA (Último Dia)",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "02.02.12.01",
+      "label": "Qual a data de entrega desta obrigação: DIEF?",
+      "category": "Dpto. Fiscal/Tributário",
+      "answers": [
+        {
+          "ref": "02.02.12.01.01",
+          "value": "415",
+          "valueKnown": true,
+          "label": "DIEF - (Dia 20)",
+          "display": "01 - DIEF - (Dia 20)",
+          "type": "R"
+        },
+        {
+          "ref": "02.02.12.01.02",
+          "value": "417",
+          "valueKnown": true,
+          "label": "DIEF (Dia 10)",
+          "display": "02 - DIEF (Dia 10)",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "02.03",
+      "label": "Qual dessas Obrigações Estaduais são entregues para esse cliente ? (Part 2)",
+      "category": "Dpto. Fiscal/Tributário",
+      "answers": [
+        {
+          "ref": "02.03.01",
+          "value": "428",
+          "valueKnown": true,
+          "label": "DOT",
+          "display": "01 - DOT",
+          "type": "R"
+        },
+        {
+          "ref": "02.03.02",
+          "value": "425",
+          "valueKnown": true,
+          "label": "DMA - BA",
+          "display": "02 - DMA - BA",
+          "type": "R"
+        },
+        {
+          "ref": "02.03.03",
+          "value": "426",
+          "valueKnown": true,
+          "label": "DMD - BA",
+          "display": "03 - DMD - BA",
+          "type": "R"
+        },
+        {
+          "ref": "02.03.04",
+          "value": "430",
+          "valueKnown": true,
+          "label": "DUB ICMS - RJ",
+          "display": "04 - DUB ICMS - RJ",
+          "type": "R"
+        },
+        {
+          "ref": "02.03.05",
+          "value": "429",
+          "valueKnown": true,
+          "label": "Livro de Inventário ICMS",
+          "display": "05 - Livro de Inventário ICMS",
+          "type": "R"
+        },
+        {
+          "ref": "02.03.06",
+          "value": "432",
+          "valueKnown": true,
+          "label": "Livro de Entrada ICMS",
+          "display": "06 - Livro de Entrada ICMS",
+          "type": "R"
+        },
+        {
+          "ref": "02.03.07",
+          "value": "445",
+          "valueKnown": true,
+          "label": "LFE - DF",
+          "display": "07 - LFE - DF",
+          "type": "R"
+        },
+        {
+          "ref": "02.03.08",
+          "value": "450",
+          "valueKnown": true,
+          "label": "GIA ST",
+          "display": "08 - GIA ST",
+          "type": "R"
+        },
+        {
+          "ref": "02.03.09",
+          "value": "460",
+          "valueKnown": true,
+          "label": "GIA - PE",
+          "display": "09 - GIA - PE",
+          "type": "R"
+        },
+        {
+          "ref": "02.03.10",
+          "value": "454",
+          "valueKnown": true,
+          "label": "GIA ICMS",
+          "display": "10 - GIA ICMS",
+          "type": "R"
+        },
+        {
+          "ref": "02.03.11",
+          "value": "448",
+          "valueKnown": true,
+          "label": "GIVA - PB",
+          "display": "11 - GIVA - PB",
+          "type": "R"
+        },
+        {
+          "ref": "02.03.12",
+          "value": "449",
+          "valueKnown": true,
+          "label": "GIM - PB",
+          "display": "12 - GIM - PB",
+          "type": "R"
+        },
+        {
+          "ref": "02.03.13",
+          "value": "461",
+          "valueKnown": true,
+          "label": "Estoque Anual",
+          "display": "13 - Estoque Anual",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "02.03.08.01",
+      "label": "Qual é a data de vencimento da GIA - ST",
+      "category": "Dpto. Fiscal/Tributário",
+      "answers": [
+        {
+          "ref": "02.03.08.01.01",
+          "value": "452",
+          "valueKnown": true,
+          "label": "GIA ST (Dia 10)",
+          "display": "01 - GIA ST (Dia 10)",
+          "type": "R"
+        },
+        {
+          "ref": "02.03.08.01.02",
+          "value": "451",
+          "valueKnown": true,
+          "label": "GIA ST (Dia 25)",
+          "display": "02 - GIA ST (Dia 25)",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "02.03.10.01",
+      "label": "Qual é a data de Vencimento da GIA ICMS deste cliente?",
+      "category": "Dpto. Fiscal/Tributário",
+      "answers": [
+        {
+          "ref": "02.03.10.01.01",
+          "value": "455",
+          "valueKnown": true,
+          "label": "GIA ICMS (Dia 12)",
+          "display": "01 - GIA ICMS (Dia 12)",
+          "type": "R"
+        },
+        {
+          "ref": "02.03.10.01.02",
+          "value": "456",
+          "valueKnown": true,
+          "label": "GIA ICMS (Dia 16)",
+          "display": "02 - GIA ICMS (Dia 16)",
+          "type": "R"
+        },
+        {
+          "ref": "02.03.10.01.03",
+          "value": "457",
+          "valueKnown": true,
+          "label": "GIA ICMS (Dia 17)",
+          "display": "03 - GIA ICMS (Dia 17)",
+          "type": "R"
+        },
+        {
+          "ref": "02.03.10.01.04",
+          "value": "458",
+          "valueKnown": true,
+          "label": "GIA ICMS (Dia 18)",
+          "display": "04 - GIA ICMS (Dia 18)",
+          "type": "R"
+        },
+        {
+          "ref": "02.03.10.01.05",
+          "value": "459",
+          "valueKnown": true,
+          "label": "GIA ICMS (Dia 19)",
+          "display": "05 - GIA ICMS (Dia 19)",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "02.04",
+      "label": "Qual dessas Obrigações Municipais são entregues para esse cliente ?",
+      "category": "Dpto. Fiscal/Tributário",
+      "answers": [
+        {
+          "ref": "02.04.01",
+          "value": "371",
+          "valueKnown": true,
+          "label": "Giss Online",
+          "display": "01 - Giss Online",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "02.05",
+      "label": "É realizado a emissão de NF para esse cliente ?",
+      "category": "Dpto. Fiscal/Tributário",
+      "answers": [
+        {
+          "ref": "02.05.01",
+          "value": "547",
+          "valueKnown": true,
+          "label": "NF Semanal",
+          "display": "01 - NF Semanal",
+          "type": "R"
+        },
+        {
+          "ref": "02.05.02",
+          "value": "548",
+          "valueKnown": true,
+          "label": "NF Quinzenal",
+          "display": "02 - NF Quinzenal",
+          "type": "R"
+        },
+        {
+          "ref": "02.05.03",
+          "value": "549",
+          "valueKnown": true,
+          "label": "NF Mensal",
+          "display": "03 - NF Mensal",
+          "type": "R"
+        },
+        {
+          "ref": "02.05.04",
+          "value": "550",
+          "valueKnown": true,
+          "label": "NF Esporádica",
+          "display": "04 - NF Esporádica",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "02.05.03.01",
+      "label": "Qual o dia da emissão mensal dessa NF ?",
+      "category": "Dpto. Fiscal/Tributário",
+      "answers": [
+        {
+          "ref": "02.05.03.01.01",
+          "value": "585",
+          "valueKnown": true,
+          "label": "NF dia 01",
+          "display": "01 - NF dia 01",
+          "type": "R"
+        },
+        {
+          "ref": "02.05.03.01.02",
+          "value": "586",
+          "valueKnown": true,
+          "label": "NF dia 05",
+          "display": "02 - NF dia 05",
+          "type": "R"
+        },
+        {
+          "ref": "02.05.03.01.03",
+          "value": "587",
+          "valueKnown": true,
+          "label": "NF dia 10",
+          "display": "03 - NF dia 10",
+          "type": "R"
+        },
+        {
+          "ref": "02.05.03.01.04",
+          "value": "588",
+          "valueKnown": true,
+          "label": "NF dia 20",
+          "display": "04 - NF dia 20",
+          "type": "R"
+        },
+        {
+          "ref": "02.05.03.01.05",
+          "value": "589",
+          "valueKnown": true,
+          "label": "NF dia 25",
+          "display": "05 - NF dia 25",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "02.06",
+      "label": "Alguma particularidade extra ?",
+      "category": "Dpto. Fiscal/Tributário",
+      "answers": [
+        {
+          "ref": "02.06.01",
+          "value": "613",
+          "valueKnown": true,
+          "label": "Controle PERSE",
+          "display": "01 - Controle PERSE",
+          "type": "R"
+        },
+        {
+          "ref": "02.06.02",
+          "value": "615",
+          "valueKnown": true,
+          "label": "Darf Aluguel",
+          "display": "02 - Darf Aluguel",
+          "type": "R"
+        },
+        {
+          "ref": "02.06.03",
+          "value": "617",
+          "valueKnown": true,
+          "label": "Planilha de faturamento",
+          "display": "03 - Planilha de faturamento",
+          "type": "R"
+        },
+        {
+          "ref": "02.06.04",
+          "value": "618",
+          "valueKnown": true,
+          "label": "Rel. Notas",
+          "display": "04 - Rel. Notas",
+          "type": "R"
+        },
+        {
+          "ref": "02.06.05",
+          "value": "619",
+          "valueKnown": true,
+          "label": "Tabela Calc. Impostos",
+          "display": "05 - Tabela Calc. Impostos",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "02.07",
+      "label": "Como funciona o ISS deste cliente ?",
+      "category": "Dpto. Fiscal/Tributário",
+      "answers": [
+        {
+          "ref": "02.07.01",
+          "value": "443",
+          "valueKnown": true,
+          "label": "ISS Retido",
+          "display": "01 - ISS Retido",
+          "type": "R"
+        },
+        {
+          "ref": "02.07.02",
+          "value": "616",
+          "valueKnown": true,
+          "label": "ISS Tomador",
+          "display": "02 - ISS Tomador",
+          "type": "R"
+        },
+        {
+          "ref": "02.07.03",
+          "value": "444",
+          "valueKnown": true,
+          "label": "ISS Próprio",
+          "display": "03 - ISS Próprio",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "03.01",
+      "label": "Com qual frequência é realizado o Fechamento Contábil deste cliente?",
+      "category": "Dpto. Contábil",
+      "answers": [
+        {
+          "ref": "03.01.01",
+          "value": "364",
+          "valueKnown": true,
+          "label": "Fechamento Contábil Mensal",
+          "display": "01 - Fechamento Contábil Mensal",
+          "type": "R"
+        },
+        {
+          "ref": "03.01.02",
+          "value": "365",
+          "valueKnown": true,
+          "label": "Fechamento Contábil Trimestral",
+          "display": "02 - Fechamento Contábil Trimestral",
+          "type": "R"
+        },
+        {
+          "ref": "03.01.03",
+          "value": "366",
+          "valueKnown": true,
+          "label": "Fechamento Contábil Semestral",
+          "display": "03 - Fechamento Contábil Semestral",
+          "type": "R"
+        },
+        {
+          "ref": "03.01.04",
+          "value": "363",
+          "valueKnown": true,
+          "label": "Fechamento Contábil Anual",
+          "display": "04 - Fechamento Contábil Anual",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "03.02",
+      "label": "Quais demais Obrigações Contábeis são realizadas para este cliente?",
+      "category": "Dpto. Contábil",
+      "answers": [
+        {
+          "ref": "03.02.01",
+          "value": "16",
+          "valueKnown": true,
+          "label": "Carnê Leão",
+          "display": "01 - Carnê Leão",
+          "type": "R"
+        },
+        {
+          "ref": "03.02.02",
+          "value": "51",
+          "valueKnown": true,
+          "label": "Livro Caixa",
+          "display": "02 - Livro Caixa",
+          "type": "R"
+        },
+        {
+          "ref": "03.02.03",
+          "value": "466",
+          "valueKnown": true,
+          "label": "Solicitação de Documentos Contábeis",
+          "display": "03 - Solicitação de Documentos Contábeis",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "04.01",
+      "label": "Qual é o tipo de Folha de Pagamento deste cliente?",
+      "category": "Dpto. Pessoal/Trabalhista",
+      "answers": [
+        {
+          "ref": "04.01.01",
+          "value": "90",
+          "valueKnown": true,
+          "label": "Folha Mensal (Funcionários e Sócios)",
+          "display": "01 - Folha Mensal (Funcionários e Sócios)",
+          "type": "R"
+        },
+        {
+          "ref": "04.01.02",
+          "value": "91",
+          "valueKnown": true,
+          "label": "Folha Doméstica",
+          "display": "02 - Folha Doméstica",
+          "type": "R"
+        },
+        {
+          "ref": "04.01.03",
+          "value": "92",
+          "valueKnown": true,
+          "label": "Folha Pessoa Física (CEI)",
+          "display": "03 - Folha Pessoa Física (CEI)",
+          "type": "R"
+        },
+        {
+          "ref": "04.01.04",
+          "value": "93",
+          "valueKnown": true,
+          "label": "Folha Somente Pró-Labore (Apenas Sócios)",
+          "display": "04 - Folha Somente Pró-Labore (Apenas Sócios)",
+          "type": "R"
+        },
+        {
+          "ref": "04.01.05",
+          "value": "94",
+          "valueKnown": true,
+          "label": "Folha Sem Movimento",
+          "display": "05 - Folha Sem Movimento",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "04.01.01.01",
+      "label": "Qual é a data de vencimento da Folha Mensal (Funcionários e Sócios) desse cliente?",
+      "category": "Dpto. Pessoal/Trabalhista",
+      "answers": [
+        {
+          "ref": "04.01.01.01.01",
+          "value": "82",
+          "valueKnown": true,
+          "label": "Folha - Último Dia Útil",
+          "display": "01 - Folha - Último Dia Útil",
+          "type": "R"
+        },
+        {
+          "ref": "04.01.01.01.02",
+          "value": "81",
+          "valueKnown": true,
+          "label": "Folha - 5º Dia Útil",
+          "display": "02 - Folha - 5º Dia Útil",
+          "type": "R"
+        },
+        {
+          "ref": "04.01.01.01.03",
+          "value": "569",
+          "valueKnown": true,
+          "label": "Folha - Dia 05",
+          "display": "03 - Folha - Dia 05",
+          "type": "R"
+        },
+        {
+          "ref": "04.01.01.01.04",
+          "value": "570",
+          "valueKnown": true,
+          "label": "Folha - Dia 10",
+          "display": "04 - Folha - Dia 10",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "04.01.02.01",
+      "label": "Qual é a data de vencimento da Folha Doméstica deste cliente?",
+      "category": "Dpto. Pessoal/Trabalhista",
+      "answers": [
+        {
+          "ref": "04.01.02.01.01",
+          "value": "86",
+          "valueKnown": true,
+          "label": "Folha Doméstica - Último Dia Útil",
+          "display": "01 - Folha Doméstica - Último Dia Útil",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "04.01.03.01",
+      "label": "Qual é a data de vencimento da Folha Pessoa Física (CEI)?",
+      "category": "Dpto. Pessoal/Trabalhista",
+      "answers": [
+        {
+          "ref": "04.01.03.01.01",
+          "value": "87",
+          "valueKnown": true,
+          "label": "Folha CEI - 1º Dia Útil",
+          "display": "01 - Folha CEI - 1º Dia Útil",
+          "type": "R"
+        },
+        {
+          "ref": "04.01.03.01.02",
+          "value": "88",
+          "valueKnown": true,
+          "label": "Folha CEI - 5º Dia Útil",
+          "display": "02 - Folha CEI - 5º Dia Útil",
+          "type": "R"
+        },
+        {
+          "ref": "04.01.03.01.03",
+          "value": "89",
+          "valueKnown": true,
+          "label": "Folha CEI - Último Dia",
+          "display": "03 - Folha CEI - Último Dia",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "04.01.04.01",
+      "label": "Qual é a data de vencimento da Folha Somente Pró-Labore (Apenas Sócios) deste cliente?",
+      "category": "Dpto. Pessoal/Trabalhista",
+      "answers": [
+        {
+          "ref": "04.01.04.01.01",
+          "value": "124",
+          "valueKnown": true,
+          "label": "Só Pró-Labore - 1º Dia Útil",
+          "display": "01 - Só Pró-Labore - 1º Dia Útil",
+          "type": "R"
+        },
+        {
+          "ref": "04.01.04.01.02",
+          "value": "125",
+          "valueKnown": true,
+          "label": "Só Pró-Labore - 5º Dia Útil",
+          "display": "02 - Só Pró-Labore - 5º Dia Útil",
+          "type": "R"
+        },
+        {
+          "ref": "04.01.04.01.03",
+          "value": "126",
+          "valueKnown": true,
+          "label": "Só Pró-Labore - Último Dia Útil",
+          "display": "03 - Só Pró-Labore - Último Dia Útil",
+          "type": "R"
+        },
+        {
+          "ref": "04.01.04.01.04",
+          "value": "572",
+          "valueKnown": true,
+          "label": "Folha Pro labore Com FGTS",
+          "display": "04 - Folha Pro labore Com FGTS",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "04.01.05.01",
+      "label": "Quais obrigações sem movimentação/negativas são entregues para esse cliente ?",
+      "category": "Dpto. Pessoal/Trabalhista",
+      "answers": [
+        {
+          "ref": "04.01.05.01.01",
+          "value": "370",
+          "valueKnown": true,
+          "label": "E-Social (Sem Movimento) - Anual em Fevereiro",
+          "display": "01 - E-Social (Sem Movimento) - Anual em Fevereiro",
+          "type": "R"
+        },
+        {
+          "ref": "04.01.05.01.02",
+          "value": "359",
+          "valueKnown": true,
+          "label": "Envio do evento e-social s-1299 fechamento/SEFIP (Inativa)",
+          "display": "02 - Envio do evento e-social s-1299 fechamento/SEFIP (Inativa)",
+          "type": "R"
+        },
+        {
+          "ref": "04.01.05.01.03",
+          "value": "360",
+          "valueKnown": true,
+          "label": "DCTF Web - Sem movimento/Inativa",
+          "display": "03 - DCTF Web - Sem movimento/Inativa",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "04.02",
+      "label": "Este cliente possui Adiantamento Salarial? Se sim, em qual data?",
+      "category": "Dpto. Pessoal/Trabalhista",
+      "answers": [
+        {
+          "ref": "04.02.01",
+          "value": "96",
+          "valueKnown": true,
+          "label": "Folha de Adiantamento 15",
+          "display": "01 - Folha de Adiantamento 15",
+          "type": "R"
+        },
+        {
+          "ref": "04.02.02",
+          "value": "97",
+          "valueKnown": true,
+          "label": "Folha de Adiantamento 20",
+          "display": "02 - Folha de Adiantamento 20",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "04.03",
+      "label": "Quais destes Benefícios são processados e entregues para este cliente?",
+      "category": "Dpto. Pessoal/Trabalhista",
+      "answers": [
+        {
+          "ref": "04.03.01",
+          "value": "551",
+          "valueKnown": true,
+          "label": "Cesta Básica",
+          "display": "01 - Cesta Básica",
+          "type": "R"
+        },
+        {
+          "ref": "04.03.02",
+          "value": "580",
+          "valueKnown": true,
+          "label": "VR",
+          "display": "02 - VR",
+          "type": "R"
+        },
+        {
+          "ref": "04.03.03",
+          "value": "581",
+          "valueKnown": true,
+          "label": "VT",
+          "display": "03 - VT",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "04.03.01.01",
+      "label": "Qual forma de pagamento do beneficio?",
+      "category": "Dpto. Pessoal/Trabalhista",
+      "answers": [
+        {
+          "ref": "04.03.01.01.01",
+          "value": "573",
+          "valueKnown": true,
+          "label": "Recibo de Cesta",
+          "display": "01 - Recibo de Cesta",
+          "type": "R"
+        },
+        {
+          "ref": "04.03.01.01.02",
+          "value": "574",
+          "valueKnown": true,
+          "label": "Pagto na Folha de Pagamento",
+          "display": "02 - Pagto na Folha de Pagamento",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "04.03.02.01",
+      "label": "Como é feito o VR ?",
+      "category": "Dpto. Pessoal/Trabalhista",
+      "answers": [
+        {
+          "ref": "04.03.02.01.01",
+          "value": "110",
+          "valueKnown": true,
+          "label": "Benefício VR",
+          "display": "01 - Benefício VR",
+          "type": "R"
+        },
+        {
+          "ref": "04.03.02.01.02",
+          "value": "575",
+          "valueKnown": true,
+          "label": "Fornecimento VR",
+          "display": "02 - Fornecimento VR",
+          "type": "R"
+        },
+        {
+          "ref": "04.03.02.01.03",
+          "value": "576",
+          "valueKnown": true,
+          "label": "Relatório Liquido VR",
+          "display": "03 - Relatório Liquido VR",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "04.03.03.01",
+      "label": "Como é feito o VT ?",
+      "category": "Dpto. Pessoal/Trabalhista",
+      "answers": [
+        {
+          "ref": "04.03.03.01.01",
+          "value": "111",
+          "valueKnown": true,
+          "label": "Benefício VT",
+          "display": "01 - Benefício VT",
+          "type": "R"
+        },
+        {
+          "ref": "04.03.03.01.02",
+          "value": "578",
+          "valueKnown": true,
+          "label": "Recibo VT",
+          "display": "02 - Recibo VT",
+          "type": "R"
+        },
+        {
+          "ref": "04.03.03.01.03",
+          "value": "577",
+          "valueKnown": true,
+          "label": "Relatório Liquido VT",
+          "display": "03 - Relatório Liquido VT",
+          "type": "R"
+        },
+        {
+          "ref": "04.03.03.01.04",
+          "value": "579",
+          "valueKnown": true,
+          "label": "Boleto Transporte",
+          "display": "04 - Boleto Transporte",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "04.04",
+      "label": "Quais destes demais serviços de DP são processados pelo escritório e entregues ao cliente?",
+      "category": "Dpto. Pessoal/Trabalhista",
+      "answers": [
+        {
+          "ref": "04.04.01",
+          "value": "420",
+          "valueKnown": true,
+          "label": "PIS S/ Folha",
+          "display": "01 - PIS S/ Folha",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "04.05",
+      "label": "Como é feito a folha desse cliente ?",
+      "category": "Dpto. Pessoal/Trabalhista",
+      "answers": [
+        {
+          "ref": "04.05.01",
+          "value": "559",
+          "valueKnown": true,
+          "label": "Ponto Mais",
+          "display": "01 - Ponto Mais",
+          "type": "R"
+        },
+        {
+          "ref": "04.05.02",
+          "value": "561",
+          "valueKnown": true,
+          "label": "Outras folhas ponto.",
+          "display": "02 - Outras folhas ponto.",
+          "type": "R"
+        },
+        {
+          "ref": "04.05.03",
+          "value": "565",
+          "valueKnown": true,
+          "label": "Cliente passa os apontamentos",
+          "display": "03 - Cliente passa os apontamentos",
+          "type": "R"
+        },
+        {
+          "ref": "04.05.04",
+          "value": "571",
+          "valueKnown": true,
+          "label": "Rotinas Automáticas",
+          "display": "04 - Rotinas Automáticas",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "04.06",
+      "label": "Tem cadastro Portal Cliente e Empregado - Dominio onvio?",
+      "category": "Dpto. Pessoal/Trabalhista",
+      "answers": [
+        {
+          "ref": "04.06.01",
+          "value": "560",
+          "valueKnown": true,
+          "label": "Portal do cliente.",
+          "display": "01 - Portal do cliente.",
+          "type": "R"
+        },
+        {
+          "ref": "04.06.02",
+          "value": "558",
+          "valueKnown": true,
+          "label": "Portal do empregado",
+          "display": "02 - Portal do empregado",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "04.07",
+      "label": "Cliente possui alguma especificação?",
+      "category": "Dpto. Pessoal/Trabalhista",
+      "answers": [
+        {
+          "ref": "04.07.01",
+          "value": "582",
+          "valueKnown": true,
+          "label": "Variável",
+          "display": "01 - Variável",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "04.08",
+      "label": "Algum Parcelamento?",
+      "category": "Dpto. Pessoal/Trabalhista",
+      "answers": [
+        {
+          "ref": "04.08.01",
+          "value": "584",
+          "valueKnown": true,
+          "label": "Parcelamento INSS",
+          "display": "01 - Parcelamento INSS",
+          "type": "R"
+        },
+        {
+          "ref": "04.08.02",
+          "value": "583",
+          "valueKnown": true,
+          "label": "Parcelamento FGTS",
+          "display": "02 - Parcelamento FGTS",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "05.01",
+      "label": "Qual é a data de vencimento do Boleto deste cliente?",
+      "category": "Dpto. Financeiro",
+      "answers": [
+        {
+          "ref": "05.01.01",
+          "value": "389",
+          "valueKnown": true,
+          "label": "Boleto - Dia 01",
+          "display": "01 - Boleto - Dia 01",
+          "type": "R"
+        },
+        {
+          "ref": "05.01.02",
+          "value": "391",
+          "valueKnown": true,
+          "label": "Boleto - Dia 05",
+          "display": "02 - Boleto - Dia 05",
+          "type": "R"
+        },
+        {
+          "ref": "05.01.03",
+          "value": "402",
+          "valueKnown": true,
+          "label": "Boleto - Dia 10",
+          "display": "03 - Boleto - Dia 10",
+          "type": "R"
+        },
+        {
+          "ref": "05.01.04",
+          "value": "403",
+          "valueKnown": true,
+          "label": "Boleto - Dia 15",
+          "display": "04 - Boleto - Dia 15",
+          "type": "R"
+        },
+        {
+          "ref": "05.01.05",
+          "value": "404",
+          "valueKnown": true,
+          "label": "Boleto - Dia 20",
+          "display": "05 - Boleto - Dia 20",
+          "type": "R"
+        },
+        {
+          "ref": "05.01.06",
+          "value": "407",
+          "valueKnown": true,
+          "label": "Boleto - Dia 25",
+          "display": "06 - Boleto - Dia 25",
+          "type": "R"
+        },
+        {
+          "ref": "05.01.07",
+          "value": "394",
+          "valueKnown": true,
+          "label": "Boleto - Dia 30",
+          "display": "07 - Boleto - Dia 30",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "05.02",
+      "label": "Qual a forma de pagamentos desse cliente?",
+      "category": "Dpto. Financeiro",
+      "answers": [
+        {
+          "ref": "05.02.01",
+          "value": "552",
+          "valueKnown": true,
+          "label": "Boleto",
+          "display": "01 - Boleto",
+          "type": "R"
+        },
+        {
+          "ref": "05.02.02",
+          "value": "553",
+          "valueKnown": true,
+          "label": "PIX",
+          "display": "02 - PIX",
+          "type": "R"
+        },
+        {
+          "ref": "05.02.03",
+          "value": "554",
+          "valueKnown": true,
+          "label": "Dinheiro",
+          "display": "03 - Dinheiro",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "06.01",
+      "label": "Quais destas renovações são realizadas para este cliente?",
+      "category": "Dpto. Legalização",
+      "answers": [
+        {
+          "ref": "06.01.01",
+          "value": "467",
+          "valueKnown": true,
+          "label": "SICAF - Mensal",
+          "display": "01 - SICAF - Mensal",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "07.01",
+      "label": "Este cliente possui serviços de BPO Financeiro?",
+      "category": "BPO Financeiro",
+      "answers": [
+        {
+          "ref": "07.01.01",
+          "value": "472",
+          "valueKnown": true,
+          "label": "Possui Serviços de BPO Financeiro",
+          "display": "01 - Possui Serviços de BPO Financeiro",
+          "type": "R"
+        },
+        {
+          "ref": "07.01.02",
+          "value": "473",
+          "valueKnown": true,
+          "label": "Não possui Serviços de BPO Financeiro",
+          "display": "02 - Não possui Serviços de BPO Financeiro",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "07.01.01.01",
+      "label": "Em qual(is) Banco(s) este cliente possui conta?",
+      "category": "BPO Financeiro",
+      "answers": [
+        {
+          "ref": "07.01.01.01.01",
+          "value": "501",
+          "valueKnown": true,
+          "label": "Banco ABC - Cód.: 638",
+          "display": "01 - Banco ABC - Cód.: 638",
+          "type": "R"
+        },
+        {
+          "ref": "07.01.01.01.02",
+          "value": "506",
+          "valueKnown": true,
+          "label": "Banco BMG - Cód.: 25",
+          "display": "02 - Banco BMG - Cód.: 25",
+          "type": "R"
+        },
+        {
+          "ref": "07.01.01.01.03",
+          "value": "497",
+          "valueKnown": true,
+          "label": "Banco do Brasil - Cód.: 1",
+          "display": "03 - Banco do Brasil - Cód.: 1",
+          "type": "R"
+        },
+        {
+          "ref": "07.01.01.01.04",
+          "value": "489",
+          "valueKnown": true,
+          "label": "Banco Inter - Cód.: 0",
+          "display": "04 - Banco Inter - Cód.: 0",
+          "type": "R"
+        },
+        {
+          "ref": "07.01.01.01.05",
+          "value": "504",
+          "valueKnown": true,
+          "label": "Banco Original - Cód.: 29",
+          "display": "05 - Banco Original - Cód.: 29",
+          "type": "R"
+        },
+        {
+          "ref": "07.01.01.01.06",
+          "value": "499",
+          "valueKnown": true,
+          "label": "Banco Pan - Cód.: 9",
+          "display": "06 - Banco Pan - Cód.: 9",
+          "type": "R"
+        },
+        {
+          "ref": "07.01.01.01.07",
+          "value": "505",
+          "valueKnown": true,
+          "label": "Banco Safra - Cód.: 76",
+          "display": "07 - Banco Safra - Cód.: 76",
+          "type": "R"
+        },
+        {
+          "ref": "07.01.01.01.08",
+          "value": "500",
+          "valueKnown": true,
+          "label": "Banrisul - Cód.: 41",
+          "display": "08 - Banrisul - Cód.: 41",
+          "type": "R"
+        },
+        {
+          "ref": "07.01.01.01.09",
+          "value": "496",
+          "valueKnown": true,
+          "label": "Bradesco - Cód.: 237",
+          "display": "09 - Bradesco - Cód.: 237",
+          "type": "R"
+        },
+        {
+          "ref": "07.01.01.01.10",
+          "value": "503",
+          "valueKnown": true,
+          "label": "BTG Pactual - Cód.: 20",
+          "display": "10 - BTG Pactual - Cód.: 20",
+          "type": "R"
+        },
+        {
+          "ref": "07.01.01.01.11",
+          "value": "490",
+          "valueKnown": true,
+          "label": "C6 Bank - Cód.: 306",
+          "display": "11 - C6 Bank - Cód.: 306",
+          "type": "R"
+        },
+        {
+          "ref": "07.01.01.01.12",
+          "value": "498",
+          "valueKnown": true,
+          "label": "Caixa Econômica Federal - Cód.: 104",
+          "display": "12 - Caixa Econômica Federal - Cód.: 104",
+          "type": "R"
+        },
+        {
+          "ref": "07.01.01.01.13",
+          "value": "495",
+          "valueKnown": true,
+          "label": "Itaú Unibanco - Cód.: 341",
+          "display": "13 - Itaú Unibanco - Cód.: 341",
+          "type": "R"
+        },
+        {
+          "ref": "07.01.01.01.14",
+          "value": "493",
+          "valueKnown": true,
+          "label": "Neon - Cód.: 85",
+          "display": "14 - Neon - Cód.: 85",
+          "type": "R"
+        },
+        {
+          "ref": "07.01.01.01.15",
+          "value": "494",
+          "valueKnown": true,
+          "label": "Next - Cód.: 263",
+          "display": "15 - Next - Cód.: 263",
+          "type": "R"
+        },
+        {
+          "ref": "07.01.01.01.16",
+          "value": "488",
+          "valueKnown": true,
+          "label": "Nubank - Cód.: 380",
+          "display": "16 - Nubank - Cód.: 380",
+          "type": "R"
+        },
+        {
+          "ref": "07.01.01.01.17",
+          "value": "536",
+          "valueKnown": true,
+          "label": "Omie Cash",
+          "display": "17 - Omie Cash",
+          "type": "R"
+        },
+        {
+          "ref": "07.01.01.01.18",
+          "value": "492",
+          "valueKnown": true,
+          "label": "PagBank - Cód.: 260",
+          "display": "18 - PagBank - Cód.: 260",
+          "type": "R"
+        },
+        {
+          "ref": "07.01.01.01.19",
+          "value": "502",
+          "valueKnown": true,
+          "label": "Santander - Cód.: 33",
+          "display": "19 - Santander - Cód.: 33",
+          "type": "R"
+        },
+        {
+          "ref": "07.01.01.01.20",
+          "value": "491",
+          "valueKnown": true,
+          "label": "Sicredi - Cód.: 748",
+          "display": "20 - Sicredi - Cód.: 748",
+          "type": "R"
+        },
+        {
+          "ref": "07.01.01.01.21",
+          "value": "537",
+          "valueKnown": true,
+          "label": "Sicoob - Cód: 756",
+          "display": "21 - Sicoob - Cód: 756",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "07.01.01.02",
+      "label": "Qual é o ERP - Sistema Financeiro deste cliente?",
+      "category": "BPO Financeiro",
+      "answers": [
+        {
+          "ref": "07.01.01.02.01",
+          "value": "507",
+          "valueKnown": true,
+          "label": "Omie",
+          "display": "01 - Omie",
+          "type": "R"
+        },
+        {
+          "ref": "07.01.01.02.02",
+          "value": "508",
+          "valueKnown": true,
+          "label": "Bling",
+          "display": "02 - Bling",
+          "type": "R"
+        },
+        {
+          "ref": "07.01.01.02.03",
+          "value": "509",
+          "valueKnown": true,
+          "label": "Conta Azul",
+          "display": "03 - Conta Azul",
+          "type": "R"
+        },
+        {
+          "ref": "07.01.01.02.04",
+          "value": "516",
+          "valueKnown": true,
+          "label": "Microsoft Dynamics 365",
+          "display": "04 - Microsoft Dynamics 365",
+          "type": "R"
+        },
+        {
+          "ref": "07.01.01.02.05",
+          "value": "510",
+          "valueKnown": true,
+          "label": "Nibo",
+          "display": "05 - Nibo",
+          "type": "R"
+        },
+        {
+          "ref": "07.01.01.02.06",
+          "value": "517",
+          "valueKnown": true,
+          "label": "Nuvemshop",
+          "display": "06 - Nuvemshop",
+          "type": "R"
+        },
+        {
+          "ref": "07.01.01.02.07",
+          "value": "511",
+          "valueKnown": true,
+          "label": "Oracle",
+          "display": "07 - Oracle",
+          "type": "R"
+        },
+        {
+          "ref": "07.01.01.02.08",
+          "value": "512",
+          "valueKnown": true,
+          "label": "Sankhya",
+          "display": "08 - Sankhya",
+          "type": "R"
+        },
+        {
+          "ref": "07.01.01.02.09",
+          "value": "513",
+          "valueKnown": true,
+          "label": "SAP Business One",
+          "display": "09 - SAP Business One",
+          "type": "R"
+        },
+        {
+          "ref": "07.01.01.02.10",
+          "value": "514",
+          "valueKnown": true,
+          "label": "Sênior",
+          "display": "10 - Sênior",
+          "type": "R"
+        },
+        {
+          "ref": "07.01.01.02.11",
+          "value": "515",
+          "valueKnown": true,
+          "label": "TOTVS Protheus",
+          "display": "11 - TOTVS Protheus",
+          "type": "R"
+        },
+        {
+          "ref": "07.01.01.02.12",
+          "value": "518",
+          "valueKnown": true,
+          "label": "Cliente não possui nenhum ERP Financeiro",
+          "display": "12 - Cliente não possui nenhum ERP Financeiro",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "07.01.01.03",
+      "label": "Quais rotinas de BPO Financeiro serão ativadas para este cliente?",
+      "category": "BPO Financeiro",
+      "answers": [
+        {
+          "ref": "07.01.01.03.01",
+          "value": "474",
+          "valueKnown": true,
+          "label": "Conciliação Bancária - Diária",
+          "display": "01 - Conciliação Bancária - Diária",
+          "type": "R"
+        },
+        {
+          "ref": "07.01.01.03.02",
+          "value": "524",
+          "valueKnown": true,
+          "label": "Conciliação Bancária - Semanal",
+          "display": "02 - Conciliação Bancária - Semanal",
+          "type": "R"
+        },
+        {
+          "ref": "07.01.01.03.03",
+          "value": "530",
+          "valueKnown": true,
+          "label": "Conciliação Bancária - Mensal",
+          "display": "03 - Conciliação Bancária - Mensal",
+          "type": "R"
+        },
+        {
+          "ref": "07.01.01.03.04",
+          "value": "475",
+          "valueKnown": true,
+          "label": "CP - Lançamento de gastos Fixos e Variáveis",
+          "display": "04 - CP - Lançamento de gastos Fixos e Variáveis",
+          "type": "R"
+        },
+        {
+          "ref": "07.01.01.03.05",
+          "value": "476",
+          "valueKnown": true,
+          "label": "CP - Programação de Pagamentos - Semanal",
+          "display": "05 - CP - Programação de Pagamentos - Semanal",
+          "type": "R"
+        },
+        {
+          "ref": "07.01.01.03.06",
+          "value": "477",
+          "valueKnown": true,
+          "label": "CP - Programação de Pagamentos de Impostos e Tributos",
+          "display": "06 - CP - Programação de Pagamentos de Impostos e Tributos",
+          "type": "R"
+        },
+        {
+          "ref": "07.01.01.03.07",
+          "value": "478",
+          "valueKnown": true,
+          "label": "CR - Lançamentos de Contas a Receber",
+          "display": "07 - CR - Lançamentos de Contas a Receber",
+          "type": "R"
+        },
+        {
+          "ref": "07.01.01.03.08",
+          "value": "479",
+          "valueKnown": true,
+          "label": "Apresentação de Resultados",
+          "display": "08 - Apresentação de Resultados",
+          "type": "R"
+        },
+        {
+          "ref": "07.01.01.03.09",
+          "value": "485",
+          "valueKnown": true,
+          "label": "Atualização de Orçamento Anual",
+          "display": "09 - Atualização de Orçamento Anual",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "07.01.01.03.02.01",
+      "label": "Em qual dia da semana é realizado esta conciliação?",
+      "category": "BPO Financeiro",
+      "answers": [
+        {
+          "ref": "07.01.01.03.02.01.01",
+          "value": "525",
+          "valueKnown": true,
+          "label": "Conciliação - Segunda",
+          "display": "01 - Conciliação - Segunda",
+          "type": "R"
+        },
+        {
+          "ref": "07.01.01.03.02.01.02",
+          "value": "526",
+          "valueKnown": true,
+          "label": "Conciliação - Terça",
+          "display": "02 - Conciliação - Terça",
+          "type": "R"
+        },
+        {
+          "ref": "07.01.01.03.02.01.03",
+          "value": "527",
+          "valueKnown": true,
+          "label": "Conciliação - Quarta",
+          "display": "03 - Conciliação - Quarta",
+          "type": "R"
+        },
+        {
+          "ref": "07.01.01.03.02.01.04",
+          "value": "528",
+          "valueKnown": true,
+          "label": "Conciliação - Quinta",
+          "display": "04 - Conciliação - Quinta",
+          "type": "R"
+        },
+        {
+          "ref": "07.01.01.03.02.01.05",
+          "value": "529",
+          "valueKnown": true,
+          "label": "Conciliação - Sexta",
+          "display": "05 - Conciliação - Sexta",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "07.01.01.03.05.01",
+      "label": "Em qual dia da semana será realizada a Programação de Pagamento deste cliente?",
+      "category": "BPO Financeiro",
+      "answers": [
+        {
+          "ref": "07.01.01.03.05.01.01",
+          "value": "519",
+          "valueKnown": true,
+          "label": "Programação de Pagamento - Segunda-Feira",
+          "display": "01 - Programação de Pagamento - Segunda-Feira",
+          "type": "R"
+        },
+        {
+          "ref": "07.01.01.03.05.01.02",
+          "value": "520",
+          "valueKnown": true,
+          "label": "Programação de Pagamento - Terça-Feira",
+          "display": "02 - Programação de Pagamento - Terça-Feira",
+          "type": "R"
+        },
+        {
+          "ref": "07.01.01.03.05.01.03",
+          "value": "521",
+          "valueKnown": true,
+          "label": "Programação de Pagamento - Quarta-Feira",
+          "display": "03 - Programação de Pagamento - Quarta-Feira",
+          "type": "R"
+        },
+        {
+          "ref": "07.01.01.03.05.01.04",
+          "value": "522",
+          "valueKnown": true,
+          "label": "Programação de Pagamento - Quinta-Feira",
+          "display": "04 - Programação de Pagamento - Quinta-Feira",
+          "type": "R"
+        },
+        {
+          "ref": "07.01.01.03.05.01.05",
+          "value": "523",
+          "valueKnown": true,
+          "label": "Programação de Pagamento - Sexta-Feira",
+          "display": "05 - Programação de Pagamento - Sexta-Feira",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "07.01.01.03.08.01",
+      "label": "Com qual frequência é realizada a Apresentação de Resultados deste cliente?",
+      "category": "BPO Financeiro",
+      "answers": [
+        {
+          "ref": "07.01.01.03.08.01.01",
+          "value": "480",
+          "valueKnown": true,
+          "label": "Apresentação de Resultados - Mensal",
+          "display": "01 - Apresentação de Resultados - Mensal",
+          "type": "R"
+        },
+        {
+          "ref": "07.01.01.03.08.01.02",
+          "value": "481",
+          "valueKnown": true,
+          "label": "Apresentação de Resultados - Bimestral",
+          "display": "02 - Apresentação de Resultados - Bimestral",
+          "type": "R"
+        },
+        {
+          "ref": "07.01.01.03.08.01.03",
+          "value": "482",
+          "valueKnown": true,
+          "label": "Apresentação de Resultados - Trimestral",
+          "display": "03 - Apresentação de Resultados - Trimestral",
+          "type": "R"
+        },
+        {
+          "ref": "07.01.01.03.08.01.04",
+          "value": "483",
+          "valueKnown": true,
+          "label": "Apresentação de Resultados - Semestral",
+          "display": "04 - Apresentação de Resultados - Semestral",
+          "type": "R"
+        },
+        {
+          "ref": "07.01.01.03.08.01.05",
+          "value": "484",
+          "valueKnown": true,
+          "label": "Apresentação de Resultados - Anual",
+          "display": "05 - Apresentação de Resultados - Anual",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "07.01.01.03.09.01",
+      "label": "Em qual mês é feita a Atualização de Orçamento Anual deste cliente?",
+      "category": "BPO Financeiro",
+      "answers": [
+        {
+          "ref": "07.01.01.03.09.01.01",
+          "value": "486",
+          "valueKnown": true,
+          "label": "Atualização de Orçamento em Dezembro",
+          "display": "01 - Atualização de Orçamento em Dezembro",
+          "type": "R"
+        },
+        {
+          "ref": "07.01.01.03.09.01.02",
+          "value": "487",
+          "valueKnown": true,
+          "label": "Atualização de Orçamento em Janeiro",
+          "display": "02 - Atualização de Orçamento em Janeiro",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "ref": "08.01",
+      "label": "Nota Fiscal - Emissões Escritório, quais empresas?",
+      "category": "Emissão de Nota Fiscal",
+      "answers": [
+        {
+          "ref": "08.01.01",
+          "value": "566",
+          "valueKnown": true,
+          "label": "Nota Fiscal - Prevent Senior",
+          "display": "01 - Nota Fiscal - Prevent Senior",
+          "type": "R"
+        },
+        {
+          "ref": "08.01.02",
+          "value": "567",
+          "valueKnown": true,
+          "label": "Nota Fiscal - Comercio",
+          "display": "02 - Nota Fiscal - Comercio",
+          "type": "R"
+        },
+        {
+          "ref": "08.01.03",
+          "value": "568",
+          "valueKnown": true,
+          "label": "Nota Fiscal - Prestação de Serviço",
+          "display": "03 - Nota Fiscal - Prestação de Serviço",
+          "type": "R"
+        }
+      ]
+    }
+  ]
+}
