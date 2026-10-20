@@ -1,0 +1,8 @@
+node_modules/
+automacao/node_modules/
+automacao/runs/
+*.lock
+.DS_Store
+*.tmp*
+__pycache__/
+*.pyc

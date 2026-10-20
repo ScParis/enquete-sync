@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Enquetes G-Click · Automação local</title>
+  <link rel="stylesheet" href="/ui/style.css">
+  <script type="module" src="/ui/app.js"></script>
+  <style>
+    #fileModeNotice{display:none}
+    html.file-mode body{margin:0;background:#f5f7f7;color:#1d2932;font:16px/1.5 system-ui,sans-serif}
+    html.file-mode body>*:not(#fileModeNotice){display:none!important}
+    html.file-mode #fileModeNotice{display:block!important;max-width:600px;margin:12vh auto;padding:30px;background:white;border:1px solid #dce7e5;border-radius:14px;box-shadow:0 10px 32px #123c4414}
+    html.file-mode #fileModeNotice h1{font-size:24px;line-height:1.2;margin:0 0 12px}
+    html.file-mode #fileModeNotice p{margin:0 0 20px;color:#50646b}
+    html.file-mode #fileModeNotice a{display:inline-block;padding:11px 16px;border-radius:8px;background:#187b70;color:white;text-decoration:none;font-weight:700}
+    @media(max-width:650px){html.file-mode #fileModeNotice{margin:24px 14px;padding:22px}}
+  </style>
+  <script>if (location.protocol === 'file:') document.documentElement.classList.add('file-mode');</script>
+</head>
+<body>
+  <div id="fileModeNotice" role="alert"><h1>Abra a interface pelo servidor local</h1><p>Este arquivo é uma cópia da tela. A automação precisa do servidor em execução para carregar planilha, Enquete e relatórios.</p><a href="http://127.0.0.1:8766/">Abrir automação G-Click</a><p style="margin-top:18px;font-size:13px">Se o endereço não abrir, inicie o aplicativo com <code>npm start</code> na pasta do projeto.</p></div>
+
+  <header class="topbar"><div><span class="brand">G-CLICK</span><span class="top-sep"></span><strong>Enquetes</strong><span class="top-sub">Automação local</span></div><div class="local-badge"><span></span> Executando neste computador</div></header>
+
+  <nav class="nav-tabs">
+    <button id="tabOnboarding" type="button" class="tab-btn active">⚡ Raio-X & Implantação (Novo Cliente)</button>
+    <button id="tabLegacy" type="button" class="tab-btn">📁 Mapeamento de Planilhas (Lote Legado)</button>
+  </nav>
+
+  <main>
+    <div id="viewOnboarding">
+      <section class="hero">
+        <div>
+          <p class="eyebrow">ONBOARDING & IMPLANTAÇÃO INTELIGENTE</p>
+          <h1>Raio-X do Cliente & Configuração G-Click</h1>
+          <p>Analise os dados societários (CNPJ, CNAE, UF e Município), identifique os prazos fatais dos primeiros 30 dias para evitar multas e configure automaticamente as enquetes no G-Click.</p>
+        </div>
+        <div class="hero-note">
+          <strong>Fluxo sem multas</strong>
+          <span>1. Dados cadastrais & CNAEs</span>
+          <span>2. Análise do Raio-X & Fator R</span>
+          <span>3. Prazos fatais (30 dias)</span>
+          <span>4. Gravação na Enquete G-Click</span>
+        </div>
+      </section>
+
+      <div class="layout">
+        <div class="form-col">
+          <section class="card">
+            <div class="card-head">
+              <span class="step">01</span>
+              <div>
+                <h2>Dados Cadastrais da Empresa</h2>
+                <p>Informe o CNPJ ou preencha os dados da nova empresa.</p>
+              </div>
+            </div>
+            <label for="onbCnpj">CNPJ</label>
+            <div class="row">
+              <input id="onbCnpj" type="text" placeholder="00.000.000/0000-00" style="flex:1">
+              <button id="onbBuscarCnpj" type="button" class="secondary">Buscar CNPJ</button>
+            </div>
+            <p id="onbCnpjStatus" class="hint"></p>
+
+            <label for="onbRazaoSocial">Razão Social</label>
+            <input id="onbRazaoSocial" type="text" placeholder="Nome da empresa">
+
+            <div class="grid2">
+              <div>
+                <label for="onbUf">UF</label>
+                <input id="onbUf" type="text" placeholder="SP, MG, RJ..." maxlength="2">
+              </div>
+              <div>
+                <label for="onbMunicipio">Município</label>
+                <input id="onbMunicipio" type="text" placeholder="Nome da cidade">
+              </div>
+            </div>
+
+            <label for="onbCnaePrincipal">CNAE Principal</label>
+            <input id="onbCnaePrincipal" type="text" placeholder="Ex: 6201-5/01 ou 4711-3/02">
+
+            <label for="onbCnaesSecundarios">CNAEs Secundários <small>(separados por vírgula)</small></label>
+            <input id="onbCnaesSecundarios" type="text" placeholder="Ex: 6202-3/00, 6209-1/00">
+
+            <div class="grid2">
+              <div>
+                <label for="onbRegime">Regime Tributário</label>
+                <select id="onbRegime">
+                  <option value="simples">Simples Nacional</option>
+                  <option value="presumido">Lucro Presumido</option>
+                  <option value="real">Lucro Real</option>
+                  <option value="mei">MEI</option>
+                </select>
+              </div>
+              <div>
+                <label for="onbTipo">Tipo</label>
+                <select id="onbTipo">
+                  <option value="matriz">Matriz</option>
+                  <option value="filial">Filial</option>
+                </select>
+              </div>
+            </div>
+
+            <label class="field-label">Particularidades Operacionais</label>
+            <label class="onb-check-label"><input id="onbProlabore" type="checkbox" checked><span>Terá retirada de Pró-labore dos sócios</span></label>
+            <label class="onb-check-label"><input id="onbFuncionarios" type="checkbox"><span>Terá funcionários registrados</span></label>
+            <label class="onb-check-label"><input id="onbInterestadual" type="checkbox"><span>Realizará compras ou vendas interestaduais (DIFAL / ST)</span></label>
+
+            <button id="onbGerarDiagnostico" type="button" class="primary" style="width:100%;margin-top:18px">Gerar Raio-X & Diagnóstico</button>
+          </section>
+
+          <section class="card">
+            <div class="card-head">
+              <span class="step">02</span>
+              <div>
+                <h2>Conexão G-Click</h2>
+                <p>Conta para aplicar as respostas da Enquete.</p>
+              </div>
+            </div>
+            <label for="onbAccountId">Conta G-Click</label>
+            <input id="onbAccountId" inputmode="numeric" value="6581">
+            <div class="row" style="margin-top:12px">
+              <button id="onbOpenLogin" type="button" class="secondary">Iniciar login G-Click</button>
+              <button id="onbCheckLogin" type="button" class="ghost">Validar sessão</button>
+            </div>
+            <p id="onbLoginStatus" class="hint">Abra a janela de login e acesse a Enquete da conta antes de gravar.</p>
+          </section>
+        </div>
+
+        <div class="result-col">
+          <section class="card" id="onbRaioxPlaceholder">
+            <div class="result-head">
+              <div>
+                <p class="eyebrow">DIAGNÓSTICO</p>
+                <h2>Raio-X de Implantação</h2>
+              </div>
+              <span class="pill">Aguardando dados</span>
+            </div>
+            <p class="status">Preencha os dados da empresa ao lado e clique em "Gerar Raio-X & Diagnóstico".</p>
+          </section>
+
+          <section class="card" id="onbRaioxCard" hidden>
+            <div class="result-head">
+              <div>
+                <p class="eyebrow" id="onbResultSegmento">SEGMENTO</p>
+                <h2 id="onbResultEmpresa">Empresa</h2>
+              </div>
+              <span class="pill" id="onbResultRegime">Regime</span>
+            </div>
+
+            <div style="padding: 20px 24px;">
+              <div class="raiox-section">
+                <div class="raiox-block fatal" id="onbPrazosFataisBlock">
+                  <h3>🚨 Prazos Críticos Fatais (Primeiros 30 Dias)</h3>
+                  <p style="font-size:12px;color:#85382b;margin:0 0 10px;">Evite multas pós-abertura acompanhando essas entregas obrigatórias:</p>
+                  <div id="onbPrazosFataisList"></div>
+                </div>
+
+                <div class="raiox-block fator-r" id="onbFatorRBlock" hidden>
+                  <h3>⚡ Análise do Fator R (Simples Nacional)</h3>
+                  <p id="onbFatorRText" style="font-size:12px;color:#265c82;margin:0;"></p>
+                </div>
+
+                <div class="raiox-block">
+                  <h3>🏛️ Departamento Fiscal</h3>
+                  <div id="onbFiscalList"></div>
+                </div>
+
+                <div class="raiox-block">
+                  <h3>👥 Departamento Pessoal / DP</h3>
+                  <div id="onbPessoalList"></div>
+                </div>
+
+                <div class="raiox-block">
+                  <h3>📊 Departamento Contábil</h3>
+                  <div id="onbContabilList"></div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="card" id="onbEnqueteCard" hidden>
+            <div class="result-head">
+              <div>
+                <p class="eyebrow">INTEGRAÇÃO G-CLICK</p>
+                <h2>Configuração da Enquete</h2>
+              </div>
+              <span class="pill">Pronto para envio</span>
+            </div>
+            <div style="padding: 20px 24px;">
+              <p style="font-size:12px;color:#556b72;margin:0 0 12px;">As respostas abaixo foram deduzidas pelo Raio-X e serão aplicadas na Enquete do cliente:</p>
+              <div id="onbEnqueteChecklist" class="enquete-checklist"></div>
+              <button id="onbGravarGclick" type="button" class="danger">Gravar Enquete no G-Click para este Cliente</button>
+              <p id="onbGravarStatus" class="hint"></p>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+
+    <div id="viewLegacy" style="margin-top:50px;border-top:2px dashed #cfdbdd;padding-top:40px">
+      <section class="hero"><div><p class="eyebrow">OPERAÇÃO CONTROLADA</p><h1>Prepare e confira cada lote antes de gravar.</h1><p>Escolha a fonte, revise a regra e gere uma prévia da enquete. O relatório aponta cada CNPJ não localizado.</p></div><div class="hero-note"><strong>Sequência segura</strong><span>1. Fonte e regra</span><span>2. Prévia na enquete</span><span>3. Revisão do resultado</span><span>4. Gravação explícita</span></div></section>
+      <div class="layout"><div class="form-col">
+      <section class="card"><div class="card-head"><span class="step">01</span><div><h2>Conexão</h2><p>Conecte a conta para capturar perguntas e respostas.</p></div></div><label>Conta G-Click<input id="accountId" inputmode="numeric"></label><div class="row"><button id="openLogin" type="button" class="secondary">Abrir janela de login</button><button id="closeLogin" type="button" class="ghost">Repetir captura</button></div><p class="hint">Após entrar no Chrome da automação e abrir a Enquete da conta, o catálogo será capturado automaticamente. A leitura da planilha funciona antes do login.</p><div id="catalogOverview" class="catalog-overview" hidden><strong id="catalogOverviewStatus"></strong><input id="catalogOverviewSearch" type="search" placeholder="Buscar pergunta ou resposta da Enquete"><div id="catalogOverviewList" class="catalog-overview-list"></div></div></section>
+      <section class="card"><div class="card-head"><span class="step">02</span><div><h2>Fonte da planilha</h2><p>Use um arquivo, a exportação do navegador integrado ou acesso direto pela API.</p></div></div>
+        <div class="segmented"><label><input type="radio" name="sourceType" value="file"><span>Arquivo</span></label><label><input type="radio" name="sourceType" value="url"><span>Link público / API</span></label><label><input type="radio" name="sourceType" value="recent" checked><span>Navegador integrado</span></label></div>
+        <div id="fileBox" hidden><label class="field-label" for="file">Arquivo da planilha</label><input id="file" type="file" accept=".csv,.xlsx"><label class="field-label" for="sheetName">Nome da aba no XLSX <small>(opcional; padrão: primeira aba)</small></label><input id="sheetName" type="text" placeholder="Ex.: Obrigações"></div>
+        <div id="recentBox"><label class="field-label" for="recentSheetUrl">Link da aba no Google Sheets</label><input id="recentSheetUrl" type="url" value="https://docs.google.com/spreadsheets/d/1fxVpJ6WMWFdsQmmquaJK-_7IFTeIBepVGoBPUSHED5g/edit?gid=150007372#gid=150007372"><p class="hint">Baixe o CSV na aba autenticada e confirme o arquivo abaixo.</p><div class="row"><a id="directExport" class="button-link" target="_blank" rel="noopener">Baixar CSV da aba</a><a id="openSheet" class="button-link" target="_blank" rel="noopener">Abrir planilha</a><button id="refreshDownloads" type="button" class="secondary">Atualizar downloads</button></div><p id="recentUrlHint" class="hint"></p><label class="field-label" for="downloadFile">CSV da aba</label><select id="downloadFile"><option value="">Atualize a lista após baixar</option></select><p id="downloadHint" class="hint">O nome e o horário do arquivo aparecem aqui antes da análise.</p></div><div id="urlBox" hidden><label class="field-label" for="sourceUrl">Link da aba</label><input id="sourceUrl" type="url" value="https://docs.google.com/spreadsheets/d/1fxVpJ6WMWFdsQmmquaJK-_7IFTeIBepVGoBPUSHED5g/edit?gid=150007372#gid=150007372"><label class="field-label" for="serviceKey">Credencial de conta de serviço <small>(JSON, para planilha privada)</small></label><input id="serviceKey" type="file" accept=".json,application/json"><p class="hint">A planilha deve ser compartilhada como Leitor com o e-mail da conta de serviço. A chave é usada somente nesta leitura e não entra no relatório.</p></div>
+      </section>
+      <section class="card" id="mappingQueue"><div class="card-head"><span class="step">03</span><div><h2>Tarefas e respostas da Enquete</h2><p>Esta lista vem da planilha. A associação com a Enquete aparece abaixo de cada tarefa.</p></div></div>
+        <div id="queueSummary" class="queue-summary">Carregando tarefas da planilha…</div>
+        <div id="auditPanel" class="audit-panel"><strong>Conferência automática dos CNPJs</strong><p id="auditStatus">Aguardando a planilha e a Enquete da conta.</p><progress id="auditProgress" max="100" value="0" hidden></progress></div>
+        <div class="row queue-tools"><input id="queueSearch" type="search" placeholder="Buscar obrigação ou tarefa"><select id="queueFilter"><option value="attention">Sem associação</option><option value="all">Todas as tarefas</option><option value="ready">Associadas</option><option value="excluded">Excluídas</option></select></div>
+        <div id="queueList" class="queue-list"></div>
+        <div id="mappingEditor" class="mapping-editor" hidden><h3 id="editorTask"></h3><p id="editorHint" class="hint"></p><label>Buscar pergunta<input id="editorSearch" type="search" placeholder="Nome ou referência da pergunta"></label><label>Pergunta<select id="editorQuestion"></select></label><label>Resposta<select id="editorAnswer"></select></label><div class="row"><button id="confirmMapping" type="button" class="primary">Confirmar mapeamento</button><button id="clearMapping" type="button" class="ghost">Remover associação salva</button><button id="cancelMapping" type="button" class="ghost">Fechar</button></div></div>
+        <button id="previewMappings" type="button" class="primary queue-preview" disabled>Gerar prévia das tarefas selecionadas</button>
+        <p id="previewHint" class="hint"></p><button id="manualToggle" type="button" class="ghost">Abrir modo legado de DAS e DeSTDA</button>
+      </section>
+      <section class="card" id="manualRuleCard" hidden><div class="card-head"><span class="step">A</span><div><h2>Modo legado</h2><p>Os dois exemplos abaixo foram configurados anteriormente. Novas tarefas são mapeadas na lista acima.</p></div></div>
+        <label>Exemplos salvos<select id="rulePreset"></select></label>
+        <div id="catalogPanel" class="catalog-panel" hidden>
+          <p id="catalogStatus" class="hint"></p>
+          <label>Buscar pergunta<input id="questionSearch" type="search" placeholder="Digite parte da pergunta ou referência"></label>
+          <label>Pergunta da Enquete<select id="questionChoice"></select></label>
+          <label>Resposta a marcar<select id="answerChoice"></select></label>
+        </div>
+        <p id="mappingHint" class="hint">Valide o acesso ao G-Click para carregar o catálogo atual.</p>
+        <button id="loadTasks" type="button" class="secondary">Ler tarefas da planilha</button>
+        <p id="taskStatus" class="hint">As tarefas são sugeridas a partir da fonte selecionada.</p>
+        <label>Obrigação / Tarefa elegível <small>(uma por linha; confira antes da prévia)</small><textarea id="allowedTasks" rows="3"></textarea></label>
+        <label>Obrigação / Tarefa excluída <small>(uma por linha)</small><textarea id="excludedTasks" rows="2"></textarea></label>
+        <details id="advancedRule"><summary>Detalhes técnicos da regra</summary>
+          <div class="grid2"><label>Referência da pergunta<input id="questionRef"></label><label>Referência da resposta<input id="answerRef"></label></div>
+          <label>Categoria da pergunta<input id="category"></label><label>Pergunta<input id="question"></label>
+          <label>Tipo de resposta<select id="inputType"><option value="auto">Detectar na prévia</option><option value="radio">Escolha única</option><option value="checkbox">Múltipla escolha</option></select></label>
+          <div class="grid2"><label>Valor interno da resposta<input id="answerValue" inputmode="numeric"></label><label>Texto da resposta<input id="answerLabel"></label></div>
+        </details>
+      </section>
+      <section class="card"><div class="card-head"><span class="step">04</span><div><h2>Escopo</h2><p>Defina os clientes que serão avaliados.</p></div></div>
+        <div class="segmented"><label><input type="radio" name="scopeMode" value="eligible" checked><span>Todos os elegíveis</span></label><label><input type="radio" name="scopeMode" value="list"><span>Lista de CNPJs</span></label></div>
+        <div id="listBox" hidden><label class="field-label" for="cnpjsText">Um CNPJ por linha</label><textarea id="cnpjsText" rows="7" placeholder="19.402.991/0001-67"></textarea></div>
+        <p class="hint">“Todos os elegíveis” usa os CNPJs da planilha com as tarefas permitidas. CNPJs inválidos aparecem como problemas da fonte.</p>
+      </section>
+      <div class="actions" id="manualActions" hidden><button id="plan" type="button" class="secondary">Analisar regra manual</button><button id="preview" type="button" class="primary">Prévia da regra manual</button></div>
+    </div><div class="result-col">
+      <section class="card result-card"><div class="result-head"><div><p class="eyebrow">RESULTADO</p><h2>Saída da execução</h2></div><span id="modePill" class="pill">Aguardando</span></div><p id="status" class="status">Configure o lote e gere uma análise ou prévia.</p><div id="summary" class="summary" hidden></div>
+        <div id="missingPanel" class="alert" hidden><strong>CNPJs não localizados na enquete</strong><p>Esses clientes constam na planilha, mas não apareceram na pergunta consultada. A gravação do lote ficará bloqueada.</p><ul id="missingList"></ul></div>
+        <div id="invalidPanel" class="alert soft" hidden><strong>CNPJs inválidos na planilha</strong><ul id="invalidList"></ul></div>
+        <div id="downloads" class="downloads" hidden><a href="/api/report.csv" download="gclick-relatorio.csv">Baixar CSV</a><a href="/api/report.json" download="gclick-relatorio.json">Baixar JSON</a></div>
+        <div id="mappingResult" class="mapping-result" hidden></div><div class="table-tools"><label for="filter">Filtrar resultado</label><select id="filter"><option value="all">Todos</option><option value="nao_encontrado">Não localizados</option><option value="vazio">Não marcada / sem resposta</option><option value="ja_correto">Já corretos</option><option value="sem_mapeamento">Sem mapeamento</option><option value="divergente">Divergentes</option><option value="bloqueado">Bloqueados</option></select></div>
+        <div class="table-wrap"><table><thead><tr><th>CNPJ / empresa</th><th>EmpID</th><th>Tarefa elegível</th><th>Estado</th><th>Detalhe</th></tr></thead><tbody id="results"><tr><td colspan="5" class="empty">Nenhum resultado ainda.</td></tr></tbody></table></div><div id="resultsPager" class="results-pager" hidden><span id="resultsPageInfo"></span><div class="row"><button id="resultsPrev" type="button" class="ghost">Anterior</button><button id="resultsNext" type="button" class="ghost">Próxima</button></div></div>
+      </section>
+      <section class="card apply-card" id="applyCard" hidden><p class="eyebrow">GRAVAÇÃO</p><h2>Aplicar somente após revisar</h2><p>A automação relê a enquete, bloqueia divergências e confere as respostas depois da recarga. Não execute durante edição manual simultânea.</p><label for="confirmText">Confirmação exigida</label><input id="confirmText" autocomplete="off" placeholder="Gere uma prévia primeiro" disabled><button id="apply" type="button" class="danger" disabled>Gravar respostas elegíveis</button><p id="applyReason" class="hint">A gravação só é liberada após uma prévia sem bloqueios e com opções a marcar.</p></section>
+    </div></div>
+    </div>
+  </main>
+</body>
+</html>

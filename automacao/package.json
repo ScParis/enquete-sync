@@ -1,0 +1,13 @@
+{
+  "name": "gclick-enquete-local",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "playwright": "1.62.1"
+  }
+}

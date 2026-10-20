@@ -1,0 +1,17 @@
+{
+  "accountId": "6581",
+  "category": "Qualificação Geral do Cliente",
+  "question": "Qual é o atual Regime Tributário desta empresa?",
+  "questionRef": "01.02",
+  "answerRef": "01.02.04",
+  "answerValue": "9",
+  "answerLabel": "04 - Simples",
+  "allowedTasks": [
+    "DAS - Mensal",
+    "DAS - Mensal - Sem Movimento"
+  ],
+  "excludedTasks": [
+    "DAS - Mensal - CDB"
+  ],
+  "inputType": "radio"
+}

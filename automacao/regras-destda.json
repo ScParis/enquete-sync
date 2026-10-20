@@ -1,0 +1,15 @@
+{
+  "accountId": "6581",
+  "category": "Dpto. Fiscal/Tributário",
+  "question": "Qual dessas Obrigações Estaduais são entregues para esse cliente ? (Part 1)",
+  "questionRef": "02.02",
+  "answerRef": "02.02.01",
+  "answerValue": "409",
+  "answerLabel": "01 - DeSTDA",
+  "inputType": "checkbox",
+  "allowedTasks": [
+    "DeSTDA - Declaração mensal",
+    "DeSTDA"
+  ],
+  "excludedTasks": []
+}
