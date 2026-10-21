@@ -83,6 +83,8 @@ node cli.mjs apply   --account 6581 --rules exemplos/regra-das-simples-6581.json
 
 `plan` só lê a planilha; `preview` consulta a Enquete sem gravar; `apply` exige CSV com menos de 24 horas, bloqueia o lote inteiro se houver divergência, bloqueio ou cliente não localizado, e espera a sua confirmação no diálogo do G-Click. Se a sessão estiver expirada, o comando abre o login e, depois que você entra, abre a Enquete sozinho. A CLI e o servidor não rodam ao mesmo tempo (trava em `automation.lock`).
 
+> **Atenção**: a linha de comando é um caminho secundário para regras pontuais e testes rápidos. Ela registra o log de execução em `runs/`, mas **não** alimenta o arquivo de conciliação `registros/<empId>.json` nem dispara a sincronização automática com a planilha do escritório (Google Apps Script). Para o fluxo operacional completo com conciliação e escrita na planilha, utilize a interface web (`npm start`).
+
 ## Testes
 
 ```bash

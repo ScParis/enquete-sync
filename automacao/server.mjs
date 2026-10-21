@@ -501,6 +501,33 @@ async function route(req, res) {
         for (const item of pendingItems) fail(item, error);
       } finally { await page.close().catch(() => {}); }
     }
+    // Detecta clientes com tarefas conflitantes em perguntas de escolha única (radio)
+    const radioQuestions = new Set(mappings.filter(m => m.rules.inputType === 'radio').map(m => m.rules.questionRef));
+    if (radioQuestions.size) {
+      const byCnpjQuestion = new Map();
+      for (const item of inspected) {
+        const rules = mappings.find(m => m.task === item.mappingTask)?.rules;
+        if (!rules || rules.inputType !== 'radio') continue;
+        const key = `${item.cnpj}|${rules.questionRef}`;
+        const list = byCnpjQuestion.get(key) ?? [];
+        list.push({ item, rules });
+        byCnpjQuestion.set(key, list);
+      }
+      for (const [, entries] of byCnpjQuestion) {
+        const distinctAnswers = new Set(entries.map(e => e.rules.answerRef));
+        if (distinctAnswers.size > 1) {
+          const taskNames = [...new Set(entries.map(e => `“${e.item.mappingTask}”`))].join(' e ');
+          for (const { item, rules } of entries) {
+            item.uiStatus = 'bloqueado';
+            item.uiReason = `Conflito: ${taskNames} exigem respostas diferentes na pergunta ${rules.questionRef} (escolha única)`;
+          }
+        }
+      }
+      for (const res of results) {
+        const taskItems = inspected.filter(x => x.mappingTask === res.task);
+        res.summary = summarizeChecked(taskItems);
+      }
+    }
     const report = { mode: autoAudit ? 'account_audit' : 'mapping_preview', createdAt: new Date().toISOString(), source: source.label, sourceSha256: sha256(source.csv), sourceStale: source.stale,
       accountId, complete: !incompleteReason && !failedTasks.length, incompleteReason, rules: { inputType: 'mixed', allowedTasks: mappings.map(x => x.task) }, mappings: results, pendingTasks: pending,
       excludedTasks: excluded, failedTasks, sourceTaskCount: sourceTasks.size, sourceCnpjCount: new Set(rows.filter(row => validCnpj(row.CNPJ)).map(row => normalizeCnpj(row.CNPJ))).size,

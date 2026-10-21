@@ -10,7 +10,21 @@ function fakeSpreadsheet(rows, gid = 150007372) {
   const sheet = {
     getSheetId: () => gid, getName: () => 'Enquete - fiscal',
     getDataRange: () => ({ getValues: () => grid.map(r => [...r]) }),
-    getRange: (row, col) => ({ setValue: v => { while (grid.length < row) grid.push([]); const line = grid[row - 1]; while (line.length < col) line.push(''); line[col - 1] = v; } })
+    getRange: (row, col, numRows = 1, numCols = 1) => ({
+      setValue: v => { while (grid.length < row) grid.push([]); const line = grid[row - 1]; while (line.length < col) line.push(''); line[col - 1] = v; },
+      setValues: matrix => {
+        matrix.forEach((rVals, rIdx) => {
+          const r = row + rIdx;
+          while (grid.length < r) grid.push([]);
+          const line = grid[r - 1];
+          rVals.forEach((cVal, cIdx) => {
+            const c = col + cIdx;
+            while (line.length < c) line.push('');
+            line[c - 1] = cVal;
+          });
+        });
+      }
+    })
   };
   return { grid, sandbox: {
     SpreadsheetApp: { getActiveSpreadsheet: () => ({ getSheets: () => [sheet] }) },

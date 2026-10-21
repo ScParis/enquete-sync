@@ -162,11 +162,14 @@ async function showTaskOutput(task) {
     const plan = await api('mappings/plan', { ...(await payload('plan')), accountId: currentAccount(), task });
     const inspected = plan.rows.map(r => ({ cnpj: r.cnpj, empId: r.empId, empresa: r.empresa, mappingTask: task, mappingAnswer: plan.answerRef,
       uiStatus: r.status === 'pronto' ? 'a_conferir' : 'bloqueado', uiReason: r.status === 'pronto' ? (r.marcadoEm ? `Já registrado pelo robô em ${new Date(r.marcadoEm).toLocaleString('pt-BR')}` : 'Aguardando conferência na Enquete') : r.reason }));
-    const keep = lastReport && ['account_audit', 'mapping_preview'].includes(lastReport.mode) ? lastReport : null;
-    render({ mode: 'mapping_plan', accountId: currentAccount(), rules: { inputType: 'mixed', allowedTasks: [task] }, inspected, invalidSource: plan.invalid,
-      summary: { total: inspected.length, a_conferir: inspected.filter(x => x.uiStatus === 'a_conferir').length, bloqueado: inspected.filter(x => x.uiStatus === 'bloqueado').length } });
-    // A conferência anterior continua valendo para a gravação; só a tabela mostra a tarefa recém-mapeada.
-    if (keep) { lastReport = keep; updateApply(); }
+    if (lastReport && ['account_audit', 'mapping_preview'].includes(lastReport.mode)) {
+      const mergedInspected = [...(lastReport.inspected ?? []).filter(x => x.mappingTask !== task), ...inspected];
+      const mergedSummary = { ...lastReport.summary, a_conferir: mergedInspected.filter(x => x.uiStatus === 'a_conferir').length };
+      render({ ...lastReport, inspected: mergedInspected, summary: mergedSummary });
+    } else {
+      render({ mode: 'mapping_plan', accountId: currentAccount(), rules: { inputType: 'mixed', allowedTasks: [task] }, inspected, invalidSource: plan.invalid,
+        summary: { total: inspected.length, a_conferir: inspected.filter(x => x.uiStatus === 'a_conferir').length, bloqueado: inspected.filter(x => x.uiStatus === 'bloqueado').length } });
+    }
   } catch (error) { status(`Mapeamento salvo, mas não foi possível listar os CNPJs: ${error.message}`, 'error'); }
 }
 function answerText(ref) { const found = catalogAnswer(ref); return found ? `${found.question.ref} → ${found.answer.display}` : ref; }

@@ -330,10 +330,10 @@ export async function applyQuestionWithOperator(page, groups, { confirmTimeoutMs
   }), expected);
   await modal.locator('.modal-footer button[data-dismiss="modal"], button.close[data-dismiss="modal"]').first().click().catch(() => {});
   const changed = [], failed = [];
+  await openQuestion(page, question);
   for (const group of groups) {
     const mine = clicked.filter(x => x.rules === group.rules);
     if (!mine.length) continue;
-    await openQuestion(page, group.rules);
     for (const item of mine) {
       const after = await inspectClient(page, item, group.rules);
       const dialog = confirmedInDialog.find(x => x.internalId === item.internalId);

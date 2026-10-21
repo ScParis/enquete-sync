@@ -54,6 +54,12 @@ test('confirmar mapeamento mostra na saída os CNPJs da tarefa com a resposta a 
     assert.match(rows, /19\.402\.991\/0001-67[\s\S]*A conferir[\s\S]*Resposta: 02\.07 → 01 - ISS Retido/);
     assert.match(rows, /63\.665\.522\/0001-22/);
     assert.match(await page.locator('#focusLabel').innerText(), /Mostrando só: ISS RETIDO - OUTROS MUNICIPIOS/);
+    assert.equal(await page.locator('.status-tag.a_conferir').count(), 2);
+    // Testa que alternar o filtro mantém os resultados e não esvazia a tabela
+    await page.locator('#filter').selectOption('a_conferir');
+    assert.equal(await page.locator('#results tr').count(), 2);
+    await page.locator('#filter').selectOption('all');
+    assert.equal(await page.locator('#results tr').count(), 2);
     await page.waitForFunction(() => /Conferindo na Enquete/.test(document.querySelector('#nextStep').textContent));
     // Fim da conferência: estado real dos mesmos CNPJs e gravação liberada.
     releaseAudit();

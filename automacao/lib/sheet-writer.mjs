@@ -29,12 +29,24 @@ function doPost(e) {
     const pedidos = new Map(pedido.marcacoes.map(m => [chave(m.cnpj, m.tarefa), m.texto]));
     const encontrados = new Set();
     let linhas = 0;
+    const alteracoes = [];
     valores.slice(1).forEach((linha, i) => {
       const k = chave(linha[iCnpj], linha[iTarefa]);
       if (!pedidos.has(k)) return;
-      aba.getRange(i + 2, iColuna + 1).setValue(pedidos.get(k));
       encontrados.add(k); linhas++;
+      alteracoes.push({ row: i + 2, text: pedidos.get(k) });
     });
+    let bloco = null;
+    for (let j = 0; j < alteracoes.length; j++) {
+      const alt = alteracoes[j];
+      if (bloco && alt.row === bloco.startRow + bloco.values.length) {
+        bloco.values.push([alt.text]);
+      } else {
+        if (bloco) aba.getRange(bloco.startRow, iColuna + 1, bloco.values.length, 1).setValues(bloco.values);
+        bloco = { startRow: alt.row, values: [[alt.text]] };
+      }
+    }
+    if (bloco) aba.getRange(bloco.startRow, iColuna + 1, bloco.values.length, 1).setValues(bloco.values);
     return resposta({ ok: true, linhas, naoEncontrados: [...pedidos.keys()].filter(k => !encontrados.has(k)) });
   } catch (erro) {
     return resposta({ ok: false, erro: String(erro) });
