@@ -7,8 +7,12 @@ automacao/runs/
 __pycache__/
 *.pyc
 
+# Documentos de estudo, diagnóstico, análises e dados sensíveis de clientes
+docs/
+
 # Dados de clientes (CNPJs, prints, planilhas): ficam só no disco
 *.xlsx
 *.jpg
 *.png
-2026-10-17_relatorio-piloto-enquete-das.md
+2026-10-17_*
+Relatório.xlsx
