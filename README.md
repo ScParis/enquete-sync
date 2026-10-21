@@ -73,7 +73,8 @@ npm test
 
 ---
 
-## Licença e Termos de Uso
+## Licença, Termos de Uso e Privacidade
 
 - **Licença**: Software Proprietário. Todos os direitos reservados. Consulte o arquivo [LICENSE](LICENSE) para maiores detalhes.
-- **Termos de Uso**: O uso desta ferramenta está sujeito aos termos e condições descritos em [TERMOS_DE_USO.md](TERMOS_DE_USO.md).
+- **Termos de Uso**: O uso desta ferramenta está sujeito aos termos e condições operacionais descritos em [TERMOS_DE_USO.md](TERMOS_DE_USO.md).
+- **Política de Privacidade e LGPD**: Diretrizes de privacidade e conformidade com a Lei Geral de Proteção de Dados (Lei nº 13.709/2018) detalhadas em [POLITICA_DE_PRIVACIDADE.md](POLITICA_DE_PRIVACIDADE.md).
