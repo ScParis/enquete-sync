@@ -9,7 +9,7 @@ const currentAccount = () => $('accountId').value.trim();
 function status(message, kind = '') { $('status').textContent = message; $('status').className = `status ${kind}`; }
 function sourceType() { return document.querySelector('input[name="sourceType"]:checked').value; }
 const normalizeTask = value => String(value ?? '').trim().replace(/\s+/g, ' ').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('pt-BR');
-function clearPreview() { previewId = null; lastReport = null; $('summary').hidden = true; $('downloads').hidden = true; $('missingPanel').hidden = true; $('invalidPanel').hidden = true; $('mappingResult').hidden = true; $('results').innerHTML = '<tr><td colspan="5" class="empty">Nenhum resultado ainda.</td></tr>'; resultsPage = 0; $('resultsPager').hidden = true; updateApply(); }
+function clearPreview() { previewId = null; lastReport = null; focusTask = null; $('focusChip').hidden = true; $('summary').hidden = true; $('downloads').hidden = true; $('missingPanel').hidden = true; $('invalidPanel').hidden = true; $('mappingResult').hidden = true; $('results').innerHTML = '<tr><td colspan="5" class="empty">Nenhum resultado ainda.</td></tr>'; resultsPage = 0; $('resultsPager').hidden = true; updateApply(); }
 function catalogAnswer(ref) {
   for (const question of liveCatalog?.questions ?? []) {
     const answer = question.answers.find(item => item.ref === ref);
@@ -18,8 +18,13 @@ function catalogAnswer(ref) {
   return null;
 }
 function renderCatalogOverview() {
-  $('catalogOverview').hidden = !liveCatalog;
-  if (!liveCatalog) return;
+  const hasCatalog = Boolean(liveCatalog);
+  if ($('catalogEmptyState')) $('catalogEmptyState').hidden = hasCatalog;
+  if ($('catalogOverview')) $('catalogOverview').hidden = !hasCatalog;
+  if (!liveCatalog) {
+    updateSidebarBadges();
+    return;
+  }
   $('catalogOverviewStatus').textContent = `${liveCatalog.questionCount} perguntas e ${liveCatalog.answerCount} respostas ${catalogLive ? 'capturadas agora' : 'do catálogo anterior'} · conta ${liveCatalog.accountId}`;
   const query = normalizeTask($('catalogOverviewSearch').value);
   $('catalogOverviewList').replaceChildren();
@@ -31,6 +36,7 @@ function renderCatalogOverview() {
     for (const answer of question.answers) { const p = document.createElement('p'); p.textContent = `${answer.ref} · ${answer.display} · ${answer.valueKnown === false ? 'código lido na tela' : `código ${answer.value}`}`; details.append(p); }
     $('catalogOverviewList').append(details);
   }
+  updateSidebarBadges();
 }
 function otherOfficeSuggestion(task) {
   const accountId = currentAccount();
@@ -112,6 +118,8 @@ function renderQueue() {
     $('queueList').append(row);
   }
   if (!visible.length) { const empty = document.createElement('p'); empty.className = 'hint'; empty.textContent = all.length ? 'Nenhuma tarefa neste filtro.' : 'Nenhuma tarefa carregada.'; $('queueList').append(empty); }
+  updateAuditTaskSelect();
+  updateSidebarBadges();
 }
 function fillEditorQuestions(search = '', selectedRef = '') {
   const current = selectedRef || $('editorQuestion').value;
@@ -228,8 +236,32 @@ async function loadTasks() {
     $('taskStatus').textContent = `${taskCatalog.length} nomes de tarefa encontrados em ${result.rowCount} linhas (${result.source}).`;
     if ($('queueFilter').value === 'attention' && !$('queueSearch').value.trim() && taskCatalog.some(task => ['ready', 'candidate'].includes(mappingFor(task).state))) $('queueFilter').value = 'ready';
     renderQueue();
+    updateAuditTaskSelect();
     maybeAutoAudit();
-  } catch (e) { taskCatalog = []; renderQueue(); $('taskStatus').textContent = e.message; }
+  } catch (e) { taskCatalog = []; renderQueue(); updateAuditTaskSelect(); $('taskStatus').textContent = e.message; }
+}
+function updateAuditTaskSelect() {
+  const select = $('auditTaskSelect');
+  if (!select) return;
+  const current = select.value;
+  select.replaceChildren();
+  if (!taskCatalog.length) {
+    select.append(new Option('Nenhuma tarefa carregada da planilha', ''));
+    return;
+  }
+  select.append(new Option('Selecione uma obrigação…', ''));
+  const sorted = [...taskCatalog].sort((a, b) => {
+    const ma = mappingFor(a).state === 'ready' ? 0 : 1;
+    const mb = mappingFor(b).state === 'ready' ? 0 : 1;
+    if (ma !== mb) return ma - mb;
+    return a.name.localeCompare(b.name, 'pt-BR');
+  });
+  for (const t of sorted) {
+    const m = mappingFor(t);
+    const label = `${t.name} (${t.count} linhas${m.state === 'ready' ? ` · Mapeada: ${m.label}` : m.state === 'excluded' ? ' · Excluída' : ' · Sem associação'})`;
+    select.append(new Option(label, t.name));
+  }
+  if ([...select.options].some(o => o.value === current)) select.value = current;
 }
 function dataUrl(file) { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result).split(',')[1]); reader.onerror = reject; reader.readAsDataURL(file); }); }
 async function payload(mode) {
@@ -241,12 +273,19 @@ async function payload(mode) {
 }
 async function api(endpoint, data) {
   for (let attempt = 0; attempt < 2; attempt++) {
-    const response = await fetch(`/api/${endpoint}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-GClick-Token': authToken }, body: JSON.stringify(data ?? {}) });
-    const body = await response.json();
+    let response;
+    try {
+      response = await fetch(`/api/${endpoint}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-GClick-Token': authToken }, body: JSON.stringify(data ?? {}) });
+    } catch (networkError) {
+      throw new Error(`Falha de comunicação com o servidor local: ${networkError.message}. Verifique se o servidor está ativo ou recarregue a página.`);
+    }
+    const body = await response.json().catch(() => ({}));
     if (response.status === 403 && body.code === 'invalid_session' && attempt === 0) {
-      const config = await fetch('/api/config', { cache: 'no-store' }).then(r => r.json());
-      authToken = config.token;
-      continue;
+      try {
+        const config = await fetch('/api/config', { cache: 'no-store' }).then(r => r.json());
+        authToken = config.token;
+        continue;
+      } catch {}
     }
     if (!response.ok) throw new Error(body.error || 'Falha na operação');
     return body;
@@ -258,7 +297,20 @@ function render(report) {
   lastReport = report;
   const items = report.inspected ?? report.plan ?? [];
   const missing = items.filter(x => x.uiStatus === 'nao_encontrado');
-  $('modePill').textContent = report.mode === 'account_audit' ? report.complete === false ? 'Conferência incompleta' : 'Conferência automática' : report.mode === 'preview' || report.mode === 'mapping_preview' ? 'Prévia' : ['apply', 'mapping_apply'].includes(report.mode) ? 'Gravação' : 'Planilha';
+  $('modePill').textContent = report.filterTask ? `Conferência: ${report.filterTask}` : report.mode === 'account_audit' ? report.complete === false ? 'Conferência incompleta' : 'Conferência automática' : report.mode === 'preview' || report.mode === 'mapping_preview' ? 'Prévia' : ['apply', 'mapping_apply'].includes(report.mode) ? 'Gravação' : 'Planilha';
+  if (report.filterTask) focusTask = report.filterTask;
+
+  const taskFilterSelect = $('resultsTaskFilter');
+  if (taskFilterSelect) {
+    const uniqueTasks = [...new Set(items.map(x => x.mappingTask).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    const currentVal = focusTask || '';
+    taskFilterSelect.replaceChildren(
+      new Option('Todas as obrigações', ''),
+      ...uniqueTasks.map(t => new Option(t, t))
+    );
+    taskFilterSelect.value = uniqueTasks.includes(currentVal) ? currentVal : '';
+  }
+
   $('mappingResult').hidden = !['mapping_preview', 'account_audit', 'mapping_apply'].includes(report.mode);
   if (report.mode === 'mapping_apply') {
     $('mappingResult').replaceChildren(...report.results.map(x => { const p = document.createElement('p'); p.textContent = `Pergunta ${x.questionRef} (${x.task}): ${x.cancelled ? 'cancelada por você no G-Click' : `${x.changed.length} marcada(s) e conferida(s)`}${x.skipped?.length ? ` · ${x.skipped.length} pulada(s)` : ''}${x.failed?.length ? ` · ${x.failed.length} falharam na conferência` : ''}`; return p; }));
@@ -269,7 +321,11 @@ function render(report) {
     $('mappingResult').replaceChildren();
     if (report.sourceWarning) { const p = document.createElement('p'); p.className = 'incomplete-banner'; p.textContent = report.sourceWarning; $('mappingResult').append(p); }
     if (report.complete === false) { const p = document.createElement('p'); p.className = 'incomplete-banner'; p.textContent = `Conferência incompleta. ${report.incompleteReason ?? 'Houve falha de leitura em alguma tarefa.'} Os pares afetados aparecem como “Não verificado”; reconecte a Enquete e confira de novo antes de gravar.`; $('mappingResult').append(p); }
-    if (report.mode === 'account_audit') { const p = document.createElement('p'); p.textContent = `${report.sourceCnpjCount} CNPJs distintos na planilha · ${report.sourceTaskCount} tarefas · ${report.mappings.length} tarefas verificadas na Enquete.`; $('mappingResult').append(p); }
+    if (report.mode === 'account_audit') {
+      const p = document.createElement('p');
+      p.textContent = report.filterTask ? `Conferência filtrada para “${report.filterTask}” · ${report.mappings[0]?.clients ?? 0} CNPJ(s) na planilha.` : `${report.sourceCnpjCount} CNPJs distintos na planilha · ${report.sourceTaskCount} tarefas · ${report.mappings.length} tarefas verificadas na Enquete.`;
+      $('mappingResult').append(p);
+    }
     for (const line of lines) { const p = document.createElement('p'); p.textContent = line; $('mappingResult').append(p); }
     if (report.pendingTasks.length) { const details = document.createElement('details'); const summary = document.createElement('summary'); summary.className = 'queue-warning'; summary.textContent = `${report.pendingTasks.length} tarefa(s) sem associação com uma resposta da Enquete: estado não verificável`; details.append(summary); for (const task of report.pendingTasks) { const p = document.createElement('p'); p.textContent = task; details.append(p); } $('mappingResult').append(details); }
     if (report.failedTasks?.length) { const details = document.createElement('details'); const summary = document.createElement('summary'); summary.className = 'queue-warning'; summary.textContent = `${report.failedTasks.length} tarefa(s) com falha na leitura`; details.append(summary); for (const item of report.failedTasks) { const p = document.createElement('p'); p.textContent = `${item.task}: ${item.reason}`; details.append(p); } $('mappingResult').append(details); }
@@ -281,11 +337,29 @@ function render(report) {
   $('downloads').hidden = false;
   renderResultRows(report);
   updateApply();
+  updateSidebarBadges();
 }
 function renderResultRows(report) {
   const items = report.inspected ?? report.plan ?? [];
   const filter = $('filter').value;
-  const visible = items.filter(x => (filter === 'all' || (x.uiStatus ?? x.status) === filter) && (!focusTask || x.mappingTask === focusTask));
+  const rawQuery = ($('resultsSearch')?.value ?? '').trim().toLowerCase();
+  const searchClean = rawQuery.replace(/[.\-/]/g, '');
+
+  const visible = items.filter(x => {
+    if (filter !== 'all' && (x.uiStatus ?? x.status) !== filter) return false;
+    if (focusTask && x.mappingTask !== focusTask) return false;
+    if (searchClean) {
+      const cnpjClean = String(x.cnpj ?? '').replace(/\D/g, '');
+      const empresa = String(x.empresa ?? '').toLowerCase();
+      const task = String(x.mappingTask ?? '').toLowerCase();
+      const empId = String(x.empId ?? '').toLowerCase();
+      if (!cnpjClean.includes(searchClean) && !empresa.includes(rawQuery) && !task.includes(rawQuery) && !empId.includes(rawQuery)) {
+        return false;
+      }
+    }
+    return true;
+  });
+
   $('focusChip').hidden = !focusTask; $('focusLabel').textContent = focusTask ? `Mostrando só: ${focusTask}` : '';
   const totalPages = Math.max(1, Math.ceil(visible.length / RESULTS_PAGE_SIZE));
   resultsPage = Math.min(resultsPage, totalPages - 1);
@@ -339,30 +413,77 @@ function updateApply() {
   $('applyReason').textContent = ctx?.reason ?? 'A gravação só é liberada após uma prévia ou conferência completa e com opções a marcar.';
 }
 function auditKey() { return `${currentAccount()}:${liveCatalog?.capturedAt}:${sourceVersion}:${JSON.stringify(savedMappings)}`; }
-async function maybeAutoAudit() {
+function isAutoAuditEnabled() {
+  const toggle = $('autoAuditToggle');
+  return toggle ? toggle.checked : true;
+}
+function getSelectedAuditTask() {
+  if ($('auditScopeSingle')?.checked) {
+    return $('auditTaskSelect')?.value || null;
+  }
+  return null;
+}
+async function runAuditExecution({ filterTask = null, force = false } = {}) {
   if (!catalogLive) { $('auditStatus').textContent = 'Aguardando o login: a conferência começa quando o robô ler a Enquete da conta.'; return; }
   if (!taskCatalog.length) { $('auditStatus').textContent = 'Informe ou selecione a planilha para carregar os CNPJs.'; return; }
   if (working) return;
-  const key = auditKey();
-  if (key === lastAuditKey) return;
+  const baseKey = auditKey();
+  const key = `${baseKey}:${filterTask || 'ALL'}`;
+  if (!force && key === lastAuditKey) return;
   lastAuditKey = key;
   try {
-    setBusy(true); renderQueue(); previewId = null; // a tabela atual fica visível até o resultado novo chegar
-    $('auditStatus').textContent = 'Conferindo automaticamente as tarefas mapeadas para todos os CNPJs da planilha…';
+    setBusy(true); renderQueue(); previewId = null;
+    $('auditStatus').textContent = filterTask ? `Conferindo a obrigação “${filterTask}” na Enquete…` : 'Conferindo automaticamente as tarefas mapeadas para todos os CNPJs da planilha…';
     $('auditProgress').hidden = false; $('auditProgress').value = 0;
-    auditRunning = true; auditMessage = 'Conferindo na Enquete do G-Click…'; updateApply();
-    auditPoll = setInterval(async () => { try { const progress = await api('audit/progress', {}); if (progress.total) { $('auditProgress').value = Math.round(100 * progress.completed / progress.total); $('auditStatus').textContent = `${progress.completed}/${progress.total} tarefas avaliadas${progress.task ? ` · ${progress.task}` : ''}`;
-      auditMessage = `Conferindo na Enquete: ${progress.task || 'preparando'} (${progress.completed}/${progress.total} tarefas). As tarefas já lidas são reaproveitadas.`; updateApply(); } } catch { /* A requisição principal exibirá a falha. */ } }, 1500);
-    const request = await payload('account_audit'); request.accountId = currentAccount(); request.autoAudit = true;
+    auditRunning = true; auditMessage = filterTask ? `Conferindo ${filterTask} na Enquete do G-Click…` : 'Conferindo na Enquete do G-Click…'; updateApply();
+    auditPoll = setInterval(async () => {
+      try {
+        const progress = await api('audit/progress', {});
+        if (progress.total) {
+          $('auditProgress').value = Math.round(100 * progress.completed / progress.total);
+          $('auditStatus').textContent = `${progress.completed}/${progress.total} tarefas avaliadas${progress.task ? ` · ${progress.task}` : ''}`;
+          auditMessage = `Conferindo na Enquete: ${progress.task || 'preparando'} (${progress.completed}/${progress.total} tarefas). As tarefas já lidas são reaproveitadas.`;
+          updateApply();
+        }
+      } catch { /* A requisição principal exibirá a falha. */ }
+    }, 1500);
+    const request = await payload('account_audit');
+    request.accountId = currentAccount();
+    request.autoAudit = true;
+    if (filterTask) request.filterTask = filterTask;
     const result = await api('mappings/preview', request);
     previewId = result.previewId;
     render(result.report);
     $('auditProgress').value = 100;
-    $('auditStatus').textContent = `${result.report.complete === false ? 'Incompleto' : 'Concluído'}: ${result.report.mappings.length} tarefas verificadas; ${result.report.pendingTasks.length} sem associação; ${result.report.failedTasks.length} com falha de leitura.`;
-    status(lastApplySummary ? `${lastApplySummary} Conferência atualizada com o estado atual da Enquete.` : 'Conferência automática concluída. Nada foi gravado; veja o próximo passo abaixo.', 'ok');
+    $('auditStatus').textContent = filterTask
+      ? `${result.report.complete === false ? 'Incompleto' : 'Concluído'}: obrigação “${filterTask}” verificada (${result.report.mappings[0]?.clients ?? 0} CNPJ(s)).`
+      : `${result.report.complete === false ? 'Incompleto' : 'Concluído'}: ${result.report.mappings.length} tarefas verificadas; ${result.report.pendingTasks.length} sem associação; ${result.report.failedTasks.length} com falha de leitura.`;
+    status(lastApplySummary ? `${lastApplySummary} Conferência atualizada com o estado atual da Enquete.` : (filterTask ? `Conferência de “${filterTask}” concluída. Nada foi gravado; veja o próximo passo abaixo.` : 'Conferência automática concluída. Nada foi gravado; veja o próximo passo abaixo.'), 'ok');
     lastApplySummary = '';
-  } catch (error) { $('auditStatus').textContent = `Não foi possível conferir automaticamente: ${error.message}`; status(error.message, 'error'); }
-  finally { auditRunning = false; if (auditPoll) clearInterval(auditPoll); auditPoll = null; $('auditProgress').hidden = true; setBusy(false); renderQueue(); if (auditKey() !== key) maybeAutoAudit(); }
+  } catch (error) {
+    $('auditStatus').textContent = `Não foi possível conferir: ${error.message}`;
+    status(error.message, 'error');
+  } finally {
+    auditRunning = false;
+    if (auditPoll) clearInterval(auditPoll);
+    auditPoll = null;
+    $('auditProgress').hidden = true;
+    setBusy(false);
+    renderQueue();
+    if (!filterTask && `${auditKey()}:ALL` !== key && isAutoAuditEnabled()) maybeAutoAudit();
+  }
+}
+async function maybeAutoAudit() {
+  if (!isAutoAuditEnabled()) {
+    $('auditStatus').textContent = 'Conferência automática pausada. Use “Conferir na Enquete” para auditar sob demanda.';
+    return;
+  }
+  const task = getSelectedAuditTask();
+  if ($('auditScopeSingle')?.checked && !task) {
+    $('auditStatus').textContent = 'Selecione uma obrigação da lista para conferir na Enquete.';
+    return;
+  }
+  return runAuditExecution({ filterTask: task, force: false });
 }
 let applyRunning = false, applyMessage = '', lastApplySummary = '';
 const STAGES = { iniciando: 'Preparando a gravação…', abrindo: 'Abrindo a pergunta {q} no G-Click…', marcando: 'Marcando as respostas na pergunta {q}…',
@@ -517,7 +638,7 @@ async function loadAccountCatalog() {
   selectedTasks.clear(); renderQueue(); maybeAutoAudit();
 }
 $('accountId').addEventListener('change', loadAccountCatalog);
-$('clearFocus').addEventListener('click', () => { focusTask = null; resultsPage = 0; if (lastReport) renderResultRows(lastReport); });
+$('clearFocus').addEventListener('click', () => { focusTask = null; resultsPage = 0; if ($('resultsTaskFilter')) $('resultsTaskFilter').value = ''; if (lastReport) renderResultRows(lastReport); });
 async function refreshWriterStatus() {
   const accountId = currentAccount();
   if (!/^\d+$/.test(accountId)) { $('writerStatus').textContent = 'Informe a conta para ver a configuração.'; $('resendMarks').hidden = true; return; }
@@ -558,12 +679,59 @@ function planilhaText(p) {
   return ` Planilha: ${p.linhas ?? 0} linha(s) atualizada(s) na coluna “Enquete G-Click”${p.pending ? `; ${p.pending} sem linha correspondente` : ''}.`;
 }
 function updateLedgerLink() { const a = currentAccount(); $('ledgerLink').hidden = !/^\d+$/.test(a); $('ledgerLink').href = `/api/marcacoes.csv?account=${encodeURIComponent(a)}`; $('ledgerLink').setAttribute('download', `marcacoes-enquete-${a}.csv`); }
-$('accountId').addEventListener('change', () => { updateLedgerLink(); refreshWriterStatus(); });
+$('accountId').addEventListener('change', () => { updateLedgerLink(); refreshWriterStatus(); updateSidebarBadges(); });
 $('filter').addEventListener('change', () => { resultsPage = 0; if (lastReport) renderResultRows(lastReport); });
+$('resultsSearch')?.addEventListener('input', () => { resultsPage = 0; if (lastReport) renderResultRows(lastReport); });
+$('resultsTaskFilter')?.addEventListener('change', e => {
+  focusTask = e.target.value || null;
+  resultsPage = 0;
+  if (lastReport) renderResultRows(lastReport);
+});
 $('resultsPrev').addEventListener('click', () => { if (lastReport && resultsPage > 0) { resultsPage--; renderResultRows(lastReport); } });
 $('resultsNext').addEventListener('click', () => { if (lastReport) { resultsPage++; renderResultRows(lastReport); } });
 $('apply').addEventListener('click', apply);
 $('openLogin').addEventListener('click', () => login('login/open')); $('closeLogin').addEventListener('click', () => login('login/close'));
+const AUTO_AUDIT_KEY = 'enqueteSync_autoAudit';
+try {
+  const savedAuto = localStorage.getItem(AUTO_AUDIT_KEY);
+  if (savedAuto !== null && $('autoAuditToggle')) $('autoAuditToggle').checked = savedAuto === 'true';
+} catch { /* sem preferência local */ }
+$('autoAuditToggle')?.addEventListener('change', () => {
+  try { localStorage.setItem(AUTO_AUDIT_KEY, String($('autoAuditToggle').checked)); } catch {}
+  if ($('autoAuditToggle').checked) maybeAutoAudit();
+  else $('auditStatus').textContent = 'Conferência automática pausada. Use “Conferir na Enquete” para auditar sob demanda.';
+});
+$('auditScopeAll')?.addEventListener('change', () => {
+  $('auditTaskSelectBox').hidden = true;
+  if (isAutoAuditEnabled()) maybeAutoAudit();
+});
+$('auditScopeSingle')?.addEventListener('change', () => {
+  $('auditTaskSelectBox').hidden = false;
+  if ($('auditTaskSelect')?.value && isAutoAuditEnabled()) maybeAutoAudit();
+  else if (!$('auditTaskSelect')?.value) $('auditStatus').textContent = 'Selecione uma obrigação da lista para conferir na Enquete.';
+});
+$('auditTaskSelect')?.addEventListener('change', () => {
+  if (isAutoAuditEnabled() && $('auditScopeSingle')?.checked && $('auditTaskSelect')?.value) {
+    maybeAutoAudit();
+  }
+});
+$('runAudit')?.addEventListener('click', () => {
+  if (working) return;
+  if (!catalogLive) {
+    status('A sessão do G-Click não está ativa. Abra o menu "Conexão & Conta G-Click" e clique em "Abrir janela de login".', 'error');
+    $('auditStatus').textContent = 'Aguardando o login: a conferência começa quando o robô ler a Enquete da conta.';
+    return;
+  }
+  const isSingle = $('auditScopeSingle')?.checked;
+  const filterTask = isSingle ? $('auditTaskSelect')?.value : null;
+  if (isSingle && !filterTask) {
+    status('Selecione uma obrigação na lista para conferir.', 'warn');
+    $('auditTaskSelect')?.focus();
+    return;
+  }
+  focusTask = filterTask;
+  runAuditExecution({ filterTask, force: true });
+});
 const config = await fetch('/api/config').then(r => r.json()); authToken = config.token; savedMappings = config.savedMappings ?? [];
 renderAccountList();
 if (config.catalogLive && config.catalog?.accountId) $('accountId').value = config.catalog.accountId;
@@ -580,3 +748,153 @@ updateLedgerLink();
 refreshWriterStatus();
 renderQueue();
 if (sourceType() === 'recent') refreshDownloads();
+
+const SECTION_STORAGE_KEY = 'enqueteSync_activeSection';
+
+function switchSection(sectionId) {
+  const target = sectionId || 'all';
+  const navBtns = document.querySelectorAll('#sidebarNav .nav-btn');
+  const sections = document.querySelectorAll('.app-section');
+
+  navBtns.forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.section === target);
+  });
+
+  if (target === 'all') {
+    sections.forEach(sec => {
+      sec.hidden = false;
+      sec.classList.remove('active');
+    });
+  } else {
+    sections.forEach(sec => {
+      const match = sec.id === `section-${target}`;
+      sec.hidden = !match;
+      sec.classList.toggle('active', match);
+    });
+  }
+
+  $('sidebar')?.classList.remove('open');
+
+  try {
+    localStorage.setItem(SECTION_STORAGE_KEY, target);
+  } catch { /* sem preferência local */ }
+}
+
+function updateSidebarBadges() {
+  const acc = currentAccount();
+  const accText = acc ? `Conta: ${acc}` : 'Conta: —';
+  if ($('topAccountId')) $('topAccountId').textContent = acc || '—';
+  if ($('sidebarAccountDisplay')) $('sidebarAccountDisplay').textContent = accText;
+
+  const isOnline = Boolean(catalogLive || config?.loginReady);
+  const isEntering = Boolean(config?.loginOpen);
+  if ($('sidebarStatusDot')) {
+    $('sidebarStatusDot').className = `status-dot ${isOnline ? 'active' : ''}`;
+  }
+  if ($('sidebarSessionDisplay')) {
+    $('sidebarSessionDisplay').textContent = isOnline ? 'Enquete conectada' : isEntering ? 'Entrando…' : 'Sessão desconectada';
+  }
+
+  const badgeConn = $('navBadgeConnection');
+  if (badgeConn) {
+    if (isOnline) { badgeConn.textContent = 'Conectado'; badgeConn.className = 'nav-badge badge-ok'; }
+    else if (isEntering) { badgeConn.textContent = 'Entrando…'; badgeConn.className = 'nav-badge badge-warn'; }
+    else if (acc) { badgeConn.textContent = 'Conta OK'; badgeConn.className = 'nav-badge badge-info'; }
+    else { badgeConn.textContent = 'Aguardando'; badgeConn.className = 'nav-badge badge-neutral'; }
+  }
+
+  const badgeSource = $('navBadgeSource');
+  if (badgeSource) {
+    if (taskCatalog.length) { badgeSource.textContent = `${taskCatalog.length} tarefas`; badgeSource.className = 'nav-badge badge-ok'; }
+    else { badgeSource.textContent = 'Pendente'; badgeSource.className = 'nav-badge badge-neutral'; }
+  }
+
+  const badgeMapping = $('navBadgeMapping');
+  if (badgeMapping) {
+    if (!taskCatalog.length) { badgeMapping.textContent = '0'; badgeMapping.className = 'nav-badge badge-neutral'; }
+    else {
+      const attention = taskCatalog.filter(t => ['attention', 'suggested', 'awaiting'].includes(mappingFor(t).state)).length;
+      if (attention > 0) { badgeMapping.textContent = `${attention} pendente(s)`; badgeMapping.className = 'nav-badge badge-warn'; }
+      else { badgeMapping.textContent = '100% OK'; badgeMapping.className = 'nav-badge badge-ok'; }
+    }
+  }
+
+  const badgeAudit = $('navBadgeAudit');
+  if (badgeAudit) {
+    if (lastReport) {
+      const pendingMarks = lastReport.toWrite ?? 0;
+      if (pendingMarks > 0) { badgeAudit.textContent = `${pendingMarks} a marcar`; badgeAudit.className = 'nav-badge badge-warn'; }
+      else { badgeAudit.textContent = 'Conferido'; badgeAudit.className = 'nav-badge badge-ok'; }
+    } else {
+      badgeAudit.textContent = '0'; badgeAudit.className = 'nav-badge badge-neutral';
+    }
+  }
+
+  const badgeApply = $('navBadgeApply');
+  if (badgeApply) {
+    const toWrite = lastReport?.toWrite ?? 0;
+    if (toWrite > 0) { badgeApply.textContent = `${toWrite} pronta(s)`; badgeApply.className = 'nav-badge badge-warn'; }
+    else if (lastReport?.mode === 'mapping_apply') { badgeApply.textContent = 'Concluído'; badgeApply.className = 'nav-badge badge-ok'; }
+    else { badgeApply.textContent = 'Aguardando'; badgeApply.className = 'nav-badge badge-neutral'; }
+  }
+
+  const badgeWriter = $('navBadgeWriter');
+  if (badgeWriter) {
+    const isConfigured = Boolean($('writerUrl')?.value?.trim());
+    badgeWriter.textContent = isConfigured ? 'Ativo' : 'Pendente';
+    badgeWriter.className = `nav-badge ${isConfigured ? 'badge-ok' : 'badge-neutral'}`;
+  }
+
+  const badgeCatalog = $('navBadgeCatalog');
+  if (badgeCatalog) {
+    if (liveCatalog?.questionCount) {
+      badgeCatalog.textContent = `${liveCatalog.questionCount} perguntas`;
+      badgeCatalog.className = 'nav-badge badge-ok';
+    } else {
+      badgeCatalog.textContent = '0 perguntas';
+      badgeCatalog.className = 'nav-badge badge-neutral';
+    }
+  }
+
+  const badgeObrigacoes = $('navBadgeObrigacoes');
+  if (badgeObrigacoes) {
+    badgeObrigacoes.textContent = 'Em breve';
+    badgeObrigacoes.className = 'nav-badge badge-new';
+  }
+}
+
+$('refreshCatalogManual')?.addEventListener('click', async () => {
+  const accountId = currentAccount();
+  if (!/^\d+$/.test(accountId)) {
+    status('Informe o código da conta G-Click (empId) em Conexão & Conta antes de buscar o catálogo.', 'error');
+    return;
+  }
+  const btn = $('refreshCatalogManual');
+  try {
+    setBusy(true);
+    if (btn) btn.disabled = true;
+    status(`Buscando perguntas e respostas da Enquete da conta ${accountId} sob demanda…`);
+    const result = await api('catalog', { accountId, refresh: true });
+    if (result.catalog) {
+      useCatalog(result.catalog, true);
+      status(`Catálogo da Enquete atualizado sob demanda com sucesso: ${result.catalog.questionCount} perguntas e ${result.catalog.answerCount} respostas.`, 'ok');
+    }
+  } catch (error) {
+    status(`Busca sob demanda: ${error.message}. Se a janela do G-Click não estiver aberta, clique em "Abrir janela de login" no menu Conexão & Conta.`, 'error');
+  } finally {
+    setBusy(false);
+    if (btn) btn.disabled = false;
+    updateSidebarBadges();
+  }
+});
+
+for (const btn of document.querySelectorAll('#sidebarNav .nav-btn')) {
+  btn.addEventListener('click', () => switchSection(btn.dataset.section));
+}
+$('sidebarToggle')?.addEventListener('click', () => {
+  $('sidebar')?.classList.toggle('open');
+});
+const savedSection = localStorage.getItem(SECTION_STORAGE_KEY) || 'all';
+switchSection(savedSection);
+updateSidebarBadges();
+

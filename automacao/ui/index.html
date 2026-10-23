@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Enquetes G-Click · Automação local</title>
+  <title>G-Click · Automação & Enquetes</title>
   <link rel="stylesheet" href="/ui/style.css">
   <script type="module" src="/ui/app.js"></script>
   <style>
@@ -19,54 +19,571 @@
   <script>if (location.protocol === 'file:') document.documentElement.classList.add('file-mode');</script>
 </head>
 <body>
-  <div id="fileModeNotice" role="alert"><h1>Abra a interface pelo servidor local</h1><p>Este arquivo é uma cópia da tela. A automação precisa do servidor em execução para carregar planilha, Enquete e relatórios.</p><a href="http://127.0.0.1:8766/">Abrir automação G-Click</a><p style="margin-top:18px;font-size:13px">Se o endereço não abrir, inicie o aplicativo com <code>npm start</code> na pasta do projeto.</p></div>
+  <div id="fileModeNotice" role="alert">
+    <h1>Abra a interface pelo servidor local</h1>
+    <p>Este arquivo é uma cópia da tela. A automação precisa do servidor em execução para carregar planilha, Enquete e relatórios.</p>
+    <a href="http://127.0.0.1:8766/">Abrir automação G-Click</a>
+    <p style="margin-top:18px;font-size:13px">Se o endereço não abrir, inicie o aplicativo com <code>npm start</code> na pasta do projeto.</p>
+  </div>
 
-  <header class="topbar"><div><span class="brand">G-CLICK</span><span class="top-sep"></span><strong>Enquetes</strong><span class="top-sub">Automação local</span></div><div class="local-badge"><span></span> Executando neste computador</div></header>
-
-  <main>
-    <div id="viewMain">
-      <section class="hero"><div><p class="eyebrow">OPERAÇÃO CONTROLADA</p><h1>Prepare e confira cada lote antes de gravar.</h1><p>Informe o escritório e a planilha, revise os mapeamentos e confira a Enquete antes de gravar. O relatório aponta cada CNPJ não localizado.</p></div><div class="hero-note"><strong>Sequência segura</strong><span>1. Conta, login e planilha</span><span>2. Conferência automática</span><span>3. Robô marca as respostas</span><span>4. Você confirma no G-Click</span></div></section>
-      <div class="layout"><div class="form-col">
-      <section class="card"><div class="card-head"><span class="step">01</span><div><h2>Conexão</h2><p>Conecte a conta para capturar perguntas e respostas.</p></div></div><label>Conta G-Click <small>(empId do escritório)</small><input id="accountId" inputmode="numeric" list="accountList" placeholder="Ex.: 6581" autocomplete="off"></label><datalist id="accountList"></datalist><div class="row"><button id="openLogin" type="button" class="secondary">Abrir janela de login</button><button id="closeLogin" type="button" class="ghost">Repetir captura</button></div><p class="hint">Basta entrar no G-Click na janela da automação: o robô abre a Enquete da conta e captura o catálogo sozinho. A leitura da planilha funciona antes do login.</p><div id="catalogOverview" class="catalog-overview" hidden><strong id="catalogOverviewStatus"></strong><input id="catalogOverviewSearch" type="search" placeholder="Buscar pergunta ou resposta da Enquete"><div id="catalogOverviewList" class="catalog-overview-list"></div></div></section>
-      <section class="card"><div class="card-head"><span class="step">02</span><div><h2>Fonte da planilha</h2><p>Use um arquivo, a exportação do navegador integrado ou acesso direto pela API.</p></div></div>
-        <div class="segmented"><label><input type="radio" name="sourceType" value="file"><span>Arquivo</span></label><label><input type="radio" name="sourceType" value="url"><span>Link público / API</span></label><label><input type="radio" name="sourceType" value="recent" checked><span>Navegador integrado</span></label></div>
-        <div id="fileBox" hidden><label class="field-label" for="file">Arquivo da planilha</label><input id="file" type="file" accept=".csv,.xlsx"><label class="field-label" for="sheetName">Nome da aba no XLSX <small>(opcional; padrão: primeira aba)</small></label><input id="sheetName" type="text" placeholder="Ex.: Obrigações"></div>
-        <div id="recentBox"><label class="field-label" for="recentSheetUrl">Link da aba no Google Sheets</label><input id="recentSheetUrl" type="url" placeholder="Link da aba da planilha deste escritório"><p class="hint">O link fica salvo para esta conta. Baixe o CSV na aba autenticada e confirme o arquivo abaixo.</p><div class="row"><a id="directExport" class="button-link" target="_blank" rel="noopener">Baixar CSV da aba</a><a id="openSheet" class="button-link" target="_blank" rel="noopener">Abrir planilha</a><button id="refreshDownloads" type="button" class="secondary">Atualizar downloads</button></div><p id="recentUrlHint" class="hint"></p><label class="field-label" for="downloadFile">CSV da aba</label><select id="downloadFile"><option value="">Atualize a lista após baixar</option></select><p id="downloadHint" class="hint">O nome e o horário do arquivo aparecem aqui antes da análise.</p></div><div id="urlBox" hidden><label class="field-label" for="sourceUrl">Link da aba</label><input id="sourceUrl" type="url" placeholder="Link da aba da planilha deste escritório"><label class="field-label" for="serviceKey">Credencial de conta de serviço <small>(JSON, para planilha privada)</small></label><input id="serviceKey" type="file" accept=".json,application/json"><p class="hint">A planilha deve ser compartilhada como Leitor com o e-mail da conta de serviço. A chave é usada somente nesta leitura e não entra no relatório.</p></div>
-      </section>
-            <section class="card" id="writerCard"><div class="card-head"><span class="step">↩</span><div><h2>Registro na planilha</h2><p>Depois de cada gravação confirmada, o robô preenche a coluna “Enquete G-Click” nas linhas do CNPJ e da tarefa.</p></div></div>
-        <p id="writerStatus" class="hint" style="margin-top:0">Informe a conta para ver a configuração.</p>
-        <details id="writerSetup"><summary>Configurar nesta planilha (uma vez)</summary>
-          <ol class="writer-steps">
-            <li><button id="copyScript" type="button" class="secondary">Copiar script</button> <span id="copyStatus" class="hint"></span></li>
-            <li>Na planilha: <strong>Extensões → Apps Script</strong>. Apague o conteúdo, cole o script e salve.</li>
-            <li><strong>Implantar → Nova implantação</strong> → tipo <strong>App da Web</strong>; Executar como: <strong>Eu</strong>; Quem pode acessar: <strong>Qualquer pessoa</strong>. Autorize o acesso.</li>
-            <li>Cole aqui o endereço do app da web:<input id="writerUrl" type="url" placeholder="https://script.google.com/macros/s/…/exec"><button id="saveWriter" type="button" class="primary">Salvar e testar</button></li>
-          </ol>
-          <textarea id="scriptFallback" rows="6" readonly hidden></textarea>
-        </details>
-        <div class="row" style="margin-top:12px"><button id="resendMarks" type="button" class="ghost" hidden>Reenviar marcações pendentes</button></div>
-      </section>
-<section class="card" id="mappingQueue"><div class="card-head"><span class="step">03</span><div><h2>Tarefas e respostas da Enquete</h2><p>Esta lista vem da planilha. A associação com a Enquete aparece abaixo de cada tarefa.</p></div></div>
-        <p id="taskStatus" class="hint" style="margin-top:0"></p><div id="queueSummary" class="queue-summary">Carregando tarefas da planilha…</div>
-        <div id="auditPanel" class="audit-panel"><strong>Conferência automática dos CNPJs</strong><p id="auditStatus">Aguardando a planilha e a Enquete da conta.</p><progress id="auditProgress" max="100" value="0" hidden></progress></div>
-        <div class="row queue-tools"><input id="queueSearch" type="search" placeholder="Buscar obrigação ou tarefa"><select id="queueFilter"><option value="attention">Sem associação</option><option value="all">Todas as tarefas</option><option value="ready">Associadas</option><option value="excluded">Excluídas</option></select></div>
-        <div id="queueList" class="queue-list"></div>
-        <div id="mappingEditor" class="mapping-editor" hidden><h3 id="editorTask"></h3><p id="editorHint" class="hint"></p><label>Buscar pergunta<input id="editorSearch" type="search" placeholder="Nome ou referência da pergunta"></label><label>Pergunta<select id="editorQuestion"></select></label><label>Resposta<select id="editorAnswer"></select></label><div class="row"><button id="confirmMapping" type="button" class="primary">Confirmar mapeamento</button><button id="clearMapping" type="button" class="ghost">Remover associação salva</button><button id="excludeMapping" type="button" class="ghost">Excluir tarefa (não gera resposta)</button><button id="cancelMapping" type="button" class="ghost">Fechar</button></div></div>
-                <p id="previewHint" class="hint"></p>
-      </section>
-                      </div><div class="result-col">
-      <p id="nextStep" class="next-step" hidden></p>
-      <section class="card apply-card" id="applyCard" hidden><p class="eyebrow">GRAVAÇÃO</p><h2>Marcar no G-Click</h2><p>O robô abre cada pergunta, marca as respostas de todos os CNPJs pendentes e clica em Alterar. Você só confere o diálogo do G-Click e clica em <strong>Confirmar</strong> (ou fecha para cancelar aquela pergunta). Respostas divergentes nunca são trocadas.</p><button id="apply" type="button" class="danger" disabled>Marcar respostas no G-Click</button><p id="applyReason" class="hint"></p></section>
-      <section class="card result-card"><div class="result-head"><div><p class="eyebrow">RESULTADO</p><h2>Saída da execução</h2></div><span id="modePill" class="pill">Aguardando</span></div><p id="status" class="status">Configure o lote e gere uma análise ou prévia.</p><div id="summary" class="summary" hidden></div>
-        <div id="missingPanel" class="alert" hidden><strong>CNPJs não localizados na enquete</strong><p>Esses clientes constam na planilha, mas não apareceram na pergunta consultada. A gravação do lote ficará bloqueada.</p><ul id="missingList"></ul></div>
-        <div id="invalidPanel" class="alert soft" hidden><strong>CNPJs inválidos na planilha</strong><ul id="invalidList"></ul></div>
-        <div id="downloads" class="downloads" hidden><a href="/api/report.csv" download="gclick-relatorio.csv">Baixar CSV</a><a href="/api/report.json" download="gclick-relatorio.json">Baixar JSON</a><a id="ledgerLink" href="#" download>Baixar marcações registradas (CSV)</a></div>
-        <div id="mappingResult" class="mapping-result" hidden></div><div class="table-tools"><span id="focusChip" class="focus-chip" hidden><span id="focusLabel"></span> <button id="clearFocus" type="button" class="ghost">Ver todas as tarefas</button></span><label for="filter">Filtrar resultado</label><select id="filter"><option value="all">Todos</option><option value="nao_encontrado">Não localizados</option><option value="vazio">Não marcada / sem resposta</option><option value="ja_correto">Já corretos</option><option value="sem_mapeamento">Sem mapeamento</option><option value="divergente">Divergentes</option><option value="bloqueado">Bloqueados</option><option value="nao_verificado">Não verificados</option><option value="a_conferir">A conferir</option></select></div>
-        <div class="table-wrap"><table><thead><tr><th>CNPJ / empresa</th><th>EmpID</th><th>Tarefa elegível</th><th>Estado</th><th>Detalhe</th></tr></thead><tbody id="results"><tr><td colspan="5" class="empty">Nenhum resultado ainda.</td></tr></tbody></table></div><div id="resultsPager" class="results-pager" hidden><span id="resultsPageInfo"></span><div class="row"><button id="resultsPrev" type="button" class="ghost">Anterior</button><button id="resultsNext" type="button" class="ghost">Próxima</button></div></div>
-      </section>
-      
-    </div></div>
+  <header class="topbar">
+    <div class="topbar-left">
+      <button type="button" id="sidebarToggle" class="sidebar-toggle" aria-label="Alternar menu">☰</button>
+      <span class="brand">G-CLICK</span>
+      <span class="top-sep"></span>
+      <strong class="top-title">Automação de Enquetes & Obrigações</strong>
+      <span class="top-sub">Painel local</span>
     </div>
-  </main>
+    <div class="topbar-right">
+      <div class="account-pill" id="topAccountPill">Conta: <strong id="topAccountId">—</strong></div>
+      <div class="local-badge"><span></span> Executando neste computador (8766)</div>
+    </div>
+  </header>
+
+  <div class="app-shell" id="viewMain">
+    <!-- SIDEBAR COM MÓDULOS, MENUS E SUBMENUS -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <span class="sidebar-header-badge">Módulos</span>
+      </div>
+
+      <nav class="sidebar-nav" id="sidebarNav">
+        <!-- VISÃO GERAL -->
+        <button type="button" class="nav-btn nav-overview active" data-section="all" id="navAll">
+          <span class="nav-icon">📊</span>
+          <span class="nav-text">Visão Geral (Todas as seções)</span>
+        </button>
+
+        <!-- MÓDULO 1: CONFIGURAÇÃO DE CONEXÃO -->
+        <div class="nav-module">
+          <div class="nav-module-title">
+            <span class="module-icon">⚙️</span>
+            <span>Configuração de Conexão</span>
+          </div>
+          <div class="nav-sub-list">
+            <button type="button" class="nav-btn nav-sub-item" data-section="connection" id="navConnection">
+              <span class="nav-icon">🔑</span>
+              <span class="nav-text">Conexão & Conta G-Click</span>
+              <span class="nav-badge" id="navBadgeConnection">Aguardando</span>
+            </button>
+
+            <!-- SUBMENU: FONTE (IMPORTAÇÃO) -->
+            <div class="nav-tree-branch">
+              <button type="button" class="nav-btn nav-sub-item branch-header" data-section="source" id="navSource">
+                <span class="tree-line"></span>
+                <span class="nav-icon">📥</span>
+                <span class="nav-text">Fonte (importação)</span>
+                <span class="nav-badge" id="navBadgeSource">Pendente</span>
+              </button>
+
+              <!-- SUB-SUBMENU: SINCRONIZAÇÃO COM GOOGLE SHEETS -->
+              <div class="nav-nested-branch">
+                <button type="button" class="nav-btn nav-nested-item" data-section="writer" id="navWriter">
+                  <span class="tree-subline"></span>
+                  <span class="nav-icon">🔄</span>
+                  <span class="nav-text">Sincronização com Google Sheets</span>
+                  <span class="nav-badge" id="navBadgeWriter">Sync</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- MÓDULO 2: ENQUETE -->
+        <div class="nav-module">
+          <div class="nav-module-title">
+            <span class="module-icon">📋</span>
+            <span>Enquete</span>
+          </div>
+          <div class="nav-sub-list">
+            <button type="button" class="nav-btn nav-sub-item" data-section="catalog" id="navCatalog">
+              <span class="tree-line"></span>
+              <span class="nav-icon">📑</span>
+              <span class="nav-text">Mapeamento de Perguntas e Respostas</span>
+              <span class="nav-badge" id="navBadgeCatalog">0 perguntas</span>
+            </button>
+
+            <button type="button" class="nav-btn nav-sub-item" data-section="mapping" id="navMapping">
+              <span class="tree-line"></span>
+              <span class="nav-icon">🔀</span>
+              <span class="nav-text">Tarefas e Mapeamento da Enquete</span>
+              <span class="nav-badge" id="navBadgeMapping">0</span>
+            </button>
+
+            <button type="button" class="nav-btn nav-sub-item" data-section="audit" id="navAudit">
+              <span class="tree-line"></span>
+              <span class="nav-icon">🔍</span>
+              <span class="nav-text">Auditoria & Conferência na Enquete</span>
+              <span class="nav-badge" id="navBadgeAudit">0</span>
+            </button>
+
+            <button type="button" class="nav-btn nav-sub-item" data-section="apply" id="navApply">
+              <span class="tree-line"></span>
+              <span class="nav-icon">⚡</span>
+              <span class="nav-text">Gravação no G-Click</span>
+              <span class="nav-badge" id="navBadgeApply">Aguardando</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- MÓDULO 3: OBRIGAÇÕES (NOVO) -->
+        <div class="nav-module">
+          <div class="nav-module-title">
+            <span class="module-icon">📁</span>
+            <span>Obrigações <span class="tag-pill">Novo</span></span>
+          </div>
+          <div class="nav-sub-list">
+            <button type="button" class="nav-btn nav-sub-item" data-section="obrigacoes" id="navObrigacoes">
+              <span class="nav-icon">📌</span>
+              <span class="nav-text">Módulo de Obrigações</span>
+              <span class="nav-badge badge-new" id="navBadgeObrigacoes">Em breve</span>
+            </button>
+          </div>
+        </div>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="sidebar-status-box">
+          <div class="status-dot" id="sidebarStatusDot"></div>
+          <div class="status-info">
+            <strong id="sidebarAccountDisplay">Conta: —</strong>
+            <span id="sidebarSessionDisplay">Sessão desconectada</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- CONTEÚDO PRINCIPAL COM AS SEÇÕES -->
+    <main class="main-content">
+      <p id="nextStep" class="next-step" hidden></p>
+
+      <!-- SEÇÃO 1: CONEXÃO & CONTA G-CLICK -->
+      <div id="section-connection" class="app-section">
+        <div class="section-banner">
+          <nav class="breadcrumbs">
+            <span>Configuração de Conexão</span>
+            <span class="sep">›</span>
+            <strong>Conexão & Conta G-Click</strong>
+          </nav>
+          <div class="section-title-wrap">
+            <span class="step">01</span>
+            <div>
+              <h2>Conexão & Conta G-Click</h2>
+              <p>Autentique e conecte a conta do escritório no G-Click para habilitar as operações da Enquete.</p>
+            </div>
+          </div>
+        </div>
+
+        <section class="card">
+          <div class="card-headline">
+            <h3>Autenticação e Sessão</h3>
+            <span class="sub-hint">Informe o identificador do escritório e abra a sessão integrada</span>
+          </div>
+          <label>
+            Conta G-Click <small>(empId do escritório)</small>
+            <input id="accountId" inputmode="numeric" list="accountList" placeholder="Ex.: 6581" autocomplete="off">
+          </label>
+          <datalist id="accountList"></datalist>
+          <div class="row" style="margin-top:14px">
+            <button id="openLogin" type="button" class="primary">Abrir janela de login</button>
+            <button id="closeLogin" type="button" class="secondary">Verificar sessão / Repetir captura</button>
+          </div>
+          <p class="hint">Basta entrar no G-Click na janela da automação: o robô abre a Enquete da conta e captura o catálogo de perguntas e respostas sozinho. A leitura da planilha também funciona antes do login.</p>
+        </section>
+      </div>
+
+      <!-- SEÇÃO 2: FONTE (IMPORTAÇÃO) -->
+      <div id="section-source" class="app-section">
+        <div class="section-banner">
+          <nav class="breadcrumbs">
+            <span>Configuração de Conexão</span>
+            <span class="sep">›</span>
+            <strong>Fonte (importação)</strong>
+          </nav>
+          <div class="section-title-wrap">
+            <span class="step">02</span>
+            <div>
+              <h2>Fonte (importação)</h2>
+              <p>Configure a importação da planilha de dados via navegador integrado, arquivo local ou link da API.</p>
+            </div>
+          </div>
+        </div>
+
+        <section class="card">
+          <div class="segmented">
+            <label><input type="radio" name="sourceType" value="file"><span>Arquivo</span></label>
+            <label><input type="radio" name="sourceType" value="url"><span>Link público / API</span></label>
+            <label><input type="radio" name="sourceType" value="recent" checked><span>Navegador integrado</span></label>
+          </div>
+          <div id="fileBox" hidden>
+            <label class="field-label" for="file">Arquivo da planilha</label>
+            <input id="file" type="file" accept=".csv,.xlsx">
+            <label class="field-label" for="sheetName">Nome da aba no XLSX <small>(opcional; padrão: primeira aba)</small></label>
+            <input id="sheetName" type="text" placeholder="Ex.: Obrigações">
+          </div>
+          <div id="recentBox">
+            <label class="field-label" for="recentSheetUrl">Link da aba no Google Sheets</label>
+            <input id="recentSheetUrl" type="url" placeholder="Link da aba da planilha deste escritório">
+            <p class="hint">O link fica salvo para esta conta. Baixe o CSV na aba autenticada e confirme o arquivo abaixo.</p>
+            <div class="row">
+              <a id="directExport" class="button-link" target="_blank" rel="noopener">Baixar CSV da aba</a>
+              <a id="openSheet" class="button-link" target="_blank" rel="noopener">Abrir planilha</a>
+              <button id="refreshDownloads" type="button" class="secondary">Atualizar downloads</button>
+            </div>
+            <p id="recentUrlHint" class="hint"></p>
+            <label class="field-label" for="downloadFile">CSV da aba</label>
+            <select id="downloadFile"><option value="">Atualize a lista após baixar</option></select>
+            <p id="downloadHint" class="hint">O nome e o horário do arquivo aparecem aqui antes da análise.</p>
+          </div>
+          <div id="urlBox" hidden>
+            <label class="field-label" for="sourceUrl">Link da aba</label>
+            <input id="sourceUrl" type="url" placeholder="Link da aba da planilha deste escritório">
+            <label class="field-label" for="serviceKey">Credencial de conta de serviço <small>(JSON, para planilha privada)</small></label>
+            <input id="serviceKey" type="file" accept=".json,application/json">
+            <p class="hint">A planilha deve ser compartilhada como Leitor com o e-mail da conta de serviço. A chave é usada somente nesta leitura e não entra no relatório.</p>
+          </div>
+        </section>
+      </div>
+
+      <!-- SEÇÃO 3: SINCRONIZAÇÃO COM GOOGLE SHEETS -->
+      <div id="section-writer" class="app-section">
+        <div class="section-banner">
+          <nav class="breadcrumbs">
+            <span>Configuração de Conexão</span>
+            <span class="sep">›</span>
+            <span>Fonte (importação)</span>
+            <span class="sep">›</span>
+            <strong>Sincronização com Google Sheets</strong>
+          </nav>
+          <div class="section-title-wrap">
+            <span class="step">🔄</span>
+            <div>
+              <h2>Sincronização com Google Sheets</h2>
+              <p>Preenchimento automático da coluna “Enquete G-Click” na planilha após cada lote gravado.</p>
+            </div>
+          </div>
+        </div>
+
+        <section class="card" id="writerCard">
+          <p id="writerStatus" class="hint" style="margin-top:0">Informe a conta para ver a configuração.</p>
+          <details id="writerSetup">
+            <summary>Configurar nesta planilha (uma vez)</summary>
+            <ol class="writer-steps">
+              <li><button id="copyScript" type="button" class="secondary">Copiar script</button> <span id="copyStatus" class="hint"></span></li>
+              <li>Na planilha: <strong>Extensões → Apps Script</strong>. Apague o conteúdo, cole o script e salve.</li>
+              <li><strong>Implantar → Nova implantação</strong> → tipo <strong>App da Web</strong>; Executar como: <strong>Eu</strong>; Quem pode acessar: <strong>Qualquer pessoa</strong>. Autorize o acesso.</li>
+              <li>Cole aqui o endereço do app da web:<input id="writerUrl" type="url" placeholder="https://script.google.com/macros/s/…/exec"><button id="saveWriter" type="button" class="primary">Salvar e testar</button></li>
+            </ol>
+            <textarea id="scriptFallback" rows="6" readonly hidden></textarea>
+          </details>
+          <div class="row" style="margin-top:14px">
+            <button id="resendMarks" type="button" class="ghost" hidden>Reenviar marcações pendentes</button>
+          </div>
+        </section>
+      </div>
+
+      <!-- SEÇÃO 4: MAPEAMENTO DAS PERGUNTAS E RESPOSTAS DA ENQUETE -->
+      <div id="section-catalog" class="app-section">
+        <div class="section-banner">
+          <nav class="breadcrumbs">
+            <span>Enquete</span>
+            <span class="sep">›</span>
+            <strong>Mapeamento das perguntas e respostas da enquete</strong>
+          </nav>
+          <div class="section-title-wrap">
+            <span class="step">📑</span>
+            <div>
+              <h2>Mapeamento das Perguntas e Respostas da Enquete</h2>
+              <p>Consulte e explore o catálogo de perguntas e respostas cadastradas no G-Click para a conta selecionada.</p>
+            </div>
+          </div>
+        </div>
+
+        <section class="card">
+          <!-- CABEÇALHO COM BOTÃO DE BUSCA MANUAL SOB-DEMANDA -->
+          <div class="card-action-header">
+            <div>
+              <h3 style="margin:0 0 4px">Perguntas e Respostas da Conta</h3>
+              <p class="sub-hint" style="margin:0">Catálogo capturado diretamente da Enquete do escritório.</p>
+            </div>
+            <button id="refreshCatalogManual" type="button" class="primary btn-demand">
+              <span class="btn-icon">🔄</span> Buscar Perguntas e Respostas (Sob Demanda)
+            </button>
+          </div>
+
+          <!-- EMPTY STATE SE NÃO TIVER CATÁLOGO -->
+          <div id="catalogEmptyState" class="empty-state-box">
+            <span class="empty-icon">📋</span>
+            <h4>Nenhum catálogo carregado no momento</h4>
+            <p>Conecte a conta do escritório ou clique no botão acima para realizar a busca manual sob-demanda das perguntas e respostas da Enquete.</p>
+          </div>
+
+          <!-- PAINEL COM LISTA E FILTRO -->
+          <div id="catalogOverview" class="catalog-overview" hidden>
+            <div class="catalog-overview-header">
+              <strong id="catalogOverviewStatus"></strong>
+            </div>
+            <div class="catalog-search-wrap">
+              <input id="catalogOverviewSearch" type="search" placeholder="🔍 Filtrar por pergunta, resposta ou categoria…">
+            </div>
+            <div id="catalogOverviewList" class="catalog-overview-list"></div>
+          </div>
+        </section>
+      </div>
+
+      <!-- SEÇÃO 5: TAREFAS E MAPEAMENTO DA ENQUETE -->
+      <div id="section-mapping" class="app-section">
+        <div class="section-banner">
+          <nav class="breadcrumbs">
+            <span>Enquete</span>
+            <span class="sep">›</span>
+            <strong>Tarefas e Mapeamento da Enquete</strong>
+          </nav>
+          <div class="section-title-wrap">
+            <span class="step">🔀</span>
+            <div>
+              <h2>Tarefas e Mapeamento da Enquete</h2>
+              <p>Associe cada obrigação lida na planilha às perguntas e respostas da Enquete no G-Click.</p>
+            </div>
+          </div>
+        </div>
+
+        <section class="card" id="mappingQueue">
+          <p id="taskStatus" class="hint" style="margin-top:0"></p>
+          <div id="queueSummary" class="queue-summary">Carregando tarefas da planilha…</div>
+          <div class="row queue-tools">
+            <input id="queueSearch" type="search" placeholder="Buscar obrigação ou tarefa">
+            <select id="queueFilter">
+              <option value="attention">Sem associação</option>
+              <option value="all">Todas as tarefas</option>
+              <option value="ready">Associadas</option>
+              <option value="excluded">Excluídas</option>
+            </select>
+          </div>
+          <div id="queueList" class="queue-list"></div>
+          <div id="mappingEditor" class="mapping-editor" hidden>
+            <h3 id="editorTask"></h3>
+            <p id="editorHint" class="hint"></p>
+            <label>Buscar pergunta<input id="editorSearch" type="search" placeholder="Nome ou referência da pergunta"></label>
+            <label>Pergunta<select id="editorQuestion"></select></label>
+            <label>Resposta<select id="editorAnswer"></select></label>
+            <div class="row">
+              <button id="confirmMapping" type="button" class="primary">Confirmar mapeamento</button>
+              <button id="clearMapping" type="button" class="ghost">Remover associação salva</button>
+              <button id="excludeMapping" type="button" class="ghost">Excluir tarefa (não gera resposta)</button>
+              <button id="cancelMapping" type="button" class="ghost">Fechar</button>
+            </div>
+          </div>
+          <p id="previewHint" class="hint"></p>
+        </section>
+      </div>
+
+      <!-- SEÇÃO: GRAVAÇÃO NO G-CLICK -->
+      <div id="section-apply" class="app-section">
+        <div class="section-banner">
+          <nav class="breadcrumbs">
+            <span>Enquete</span>
+            <span class="sep">›</span>
+            <strong>Gravação no G-Click</strong>
+          </nav>
+          <div class="section-title-wrap">
+            <span class="step">⚡</span>
+            <div>
+              <h2>Gravação no G-Click</h2>
+              <p>O robô marca as respostas pendentes e aguarda sua confirmação visual pergunta a pergunta.</p>
+            </div>
+          </div>
+        </div>
+
+        <section class="card apply-card" id="applyCard" hidden>
+          <p class="eyebrow">GRAVAÇÃO</p>
+          <h2>Marcar no G-Click</h2>
+          <p>O robô abre cada pergunta, marca as respostas de todos os CNPJs pendentes e clica em Alterar. Você só confere o diálogo do G-Click e clica em <strong>Confirmar</strong> (ou fecha para cancelar aquela pergunta). Respostas divergentes nunca são trocadas.</p>
+          <button id="apply" type="button" class="danger" disabled>Marcar respostas no G-Click</button>
+          <p id="applyReason" class="hint"></p>
+        </section>
+        <div id="mappingResult" class="mapping-result" hidden></div>
+      </div>
+
+      <!-- SEÇÃO: AUDITORIA & CONFERÊNCIA NA ENQUETE -->
+      <div id="section-audit" class="app-section">
+        <div class="section-banner">
+          <nav class="breadcrumbs">
+            <span>Enquete</span>
+            <span class="sep">›</span>
+            <strong>Auditoria & Conferência na Enquete</strong>
+          </nav>
+          <div class="section-title-wrap">
+            <span class="step">🔍</span>
+            <div>
+              <h2>Auditoria & Conferência na Enquete</h2>
+              <p>Consulte o estado de cada CNPJ na Enquete: confira todas as tarefas ou filtre por uma obrigação específica.</p>
+            </div>
+          </div>
+        </div>
+
+        <div id="auditPanel" class="audit-panel">
+          <div class="audit-header">
+            <div>
+              <strong style="font-size:14px;color:#184f59">Conferência dos CNPJs na Enquete</strong>
+              <p class="sub-hint" style="margin:2px 0 0">Verifica se as respostas já estão marcadas ou pendentes no G-Click</p>
+            </div>
+            <label class="auto-audit-toggle" title="Executar conferência automática ao conectar planilha e catálogo">
+              <input type="checkbox" id="autoAuditToggle" checked> <small>Conferência automática</small>
+            </label>
+          </div>
+
+          <p id="auditStatus">Aguardando a planilha e a Enquete da conta.</p>
+
+          <div class="audit-controls">
+            <div class="audit-scope-row">
+              <label><input type="radio" name="auditScope" id="auditScopeAll" value="all" checked> <span>Todas as tarefas mapeadas</span></label>
+              <label><input type="radio" name="auditScope" id="auditScopeSingle" value="single"> <span>Filtrar por obrigação</span></label>
+            </div>
+            <div id="auditTaskSelectBox" class="audit-task-box" hidden>
+              <label for="auditTaskSelect" class="field-label">Escolha a obrigação para conferir:</label>
+              <select id="auditTaskSelect"><option value="">Carregando tarefas…</option></select>
+            </div>
+            <!-- BOTÃO DE BUSCA MANUAL SOB-DEMANDA -->
+            <div class="audit-actions">
+              <button id="runAudit" type="button" class="primary btn-demand">
+                <span class="btn-icon">🔍</span> Buscar & Conferir na Enquete (Sob Demanda)
+              </button>
+            </div>
+          </div>
+          <progress id="auditProgress" max="100" value="0" hidden></progress>
+        </div>
+
+        <section class="card result-card">
+          <div class="result-head">
+            <div>
+              <p class="eyebrow">RESULTADO DA CONFERÊNCIA</p>
+              <h2>Saída da execução</h2>
+            </div>
+            <span id="modePill" class="pill">Aguardando</span>
+          </div>
+          <p id="status" class="status">Configure o lote e gere uma análise ou prévia.</p>
+          <div id="summary" class="summary" hidden></div>
+          <div id="missingPanel" class="alert" hidden>
+            <strong>CNPJs não localizados na enquete</strong>
+            <p>Esses clientes constam na planilha, mas não apareceram na pergunta consultada. A gravação do lote ficará bloqueada.</p>
+            <ul id="missingList"></ul>
+          </div>
+          <div id="invalidPanel" class="alert soft" hidden>
+            <strong>CNPJs inválidos na planilha</strong>
+            <ul id="invalidList"></ul>
+          </div>
+          <div id="downloads" class="downloads" hidden>
+            <a href="/api/report.csv" download="gclick-relatorio.csv">Baixar CSV</a>
+            <a href="/api/report.json" download="gclick-relatorio.json">Baixar JSON</a>
+            <a id="ledgerLink" href="#" download>Baixar marcações registradas (CSV)</a>
+          </div>
+          <div class="table-tools">
+            <div class="table-search-box">
+              <input id="resultsSearch" type="search" placeholder="🔍 Buscar por CNPJ, empresa ou obrigação…" autocomplete="off">
+            </div>
+            <div class="table-filter-group">
+              <span id="focusChip" class="focus-chip" hidden>
+                <span id="focusLabel"></span>
+                <button id="clearFocus" type="button" class="ghost">Ver todas as tarefas</button>
+              </span>
+              <label for="resultsTaskFilter" class="tool-label">Obrigação:</label>
+              <select id="resultsTaskFilter">
+                <option value="">Todas as obrigações</option>
+              </select>
+              <label for="filter" class="tool-label">Status:</label>
+              <select id="filter">
+                <option value="all">Todos</option>
+                <option value="nao_encontrado">Não localizados</option>
+                <option value="vazio">Não marcada / sem resposta</option>
+                <option value="ja_correto">Já corretos</option>
+                <option value="sem_mapeamento">Sem mapeamento</option>
+                <option value="divergente">Divergentes</option>
+                <option value="bloqueado">Bloqueados</option>
+                <option value="nao_verificado">Não verificados</option>
+                <option value="a_conferir">A conferir</option>
+              </select>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>CNPJ / empresa</th>
+                  <th>EmpID</th>
+                  <th>Tarefa elegível</th>
+                  <th>Estado</th>
+                  <th>Detalhe</th>
+                </tr>
+              </thead>
+              <tbody id="results">
+                <tr><td colspan="5" class="empty">Nenhum resultado ainda.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div id="resultsPager" class="results-pager" hidden>
+            <span id="resultsPageInfo"></span>
+            <div class="row">
+              <button id="resultsPrev" type="button" class="ghost">Anterior</button>
+              <button id="resultsNext" type="button" class="ghost">Próxima</button>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- SEÇÃO 8: OBRIGAÇÕES (NOVO MÓDULO) -->
+      <div id="section-obrigacoes" class="app-section">
+        <div class="section-banner">
+          <nav class="breadcrumbs">
+            <span>Obrigações</span>
+            <span class="sep">›</span>
+            <strong>Visão Geral do Módulo</strong>
+          </nav>
+          <div class="section-title-wrap">
+            <span class="step">📁</span>
+            <div>
+              <h2>Módulo de Obrigações</h2>
+              <p>Módulo para gestão, parametrização e conciliação de obrigações tributárias e fiscais da carteira.</p>
+            </div>
+          </div>
+        </div>
+
+        <section class="card module-intro-card">
+          <div class="module-hero">
+            <div class="module-icon-box">📁</div>
+            <div class="module-hero-content">
+              <div class="module-tag-row">
+                <span class="badge-new-pill">Novo Módulo</span>
+                <span class="badge-status-pill">Em Construção</span>
+              </div>
+              <h3>Gestão e Conciliação de Obrigações</h3>
+              <p>Esta seção foi estruturada e está preparada para receber as ferramentas de controle e automação de obrigações fiscais, acessórias e municipais/estaduais/federais integradas à sua carteira.</p>
+            </div>
+          </div>
+
+          <div class="module-grid-preview">
+            <div class="preview-feature-card">
+              <span class="feature-icon">📅</span>
+              <h4>Calendário & Vencimentos</h4>
+              <p>Controle unificado de prazos e datas de entrega por regime tributário e competência fiscal.</p>
+              <span class="feature-status">Em breve</span>
+            </div>
+            <div class="preview-feature-card">
+              <span class="feature-icon">⚙️</span>
+              <h4>Parametrização por Empresa</h4>
+              <p>Vínculo inteligente entre o cadastro do cliente e as obrigações acessórias obrigatórias.</p>
+              <span class="feature-status">Em breve</span>
+            </div>
+            <div class="preview-feature-card">
+              <span class="feature-icon">📊</span>
+              <h4>Conciliação & Protocolos</h4>
+              <p>Auditoria de guias entregues, conferência automática e emissão de alertas de inconsistências.</p>
+              <span class="feature-status">Em breve</span>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
 </body>
 </html>

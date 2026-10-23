@@ -39,7 +39,29 @@ let lastAutoOpen = 0;
 let applyProgress = { running: false };
 // Leitura de cada tarefa na Enquete, reaproveitada enquanto planilha, catálogo e mapeamento não mudam.
 const auditCache = new Map();
-const AUDIT_CACHE_TTL = 20 * 60 * 1000;
+const AUDIT_CACHE_TTL = 2 * 60 * 60 * 1000;
+const auditCacheFile = path.join(catalogsDir, 'audit-cache.json');
+async function loadAuditCache() {
+  try {
+    const raw = JSON.parse(await fs.readFile(auditCacheFile, 'utf8'));
+    for (const [k, v] of Object.entries(raw)) {
+      if (v?.at && Date.now() - v.at < AUDIT_CACHE_TTL) auditCache.set(k, v);
+    }
+  } catch (error) { if (error.code !== 'ENOENT') console.warn('Cache de auditoria inválido, reiniciando'); }
+}
+async function persistAuditCache() {
+  try {
+    await fs.mkdir(catalogsDir, { recursive: true });
+    const obj = {};
+    for (const [k, v] of auditCache) {
+      if (Date.now() - v.at < AUDIT_CACHE_TTL) obj[k] = v;
+    }
+    const temp = `${auditCacheFile}.tmp-${process.pid}-${crypto.randomBytes(3).toString('hex')}`;
+    await fs.writeFile(temp, JSON.stringify(obj) + '\n', { mode: 0o600 });
+    await fs.rename(temp, auditCacheFile);
+  } catch {}
+}
+await loadAuditCache();
 
 function validateRules(r) {
   const columnAnswer = !r?.answerValue && (r?.inputType ?? 'auto') !== 'radio';
@@ -414,12 +436,14 @@ async function route(req, res) {
     if (!rows.length || !('Obrigação / Tarefa' in rows[0])) throw new Error('Planilha sem coluna Obrigação / Tarefa');
     if (['Empresa', 'EmpID', 'CNPJ'].some(column => !(column in rows[0]))) throw new Error('Planilha sem colunas Empresa, EmpID ou CNPJ');
     const sourceTasks = new Set(rows.map(row => String(row['Obrigação / Tarefa'] ?? '').trim()).filter(Boolean));
+    const filterTask = typeof payload.filterTask === 'string' && payload.filterTask.trim() ? payload.filterTask.trim() : null;
+    if (filterTask && !sourceTasks.has(filterTask)) throw new Error(`Obrigação "${filterTask}" não encontrada na planilha`);
     const autoAudit = payload.autoAudit === true;
-    if (!autoAudit && (!Array.isArray(payload.selectedTasks) || !payload.selectedTasks.length || payload.selectedTasks.length > 30 ||
+    if (!autoAudit && !filterTask && (!Array.isArray(payload.selectedTasks) || !payload.selectedTasks.length || payload.selectedTasks.length > 30 ||
         payload.selectedTasks.some(task => typeof task !== 'string' || !sourceTasks.has(task)) ||
         new Set(payload.selectedTasks).size !== payload.selectedTasks.length)) throw new Error('Selecione até 30 tarefas distintas da planilha para esta prévia');
-    const taskNames = autoAudit ? [...sourceTasks] : payload.selectedTasks;
-    if (autoAudit) auditProgress = { running: true, completed: 0, total: taskNames.length, task: 'Identificando tarefas da planilha', error: null };
+    const taskNames = filterTask ? [filterTask] : autoAudit ? [...sourceTasks] : payload.selectedTasks;
+    if (autoAudit) auditProgress = { running: true, completed: 0, total: taskNames.length, task: filterTask ? `Conferindo ${filterTask}` : 'Identificando tarefas da planilha', error: null };
     try {
     const mappings = [], pending = [], excluded = [];
     for (const task of taskNames) {
@@ -487,6 +511,7 @@ async function route(req, res) {
             const result = { task: item.mapping.task, questionRef: rules.questionRef, answerRef: rules.answerRef, clients: checked.length, summary: summarizeChecked(checked) };
             inspected.push(...checked); applicable.push({ task: item.mapping.task, rules, plan: item.plan }); results.push(result);
             auditCache.set(item.cacheKey, { at: Date.now(), checked, applicable: { task: item.mapping.task, rules, plan: item.plan }, result });
+            await persistAuditCache();
             if (autoAudit) auditProgress.completed++;
           } catch (error) {
             if (sessionError(error)) throw error;
@@ -531,7 +556,7 @@ async function route(req, res) {
     const report = { mode: autoAudit ? 'account_audit' : 'mapping_preview', createdAt: new Date().toISOString(), source: source.label, sourceSha256: sha256(source.csv), sourceStale: source.stale,
       accountId, complete: !incompleteReason && !failedTasks.length, incompleteReason, rules: { inputType: 'mixed', allowedTasks: mappings.map(x => x.task) }, mappings: results, pendingTasks: pending,
       excludedTasks: excluded, failedTasks, sourceTaskCount: sourceTasks.size, sourceCnpjCount: new Set(rows.filter(row => validCnpj(row.CNPJ)).map(row => normalizeCnpj(row.CNPJ))).size,
-      invalidSource, inspected };
+      invalidSource, inspected, filterTask };
     const toWrite = inspected.filter(x => x.uiStatus === 'vazio').length;
     // Muitos CNPJs ausentes na Enquete costumam indicar planilha de outro escritório: a gravação fica bloqueada.
     const located = inspected.filter(x => ['vazio', 'ja_correto', 'divergente', 'bloqueado', 'nao_encontrado'].includes(x.uiStatus));
@@ -565,14 +590,15 @@ async function route(req, res) {
     }
     previewState = null;
     // O resultado conferido após a gravação atualiza a leitura guardada; a tela não precisa reabrir as perguntas.
-    const updateCache = (task, answerRef, cnpjStatus) => {
+    const updateCache = async (task, answerRef, cnpjStatus) => {
       for (const [key, entry] of auditCache) {
         if (!key.includes(`|${task}|${answerRef}|`)) continue;
         const checked = entry.checked.map(x => cnpjStatus.has(x.cnpj) ? { ...x, ...cnpjStatus.get(x.cnpj) } : x);
         auditCache.set(key, { ...entry, checked, result: { ...entry.result, summary: Object.fromEntries(['vazio','ja_correto','divergente','nao_encontrado','bloqueado'].map(st => [st, checked.filter(x => x.uiStatus === st).length])) } });
       }
+      await persistAuditCache();
     };
-    const forgetTasks = tasks => { for (const key of auditCache.keys()) if (tasks.some(task => key.includes(`|${task}|`))) auditCache.delete(key); };
+    const forgetTasks = async tasks => { for (const key of auditCache.keys()) if (tasks.some(task => key.includes(`|${task}|`))) auditCache.delete(key); await persistAuditCache(); };
     // Agrupa por pergunta: o operador confirma uma vez por pergunta, com todas as respostas e clientes dela.
     const byQuestion = new Map();
     for (const mapping of state.mappings) {
@@ -633,7 +659,7 @@ async function route(req, res) {
     busy = true;
     try {
       if (loginContext) await loginContext.close();
-      loginContext = null; loginReady = false; catalogState = null; previewState = null; lastAutoOpen = 0; auditCache.clear();
+      loginContext = null; loginReady = false; catalogState = null; previewState = null; lastAutoOpen = 0; auditCache.clear(); await persistAuditCache();
       if (loginLock) await loginLock();
       loginLock = null;
       loginLock = await acquireLock();
@@ -671,6 +697,8 @@ async function route(req, res) {
   }
   return send(res, 404, { error: 'Rota não encontrada' });
 }
-const server = http.createServer((req, res) => { route(req, res).catch(async e => { if (e.report) lastReport = e.report; send(res, 400, { error: humanError(e), report: e.report ?? null }); }); });
+const server = http.createServer((req, res) => { route(req, res).catch(async e => { console.error(`[API 400] ${req.method} ${req.url}: ${e.message}`); if (e.report) lastReport = e.report; send(res, 400, { error: humanError(e), report: e.report ?? null }); }); });
 server.listen(port, host, () => console.log(`G-Click local: http://${host}:${port}`));
+process.on('uncaughtException', err => { console.error('[UNCAUGHT EXCEPTION]', err); });
+process.on('unhandledRejection', reason => { console.error('[UNHANDLED REJECTION]', reason); });
 for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, async () => { try { if (loginContext) await loginContext.close(); if (loginLock) await loginLock(); } finally { server.close(() => process.exit(0)); } });

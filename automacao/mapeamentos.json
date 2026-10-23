@@ -76,5 +76,23 @@
     "answerLabel": "ISS Próprio",
     "catalogSource": "live",
     "updatedAt": "2026-10-20T15:34:47.023Z"
+  },
+  {
+    "accountId": "6581",
+    "task": "EFD ICMSIPI",
+    "answerRef": "02.01.04",
+    "questionLabel": "Qual dessas Obrigações Federais são entregues para esse cliente ?",
+    "answerLabel": "EFD ICMS/IPI",
+    "catalogSource": "live",
+    "updatedAt": "2026-10-22T02:20:49.416Z"
+  },
+  {
+    "accountId": "6581",
+    "task": "EFD REINF",
+    "answerRef": "02.01.05",
+    "questionLabel": "Qual dessas Obrigações Federais são entregues para esse cliente ?",
+    "answerLabel": "EFD Reinf (Ativo)",
+    "catalogSource": "live",
+    "updatedAt": "2026-10-22T02:52:03.660Z"
   }
 ]
