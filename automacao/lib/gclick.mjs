@@ -377,7 +377,16 @@ export async function inspectClient(page, item, rules) {
     const match = id?.match(new RegExp(`^cb\\.(\\d+)-${rules.answerValue}$`));
     if (!match) return { ...item, uiStatus: 'bloqueado', uiReason: 'ID interno da resposta inválido' };
     const marked = await target.evaluate(el => el.checked);
-    return { ...item, internalId: match[1], uiStatus: marked ? 'ja_correto' : 'vazio', currentValue: marked ? rules.answerValue : null };
+    const label = rules.answerLabel || rules.answerValue;
+    return {
+      ...item,
+      internalId: match[1],
+      uiStatus: marked ? 'ja_correto' : 'vazio',
+      currentValue: marked ? rules.answerValue : null,
+      uiReason: marked
+        ? `Já respondido com esta opção na Enquete (${label})`
+        : `Opção não marcada na Enquete (${label})`
+    };
   }
   const radios = row.locator(radioSelector(rules));
   if (await radios.count() === 0) return { ...item, uiStatus: 'bloqueado', uiReason: 'Pergunta ausente na linha' };
@@ -387,7 +396,16 @@ export async function inspectClient(page, item, rules) {
   const inputName = await radios.first().getAttribute('name');
   const internalId = inputName?.split('-')[0];
   if (!/^\d+$/.test(internalId ?? '')) return { ...item, uiStatus: 'bloqueado', uiReason: 'ID interno inválido' };
-  return { ...item, internalId, uiStatus: checked.length === 0 ? 'vazio' : checked.length === 1 && checked[0] === rules.answerValue ? 'ja_correto' : 'divergente', currentValue: checked[0] ?? null };
+  const label = rules.answerLabel || rules.answerValue;
+  const isCorrect = checked.length === 1 && checked[0] === rules.answerValue;
+  const isVazio = checked.length === 0;
+  const uiStatus = isVazio ? 'vazio' : isCorrect ? 'ja_correto' : 'divergente';
+  const uiReason = isCorrect
+    ? `Já respondido com esta opção na Enquete (${label})`
+    : isVazio
+      ? `Pergunta sem resposta para este cliente no G-Click`
+      : `Respondido com outra opção no G-Click (valor: ${checked[0]})`;
+  return { ...item, internalId, uiStatus, currentValue: checked[0] ?? null, uiReason };
 }
 export async function inspectAll(page, plan, rules) {
   const out = [];

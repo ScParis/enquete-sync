@@ -1004,7 +1004,20 @@ function planilhaText(p) {
   if (p.error) return ` Planilha: falhou (${p.error}); use “Reenviar marcações pendentes”.`;
   return ` Planilha: ${p.linhas ?? 0} linha(s) atualizada(s) na coluna “Enquete G-Click”${p.pending ? `; ${p.pending} sem linha correspondente` : ''}.`;
 }
-function updateLedgerLink() { const a = currentAccount(); $('ledgerLink').hidden = !/^\d+$/.test(a); $('ledgerLink').href = `/api/marcacoes.csv?account=${encodeURIComponent(a)}`; $('ledgerLink').setAttribute('download', `marcacoes-enquete-${a}.csv`); }
+function updateLedgerLink() {
+  const a = currentAccount();
+  const valid = /^\d+$/.test(a);
+  if ($('auditLogLink')) {
+    $('auditLogLink').hidden = !valid;
+    $('auditLogLink').href = `/api/audit/log.csv?account=${encodeURIComponent(a)}`;
+    $('auditLogLink').setAttribute('download', `gclick-log-auditoria-${a}.csv`);
+  }
+  if ($('ledgerLink')) {
+    $('ledgerLink').hidden = !valid;
+    $('ledgerLink').href = `/api/marcacoes.csv?account=${encodeURIComponent(a)}&type=ledger`;
+    $('ledgerLink').setAttribute('download', `marcacoes-enquete-${a}.csv`);
+  }
+}
 $('accountId').addEventListener('change', () => { updateLedgerLink(); refreshWriterStatus(); updateSidebarBadges(); });
 $('filter').addEventListener('change', () => { resultsPage = 0; if (lastReport) renderResultRows(lastReport); });
 $('resultsSearch')?.addEventListener('input', () => { resultsPage = 0; if (lastReport) renderResultRows(lastReport); });

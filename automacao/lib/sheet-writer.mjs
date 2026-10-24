@@ -18,6 +18,13 @@ function doPost(e) {
     const aba = SpreadsheetApp.getActiveSpreadsheet().getSheets().find(s => s.getSheetId() === Number(pedido.gid));
     if (!aba) return resposta({ ok: false, erro: 'Aba não encontrada (gid ' + pedido.gid + ')' });
     if (pedido.teste) return resposta({ ok: true, aba: aba.getName() });
+    if (pedido.action === 'gravar_log_auditoria') {
+      const linhas = pedido.linhas;
+      if (!Array.isArray(linhas) || !linhas.length) return resposta({ ok: false, erro: 'Nenhuma linha enviada para o log' });
+      aba.clear();
+      aba.getRange(1, 1, linhas.length, linhas[0].length).setValues(linhas);
+      return resposta({ ok: true, total: linhas.length - 1, aba: aba.getName() });
+    }
     const valores = aba.getDataRange().getValues();
     const cabecalho = valores[0].map(v => String(v).trim());
     const norm = v => String(v || '').trim().toLowerCase();
@@ -110,4 +117,8 @@ export function testSheetWriter({ url, token, gid }, fetcher = fetch) {
 
 export function writeMarks({ url, token, gid }, marks, fetcher = fetch) {
   return call(url, { chave: token, gid, marcacoes: marks.map(m => ({ cnpj: m.cnpj, ...(m.empId || m.cod ? { cod: m.empId ?? m.cod } : {}), tarefa: m.task, texto: m.texto })) }, fetcher);
+}
+
+export function writeAuditLog({ url, token, gid }, rows, fetcher = fetch) {
+  return call(url, { chave: token, gid, action: 'gravar_log_auditoria', linhas: rows }, fetcher);
 }

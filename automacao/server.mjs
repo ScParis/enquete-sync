@@ -10,9 +10,10 @@ import { parseHeaderAndSample } from './lib/source-inspector.mjs';
 import { TARGET_MODELS, AVAILABLE_FIELDS, TRANSFORMS, createSuggestedProfile, validateProfileAgainstStructure, normalizeTable } from './lib/mapping-engine.mjs';
 import { LOGIN_URL, hasGclickSession, openBrowser, openQuestion, questionStillOpen, resolveColumnValue, readQuestionCatalog, inspectAll, applyQuestionWithOperator, enterEmpresa, getActiveEmpresa, getAccessEmpresas } from './lib/gclick.mjs';
 import { readPublicGoogleCsv, readWithServiceAccount, parseSheetUrl } from './lib/google-service.mjs';
-import { appsScriptSource, validScriptUrl, testSheetWriter, writeMarks } from './lib/sheet-writer.mjs';
+import { appsScriptSource, validScriptUrl, testSheetWriter, writeMarks, writeAuditLog } from './lib/sheet-writer.mjs';
 import { listCsvDownloads, readCsvDownload } from './lib/downloads.mjs';
 import { inspectObrigacoesPage } from './lib/obrigacoes.mjs';
+import { buildAuditLogRows, auditLogCsv } from './lib/audit-logger.mjs';
 
 const root = path.dirname(new URL(import.meta.url).pathname);
 const host = '127.0.0.1';
@@ -288,11 +289,26 @@ async function body(req) {
   for await (const chunk of req) { total += chunk.length; if (total > 25 * 1024 * 1024) throw new Error('Envio maior que 25 MB'); chunks.push(chunk); }
   return JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
 }
-function csvExport(report) {
-  const rows = report.inspected ?? report.plan ?? [];
-  const header = ['Conta','CNPJ','EmpID','Empresa','Mapeamento','Tarefas','Status planilha','Status enquete','Resposta atual','Motivo','Linhas planilha'];
-  const quote = x => `"${String(x ?? '').replace(/"/g, '""')}"`;
-  return '﻿' + [header, ...rows.map(x => [report.accountId ?? report.rules?.accountId,x.cnpj,x.empId,x.empresa,x.mappingTask ?? '',x.tasks?.join(' | '),x.status,x.uiStatus,x.currentValue,x.uiReason ?? x.reason,x.matchingRows?.join(' | ')])].map(row => row.map(quote).join(',')).join('\r\n') + '\r\n';
+
+
+function csvExport(report, catalog, savedMappings = [], ledger = []) {
+  const rows = buildAuditLogRows(report, catalog, savedMappings, ledger);
+  return auditLogCsv(rows);
+}
+
+async function getLatestReport(accountId) {
+  if (lastReport && (!accountId || lastReport.accountId === accountId)) return lastReport;
+  try {
+    const runsDir = path.join(root, 'runs');
+    const files = (await fs.readdir(runsDir)).filter(f => f.endsWith('.json')).sort().reverse();
+    for (const f of files) {
+      const data = JSON.parse(await fs.readFile(path.join(runsDir, f), 'utf8'));
+      if (['account_audit', 'mapping_preview', 'mapping_apply'].includes(data.mode)) {
+        if (!accountId || data.accountId === accountId) return data;
+      }
+    }
+  } catch {}
+  return lastReport;
 }
 const sessionError = error => /sess[aã]o|expirad|closed|Target page|context or browser|janela/i.test(String(error?.message ?? error));
 const WINDOW_CLOSED = 'A janela do Chrome da automação foi fechada. Clique em Abrir janela de login e entre de novo; mantenha a janela aberta até o fim da conferência ou da gravação.';
@@ -354,10 +370,31 @@ async function route(req, res) {
   if (req.method === 'GET' && url.pathname === '/api/config') return send(res, 200, { token, savedMappings,
     savedProfiles, targetModels: TARGET_MODELS, availableFields: AVAILABLE_FIELDS,
     accounts: await listStoredAccounts(), loginOpen: Boolean(loginContext), loginReady, sessionLostAt, catalog: loginReady ? catalogState : null, catalogLive: Boolean(catalogState && loginReady), busy });
-  if (req.method === 'GET' && url.pathname === '/api/report.json') return lastReport ? send(res, 200, lastReport) : send(res, 404, { error: 'Nenhum relatório gerado' });
-  if (req.method === 'GET' && url.pathname === '/api/report.csv') return lastReport ? send(res, 200, csvExport(lastReport), 'text/csv; charset=utf-8') : send(res, 404, { error: 'Nenhum relatório gerado' });
+  if (req.method === 'GET' && url.pathname === '/api/report.json') {
+    const accountId = url.searchParams.get('account') || lastReport?.accountId || '2420';
+    const rep = (await getLatestReport(accountId)) || lastReport;
+    return rep ? send(res, 200, rep) : send(res, 404, { error: 'Nenhum relatório gerado' });
+  }
+  if (req.method === 'GET' && (url.pathname === '/api/report.csv' || url.pathname === '/api/audit/log.csv')) {
+    const accountId = url.searchParams.get('account') || lastReport?.accountId || '2420';
+    const rep = (await getLatestReport(accountId)) || lastReport;
+    if (!rep) return send(res, 404, { error: 'Nenhum relatório de auditoria gerado' });
+    const catalog = catalogState?.accountId === rep.accountId ? catalogState : (await readStoredCatalog(rep.accountId));
+    const ledger = await readLedger(rep.accountId);
+    const rows = buildAuditLogRows(rep, catalog, savedMappings, ledger);
+    return send(res, 200, auditLogCsv(rows), 'text/csv; charset=utf-8');
+  }
   if (req.method === 'GET' && url.pathname === '/api/marcacoes.csv') {
     const accountId = requireAccount(url.searchParams.get('account'));
+    const type = url.searchParams.get('type') || 'ledger';
+    if (type === 'all' || type === 'audit') {
+      const rep = (await getLatestReport(accountId)) || lastReport;
+      if (!rep) return send(res, 404, { error: 'Nenhum relatório de auditoria gerado' });
+      const catalog = catalogState?.accountId === accountId ? catalogState : (await readStoredCatalog(accountId));
+      const ledger = await readLedger(accountId);
+      const rows = buildAuditLogRows(rep, catalog, savedMappings, ledger);
+      return send(res, 200, auditLogCsv(rows), 'text/csv; charset=utf-8');
+    }
     return send(res, 200, ledgerCsv(await readLedger(accountId)), 'text/csv; charset=utf-8');
   }
   if (req.method !== 'POST' || !url.pathname.startsWith('/api/')) return send(res, 404, { error: 'Rota não encontrada' });
@@ -540,6 +577,23 @@ async function route(req, res) {
     return send(res, 200, { configured: true, aba: tested.aba, sync: await pushPendingMarks(accountId) });
   }
   if (url.pathname === '/api/sheet-writer/resend') return send(res, 200, await pushPendingMarks(requireAccount(payload.accountId)));
+  if (url.pathname === '/api/audit/sync-sheet') {
+    const accountId = requireAccount(payload.accountId);
+    const rep = (await getLatestReport(accountId)) || lastReport;
+    if (!rep) throw new Error('Nenhum relatório de auditoria disponível para sincronizar');
+    const catalog = catalogState?.accountId === accountId ? catalogState : (await readStoredCatalog(accountId));
+    const ledger = await readLedger(accountId);
+    const rows = buildAuditLogRows(rep, catalog, savedMappings, ledger);
+    const writer = await writerFor(accountId);
+    if (!writer) throw new Error('Apps Script não configurado para esta conta');
+    const targetGid = payload.gid ? Number(payload.gid) : writer.gid;
+    const table2D = [
+      ['Conta','Linha Planilha','Cod. / ID Cliente','CNPJ','Razão Social / Empresa','Cliente no G-Click','Obrigação / Tarefa','Cód. Pergunta','Pergunta','Departamento / Categoria','Cód. Resposta Mapeada','Resposta Mapeada','Valor Interno','Status da Auditoria','Código do Status','Resposta Atual no G-Click','Motivo / Detalhes da Validação','Ação do Robô','Auditado em'],
+      ...rows.map(r => [r.conta, r.linhaPlanilha, r.codCliente, r.cnpj, r.empresa, r.clienteGClick, r.tarefa, r.codPergunta, r.pergunta, r.categoria, r.codResposta, r.respostaEsperada, r.valorInterno, r.statusTexto, r.statusCodigo, r.respostaAtualGClick, r.motivo, r.acaoRobo, r.auditadoEm])
+    ];
+    const resWrite = await writeAuditLog({ url: writer.url, token: writer.token, gid: targetGid }, table2D);
+    return send(res, 200, resWrite);
+  }
   if (url.pathname === '/api/mappings/plan') {
     const accountId = requireAccount(payload.accountId);
     const task = String(payload.task ?? '').trim();
@@ -771,7 +825,17 @@ async function route(req, res) {
           try {
             const answerValue = item === items[0] ? opened.answerValue : item.mapping.rules.answerValue || await resolveColumnValue(page, item.mapping.rules);
             const rules = { ...item.mapping.rules, inputType: opened.inputType, answerValue };
-            const checked = (await inspectAll(page, item.plan, rules)).map(x => ({ ...x, mappingTask: item.mapping.task, mappingAnswer: rules.answerRef }));
+            const checked = (await inspectAll(page, item.plan, rules)).map(x => ({
+              ...x,
+              mappingTask: item.mapping.task,
+              mappingAnswer: rules.answerRef,
+              questionRef: rules.questionRef,
+              questionLabel: rules.question,
+              answerRef: rules.answerRef,
+              answerLabel: rules.answerLabel,
+              answerValue: rules.answerValue,
+              category: rules.category
+            }));
             if (!(await questionStillOpen(page, rules))) throw new Error('Sessão do G-Click perdida durante a leitura desta tarefa');
             const result = { task: item.mapping.task, questionRef: rules.questionRef, answerRef: rules.answerRef, clients: checked.length, summary: summarizeChecked(checked) };
             inspected.push(...checked); applicable.push({ task: item.mapping.task, rules, plan: item.plan }); results.push(result);
