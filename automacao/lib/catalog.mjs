@@ -3,13 +3,26 @@ const directChild = (parent, child) => child.startsWith(`${parent}.`) && child.s
 
 export function buildCatalog(rows, accountId, capturedAt = new Date().toISOString()) {
   if (!Array.isArray(rows) || !rows.length) throw new Error('A aba Enquete não retornou perguntas');
-  const seen = new Set();
-  const entries = rows.map(row => ({ type: compact(row.type), ref: compact(row.ref), label: compact(row.label) }));
-  for (const row of entries) {
-    if (!['G', 'P', 'R'].includes(row.type) || !/^\d+(?:\.\d+)*$/.test(row.ref) || !row.label)
-      throw new Error(`Linha inválida no catálogo da Enquete: ${JSON.stringify(row)}`);
-    if (seen.has(row.ref)) throw new Error(`Referência duplicada na Enquete: ${row.ref}`);
-    seen.add(row.ref);
+  const seenRefs = new Map();
+  const entries = [];
+  for (const raw of rows) {
+    const type = compact(raw.type), rawRef = compact(raw.ref), label = compact(raw.label);
+    if (!['G', 'P', 'R'].includes(type) || !/^\d+(?:\.\d+)*$/.test(rawRef) || !label)
+      throw new Error(`Linha inválida no catálogo da Enquete: ${JSON.stringify(raw)}`);
+    let ref = rawRef;
+    if (seenRefs.has(rawRef)) {
+      const existing = seenRefs.get(rawRef);
+      if (existing.label === label && existing.type === type) {
+        throw new Error(`Referência duplicada na Enquete: ${rawRef}`);
+      }
+      let suffix = 2;
+      while (seenRefs.has(`${rawRef}_${suffix}`)) suffix++;
+      ref = `${rawRef}_${suffix}`;
+    }
+    const entry = { type, ref, label, rawRef };
+    seenRefs.set(ref, entry);
+    if (!seenRefs.has(rawRef)) seenRefs.set(rawRef, entry);
+    entries.push(entry);
   }
   const groups = new Map(entries.filter(row => row.type === 'G').map(row => [row.ref, row.label]));
   const isSubQuestion = label => /^(?:Qual|Quando|Como|Informe|Selecione)\b|\?$/i.test(label);

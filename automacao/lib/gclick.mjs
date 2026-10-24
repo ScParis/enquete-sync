@@ -167,7 +167,11 @@ export async function readQuestionCatalog(context, accountId) {
     const search = page.locator('#DataTables_Table_0_filter input');
     if (await search.count()) await search.fill('');
     const lengthSelect = page.locator('select[name="DataTables_Table_0_length"]');
-    if (await lengthSelect.count() && await lengthSelect.locator('option[value="-1"]').count()) await lengthSelect.selectOption('-1');
+    if (await lengthSelect.count()) {
+      if (await lengthSelect.locator('option[value="-1"]').count()) await lengthSelect.selectOption('-1');
+      else if (await lengthSelect.locator('option[value="100"]').count()) await lengthSelect.selectOption('100');
+      await page.waitForTimeout(500);
+    }
     const rows = [];
     for (let pageNumber = 0; pageNumber < 100; pageNumber++) {
       const current = await table.locator('tbody tr').evaluateAll(els => els.map(el => {
@@ -177,7 +181,12 @@ export async function readQuestionCatalog(context, accountId) {
       rows.push(...current);
       const next = page.locator('#DataTables_Table_0_next');
       if (!(await next.count()) || (await next.getAttribute('class'))?.includes('disabled')) break;
-      await next.click();
+      const firstRefBefore = current[0]?.ref;
+      await next.locator('a').click();
+      await page.waitForFunction(prev => {
+        const first = document.querySelector('#DataTables_Table_0 tbody tr td:nth-child(3)');
+        return first && first.textContent.trim() !== prev;
+      }, firstRefBefore, { timeout: 5000 }).catch(() => page.waitForTimeout(500));
       if (pageNumber === 99) throw new Error('Catálogo da Enquete excede o limite de páginas');
     }
     return buildCatalog(rows, accountId);
@@ -189,8 +198,9 @@ export async function openQuestion(page, rules) {
   if (!page.url().includes('app.gclick.com.br') || (await page.getByText('Respondendo Enquete', { exact: true }).count()) === 0) throw new Error('Sessão do G-Click ausente/expirada. Execute o comando login.');
   const search = page.locator('#DataTables_Table_0_filter input');
   await search.waitFor({ state: 'visible', timeout: 15000 });
-  async function configurationRow(ref) {
-    await search.fill(ref);
+  async function configurationRow(ref, expectedLabel) {
+    const cleanRef = ref.split('_')[0];
+    await search.fill(cleanRef);
     const next = page.locator('#DataTables_Table_0_next');
     let found = null;
     for (let pageNumber = 0; pageNumber < 100; pageNumber++) {
@@ -198,18 +208,26 @@ export async function openQuestion(page, rules) {
         const cells = Array.from(el.cells, cell => cell.innerText.replace(/\s+/g, ' ').trim());
         return { type: cells[1], ref: cells[2], label: cells[3] };
       }));
-      for (const row of rows.filter(row => row.ref === ref)) {
-        if (found) throw new Error(`Referência ${ref} duplicada na aba Enquete`);
-        found = row;
+      const matches = rows.filter(row => row.ref === cleanRef);
+      if (matches.length > 0) {
+        if (expectedLabel) {
+          found = matches.find(r => r.label === expectedLabel || r.label.includes(expectedLabel)) ?? matches[0];
+        } else {
+          found = matches[0];
+        }
+        if (found) {
+          found = { ...found, ref };
+          break;
+        }
       }
       if (!(await next.count()) || (await next.getAttribute('class'))?.includes('disabled')) break;
-      await next.click();
+      await next.locator('a').click();
     }
     if (!found) throw new Error(`Referência ${ref} não encontrada na aba Enquete`);
     return found;
   }
-  const questionRow = await configurationRow(rules.questionRef);
-  const answerRow = await configurationRow(rules.answerRef);
+  const questionRow = await configurationRow(rules.questionRef, rules.question);
+  const answerRow = await configurationRow(rules.answerRef, rules.answerLabel);
   validateAnswerMapping(questionRow, answerRow, rules);
   await page.getByText('Respondendo Enquete', { exact: true }).click();
   const respondingTab = page.locator('#tabenqconfiglist');
