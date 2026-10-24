@@ -1,0 +1,361 @@
+<html><head><link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
+</head><body><input type="hidden" id="daeaconfig" value="1040">
+<div class="tabs-container">
+	<ul class="nav nav-tabs">
+		<li class="active"><a data-toggle="tab" href="#tabnotemail">Texto Padrão</a></li>
+		<li class="" id="abanotatividades" style="display: none"><a data-toggle="tab" href="#tabnotatividades">Anexos</a></li>
+		<li class=""><a data-toggle="tab" href="#tabnotvariaveis">Variáveis</a></li> 
+	</ul>
+	<div class="tab-content">
+		<div id="tabnotemail" class="tab-pane active">   
+			<div class="panel-body" id="bodynotemail">
+				<form action="coSalvarAConfigEmail.do" method="post" name="COAtividadeConfigEmailForm" id="formaconfigemail">
+					<input type="hidden" name="empresaId" id="empresaId" value="6581">
+					<input type="hidden" id="coaconfigemailOid" name="coaconfigemailOid" value="">
+					<input type="hidden" id="coaconfigemailAconfig" name="coaconfigemailAconfig" value="">
+					<input type="hidden" id="coaconfigemailCategorias" name="coaconfigemailCategorias" value="">
+					<input type="hidden" id="coaconfigemailTextoid" name="coaconfigemailTextoid" value="">
+					<input type="hidden" id="coaconfigemailTexto" name="coaconfigemailTexto" value="">
+					<input type="hidden" id="coaconfigemailCanal" name="coaconfigemailCanal" value="">
+					<input type="hidden" id="coaconfigemailCanalNome" name="coaconfigemailCanalNome" value="">
+					<input type="hidden" id="coaconfigemailEmail" name="coaconfigemailEmail" value="">
+					<input type="hidden" id="coaconfigemailMensagem" name="coaconfigemailMensagem" value="">
+					<input type="hidden" id="coaconfigemailLembrete" name="coaconfigemailLembrete" value="">
+					<input type="hidden" id="coaconfigemailLembreteupload" name="coaconfigemailLembreteupload" value="">
+					<input type="hidden" id="coaconfigemailLembreteemail" name="coaconfigemailLembreteemail" value="">				
+					<input type="hidden" id="coaconfigemailOrdem" name="coaconfigemailOrdem" value="">
+				</form>
+				<div class="row"> 
+					<div class="col-sm-12">
+						<label class="control-label">Destinatário</label> 
+						<select data-placeholder="Selecione a categoria do telefone para seleção dos contatos..." id="daecategorias" class="chosen-select" multiple="" style="width:100%;">			
+							
+								<option value="3">Contábil</option>
+								
+							
+								<option value="1">Departamento Pessoal</option>
+								
+							
+								<option value="6">Diretoria</option>
+								
+							
+								<option value="7">Financeiro</option>
+								
+							
+								<option value="2">Fiscal</option>
+								
+							
+								<option value="10">Geral</option>
+								
+							
+								<option value="9">Gerência</option>
+								
+							
+								<option value="11">Guias Impostos</option>
+								
+							
+								<option value="4">Legalização</option>
+								
+							
+								<option value="8">RH</option>
+								
+							
+								<option value="5">Sócios</option>
+								
+							
+						</select>
+					</div>
+				</div>
+				<div class="row">&nbsp;</div>
+				<div class="row"> 
+					<div class="col-sm-12">
+						<label class="control-label">Canal</label> 
+						<select class="form-control" id="daeacanal">
+							<option value="">Escolha um canal</option>
+							
+								
+									<option value="1b90cd8b-8cea-41c8-a447-b6d5119dccd9">WHATSAPP - ADM - NOTA FISCAL</option>
+															
+							
+						</select>
+					</div>
+				</div>
+				<div class="row">&nbsp;</div>	
+				<div class="row">
+					<div class="col-sm-6"> 
+						<label class="control-label">Corpo da mensagem</label>
+					</div>
+					<div class="col-sm-6"> 
+						<div class="input-group">
+							<select class="form-control" id="daevariavel">
+								<option value="[contato.nome]">Nome do contato</option>
+								<option value="[cliente.apelido]">Apelido do cliente</option>
+								<option value="[cliente.nome]">Nome do cliente</option>
+								<option value="[cliente.inscricao]">Inscrição do cliente</option>
+								<option value="[cliente.inscricao.tipo]">Tipo da inscrição do cliente</option>
+								<option value="[obrigacao.nome]">Nome da obrigação</option>
+								<option value="[tarefa.vencimento]">Prazo da tarefa</option>
+								<option value="[tarefa.competencia]">Competência da tarefa</option>
+							</select>											
+							<span class="input-group-btn">
+								<button class="btn btn-success" onclick="adicionarVariavel()"><i class="fa fa-plus"></i> Adicionar Variáveis</button>
+							</span>
+						</div>
+					</div>
+				</div> 
+				<div class="row">
+					<div class="col-sm-12"> 
+						<input type="hidden" id="daetextoid" value="161">
+						<textarea id="daetexto" rows="5" class="form-control">Olá [cliente.apelido], tudo bom?
+Segue [obrigacao.nome] referente a [tarefa.competencia], com o vencimento: [tarefa.vencimento]
+Qualquer dúvidas, ficamos à disposição!
+Atenciosamente,</textarea>
+					</div>
+				</div> 
+				
+				<div class="row">
+					<div class="col-sm-12">
+						<br>
+						<div>
+							<div class="alert alert-default" style="text-align: left; background-color: #EEEEEE">
+								<input type="checkbox" id="daemensagem" onclick="emailAUTOLembrete('email');"> 
+								&nbsp;<b>Enviar mensagem automaticamente na conclusão da tarefa</b>							 
+								<div id="viewavisoabaatividades" style="display: none">
+									<br><div class="alert alert-info">
+										<i class="fa fa-info-circle"></i> A mensagem será disparada no momento em que todas as atividades da tarefa forem concluídas e o status for alterado.<br><br>
+										Por padrão, todas as atividades de anexo serão adicionadas a mensagem, confira a aba <b>Anexos</b> para alterar as configurações.										
+									</div>
+								</div>
+							</div>
+						</div>						
+					</div>
+				</div>
+				
+			</div>
+		</div>
+		<div id="tabnotatividades" class="tab-pane"> 
+			<div class="panel-body" id="viewaconfigsmensagem">
+				<div class="alert alert-info" align="center"><i class="fa fa-info-circle"></i> Marque quais atividades do tipo anexo deseja que tenham seus arquivos anexados ao e-mail automaticamente durante seu envio.</div>
+				<table class="table table-bordered" style="background-color: white">
+					<tbody><tr>
+						<th width="5%">Ordem</th>
+						<th width="7%">Tipo</th>											
+						<th>Texto</th>
+						<th width="5%">Anexar</th>
+					</tr>
+					
+					
+						
+							<tr>
+								<td align="center">1</td>  
+								<td align="center"> 
+									
+										<div class="circulo" title="ValidaPDF"><i class="fa fa-file-pdf-o"></i></div>
+									
+								</td>											
+								<td>																	
+									
+									CSLL
+								</td>
+								<td align="center">																	
+									<button class="btn btn-default" onclick="mensagemTextoPadrao('462','0','aconfigmensagem')" title="Clique aqui para anexar">
+										<i class="fa fa-times-circle" style="color:red"></i>
+									</button>
+								</td>
+							</tr>
+						
+							<tr>
+								<td align="center">2</td>  
+								<td align="center"> 
+									
+										<div class="circulo" title="ValidaPDF"><i class="fa fa-file-pdf-o"></i></div>
+									
+								</td>											
+								<td>																	
+									
+									IRPJ
+								</td>
+								<td align="center">																	
+									<button class="btn btn-default" onclick="mensagemTextoPadrao('474','0','aconfigmensagem')" title="Clique aqui para anexar">
+										<i class="fa fa-times-circle" style="color:red"></i>
+									</button>
+								</td>
+							</tr>
+						
+					
+					</tbody></table>
+			</div>
+		</div>
+		<div id="tabnotvariaveis" class="tab-pane"> 
+			<div class="panel-body">
+				<div class="row"> 
+					<div class="col-sm-12">
+						<div class="alert alert-info" align="center"><i class="fa fa-info-circle"></i> Acrescentar variáveis à mensagem ajudará a deixá-la personalizada para cada cliente.</div>
+						<table class="table table-bordered" style="background-color: white">
+							<tbody><tr>
+								<th>Variável</th>
+								<th>Exibição</th>
+								<th>Exemplo</th>
+							</tr>
+							<tr>
+								<td>contato.nome</td>
+								<td>Nome do contato</td>
+								<td>Victoria</td>
+							</tr>
+							<tr>
+								<td>cliente.apelido</td>
+								<td>Apelido do cliente</td>
+								<td>G-Click</td>
+							</tr>
+							<tr>
+								<td>cliente.nome</td>
+								<td>Nome do cliente</td>
+								<td>G-Click</td>
+							</tr>
+							<tr>
+								<td>cliente.inscricao</td>
+								<td>Número da inscrição</td>
+								<td>25.178.493/0001-85</td>
+							</tr>
+							<tr>
+								<td>cliente.inscricao.tipo</td>
+								<td>Tipo de inscrição</td>
+								<td>CNPJ</td>
+							</tr>
+							<tr>
+								<td>obrigacao.nome</td>
+								<td>Nome da obrigação</td>
+								<td>Fechamento Contábil</td>
+							</tr>
+							<tr>
+								<td>tarefa.competencia</td>
+								<td>Competência da tarefa</td>
+								<td>JAN/2020 ou 2020</td>
+							</tr>
+							<tr>
+								<td>tarefa.vencimento</td>
+								<td>Vencimento da tarefa</td>
+								<td>31/01/2020</td>
+							</tr>
+							<tr id="variavelatividades" style="display: none">
+								<td>atividades</td>
+								<td>Anexos</td>
+								<td>- Fechamento_G-Click_JAN_2020.pdf</td>
+							</tr>
+							<tr id="variavelatividadesnomes" style="display: none">
+								<td>atividades.nomes</td>
+								<td>Anexos organizados por atividade</td>
+								<td>
+									1. Anexar fechamento<br>
+									- Fechamento_G-Click_JAN-2020.pdf<br>
+									2. Anexar demosntrativo de resultado<br>
+									- DRE_G-Click_JAN_2020.pdf<br>
+									- DMPL_G-Click_JAN_2020.pdf
+   								</td>
+							</tr>
+							<!-- <tr id="variavelatividadespgto">
+								<td>#atividades.pgto</td>
+								<td>DARF com vencimento e valor</td>
+								<td>- IRRF 1708.pdf, vencimento 20/04/2020 no valor de R$30,00 </td>
+							</tr>						 -->	
+						</tbody></table>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+</div>
+<script>
+function adicionarVariavel(){
+	var variavel = $('#daevariavel').val();
+	var texto = $('#daetexto');
+	texto.val(texto.val()+variavel);
+}
+/* function lembreteEmailValidacao(obj){
+	$('#msg').val('E-mail enviado para ser validado.');
+	var url = 'coAlterar.do?obj=' + obj;
+	url = url + '&aconfig=' + $('#daeaconfig').val();
+	url = url + '&email=' + acento($('#daelembreteemail').val());
+	url = url + '&coid=4';
+	url = url + '&empId=' + $('#empId').val();
+	$.get(url, viewlembreteemail);
+}
+function viewlembreteemail(data, status) {
+	if (status == 'success') {
+		if (erro(data)){
+			$('#viewlembreteemail').html(data);
+		}
+	}
+}
+function lembreteEmailValidacaoRemover(obj){
+	$('#msg').val('E-mail enviado para ser validado.');
+	var url = 'coRemover.do?obj=' + obj;
+	url = url + '&aconfig=' + $('#daeaconfig').val();
+	url = url + '&email=' + acento($('#daelembreteemail').val());
+	url = url + '&coid=4';
+	url = url + '&empId=' + $('#empId').val();
+	$.get(url, viewlembreteemailremover);
+}
+function viewlembreteemailremover(data, status) {
+	if (status == 'success') {
+		if (erro(data)){
+			$('#viewlembreteemail').html(data);
+			listaAtividades('aconfig');
+		}
+	}
+} */
+function emailAUTOLembrete(campo){
+	if(campo == 'email'){
+		if(document.getElementById('daemensagem').checked){
+			//document.getElementById('daelembrete').checked = false;
+			//$('#viewlembreteemail').hide();
+			$('#viewavisoabaatividades').show();
+			$('#abanotatividades').show();
+		} else {
+			$('#viewavisoabaatividades').hide();
+		}
+	/* } else if(campo == 'lembrete'){
+		if(document.getElementById('daelembrete').checked){			
+			document.getElementById('daemensagem').checked = false;			
+			$('#viewlembreteemail').show();
+			$('#viewavisoabaatividades').hide();
+			$('#abanotatividades').hide();
+			var url = 'coListar.do?obj=coaconfigemailvalidacao';
+			url = url + '&aconfig=' + $('#daeaconfig').val();
+			url = url + '&coid=4';
+			url = url + '&empId=' + $('#empId').val();
+			$.get(url, viewlembreteemail);
+			//if($('#daelembreteemailvalidacao').val()!='1') {
+			//	$('#daelembreteemail').val('');				
+			//	$('#btndaelembreteok').hide();
+			//	$('#btndaelembreteexcluir').hide();
+			//	$('#btndaelembretevalidar').show();
+			//}
+		} else {
+			$('#viewlembreteemail').hide();
+		} */
+	}	
+}
+function daeEscolheVariavel(){
+	var variavel = $('#daeassuntovariavel option:selected');
+	if(variavel.val() != ''){		
+		$('#daeassunto').val($('#daeassunto').val()+variavel.val());
+		document.getElementById("daeassuntovariavel").selectedIndex = "0";
+		$('#daeassunto').focus();
+	}
+}
+function mostraConfigEmailAuto(){  
+	if(document.getElementById('daemensagem').checked){
+		$('#abanotatividades').show();
+		$('#variavelatividades').show();
+		$('#variavelatividadesnomes').show();
+		$('#viewavisoabaatividades').show();		
+	} else {
+		$('#abanotatividades').hide();
+		$('#variavelatividades').hide();
+		$('#variavelatividadesnomes').hide();
+		$('#viewavisoabaatividades').hide();
+	}	
+}
+function verificaTipo(){}
+</script></body></html>

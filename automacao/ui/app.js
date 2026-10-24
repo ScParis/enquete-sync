@@ -569,7 +569,7 @@ async function login(endpoint) {
   finally { setBusy(false); maybeAutoAudit(); }
 }
 for (const input of document.querySelectorAll('input[name="sourceType"]')) input.addEventListener('change', () => { $('fileBox').hidden = sourceType() !== 'file'; $('urlBox').hidden = sourceType() !== 'url'; $('recentBox').hidden = sourceType() !== 'recent'; taskCatalog = []; selectedTasks.clear(); renderQueue(); $('taskStatus').textContent = 'Leia as tarefas da fonte selecionada.'; clearPreview(); if (sourceType() === 'recent') refreshDownloads(); });
-for (const id of ['accountId','file','sheetName','sourceUrl','recentSheetUrl','serviceKey']) $(id).addEventListener('input', () => { previewId = null; updateApply(); });
+for (const id of ['accountId','file','sheetName','sourceUrl','recentSheetUrl','serviceKey']) $(id).addEventListener('input', () => { previewId = null; updateApply(); if (id === 'accountId') updateSidebarBadges(); });
 function setSheetUrl(value) {
   if ($('recentSheetUrl').value === value && $('sourceUrl').value === value) return;
   $('recentSheetUrl').value = value; $('sourceUrl').value = value; updateRecentSheetLinks();
@@ -786,8 +786,8 @@ function updateSidebarBadges() {
   if ($('topAccountId')) $('topAccountId').textContent = acc || '—';
   if ($('sidebarAccountDisplay')) $('sidebarAccountDisplay').textContent = accText;
 
-  const isOnline = Boolean(catalogLive || config?.loginReady);
-  const isEntering = Boolean(config?.loginOpen);
+  const isOnline = Boolean(catalogLive && liveCatalog && String(liveCatalog.accountId) === String(acc));
+  const isEntering = Boolean(config?.loginOpen && !isOnline);
   if ($('sidebarStatusDot')) {
     $('sidebarStatusDot').className = `status-dot ${isOnline ? 'active' : ''}`;
   }

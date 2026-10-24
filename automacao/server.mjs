@@ -10,6 +10,7 @@ import { LOGIN_URL, hasGclickSession, openBrowser, openQuestion, questionStillOp
 import { readPublicGoogleCsv, readWithServiceAccount, parseSheetUrl } from './lib/google-service.mjs';
 import { appsScriptSource, validScriptUrl, testSheetWriter, writeMarks } from './lib/sheet-writer.mjs';
 import { listCsvDownloads, readCsvDownload } from './lib/downloads.mjs';
+import { inspectObrigacoesPage } from './lib/obrigacoes.mjs';
 
 const root = path.dirname(new URL(import.meta.url).pathname);
 const host = '127.0.0.1';
@@ -326,6 +327,25 @@ async function route(req, res) {
     // Perguntas só existem para a interface depois da leitura da Enquete desta conta na sessão atual.
     return send(res, 200, { catalog: catalogState?.accountId === accountId && loginReady ? catalogState : null, live: true, sheetUrl });
   }
+  if (url.pathname === '/api/obrigacoes/inspect') {
+    return send(res, 200, await exclusive(async () => {
+      const accountId = requireAccount(payload.accountId ?? '6581');
+      const targetUrl = payload.url ?? `https://app.gclick.com.br/configuracaoListar.do?obj=coobrigacaoopen&tipo=0&status=1&empId=${encodeURIComponent(accountId)}`;
+      const context = loginContext ?? (await openBrowser(profile, false));
+      const shouldClose = !loginContext;
+      try {
+        const page = await context.newPage();
+        try {
+          const analysis = await inspectObrigacoesPage(page, { url: targetUrl });
+          return analysis;
+        } finally {
+          await page.close();
+        }
+      } finally {
+        if (shouldClose) await context.close();
+      }
+    }));
+  }
   if (url.pathname === '/api/accounts/save') {
     const accountId = requireAccount(payload.accountId);
     const sheetUrl = validSheetUrl(payload.sheetUrl);
@@ -421,11 +441,17 @@ async function route(req, res) {
         .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')) });
   }
   if (url.pathname === '/api/catalog') return send(res, 200, await exclusive(async () => {
-    if (!loginContext || !loginReady) throw new Error('Valide o acesso ao G-Click para carregar as perguntas');
+    if (!loginContext) throw new Error('Abra primeiro a janela de login do G-Click no menu Conexão & Conta');
     const accountId = requireAccount(payload.accountId);
+    if (!loginReady || !catalogState || catalogState.accountId !== accountId) {
+      if (!(await hasGclickSession(loginContext, accountId))) {
+        throw new Error(`A Enquete da conta ${accountId} não abriu no Chrome da automação. Confira se o usuário logado tem acesso a este escritório.`);
+      }
+      loginReady = true;
+    }
     if (!catalogState || catalogState.accountId !== accountId || payload.refresh) await captureCatalog(accountId);
     return { catalog: catalogState };
-  }));
+  }, true));
   if (url.pathname === '/api/mappings/preview') return send(res, 200, await exclusive(async () => {
     if (!loginContext || !loginReady || !catalogState) throw new Error('Abra a Enquete da conta para capturar o catálogo antes da prévia');
     const accountId = requireAccount(payload.accountId);
