@@ -6,11 +6,13 @@ const DEFAULT_URL = 'https://app.gclick.com.br/configuracaoListar.do?obj=coobrig
 
 export async function inspectObrigacoesPage(page, { url = DEFAULT_URL, saveArtifacts = true, artifactDir = null } = {}) {
   await gotoWithRetry(page, url);
-  await page.waitForLoadState('domcontentloaded');
-  // Aguarda carregamento de scripts/tabela
+  await page.waitForLoadState('networkidle').catch(() => {});
   await page.waitForTimeout(3000);
 
-  const analysis = await page.evaluate(() => {
+  let analysis = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      analysis = await page.evaluate(() => {
     // 1. Título e cabeçalhos principais
     const title = document.title;
     const currentUrl = window.location.href;
@@ -216,7 +218,13 @@ export async function inspectObrigacoesPage(page, { url = DEFAULT_URL, saveArtif
       totalLinks: links.length,
       sampleLinks: links.slice(0, 30)
     };
-  });
+      });
+      break;
+    } catch (e) {
+      if (attempt === 2 || !e.message.includes('Execution context was destroyed')) throw e;
+      await page.waitForTimeout(2000);
+    }
+  }
 
   if (saveArtifacts) {
     const dir = artifactDir || path.resolve(import.meta.dirname, '../exemplos');

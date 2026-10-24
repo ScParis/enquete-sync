@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>G-Click · Automação & Enquetes</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23152f36'/%3E%3Ctext x='32' y='45' text-anchor='middle' font-size='38' fill='white'%3EG%3C/text%3E%3C/svg%3E">
   <link rel="stylesheet" href="/ui/style.css">
   <script type="module" src="/ui/app.js"></script>
   <style>
@@ -204,7 +205,7 @@
             <span class="step">02</span>
             <div>
               <h2>Fonte (importação)</h2>
-              <p>Configure a importação da planilha de dados via navegador integrado, arquivo local ou link da API.</p>
+              <p>Importe uma aba completa por arquivo, navegador integrado ou link da API. A tabela mostra todas as colunas e linhas recebidas.</p>
             </div>
           </div>
         </div>
@@ -220,11 +221,12 @@
             <input id="file" type="file" accept=".csv,.xlsx">
             <label class="field-label" for="sheetName">Nome da aba no XLSX <small>(opcional; padrão: primeira aba)</small></label>
             <input id="sheetName" type="text" placeholder="Ex.: Obrigações">
+            <button id="loadFileTasks" type="button" class="secondary">Importar arquivo selecionado</button>
           </div>
           <div id="recentBox">
             <label class="field-label" for="recentSheetUrl">Link da aba no Google Sheets</label>
             <input id="recentSheetUrl" type="url" placeholder="Link da aba da planilha deste escritório">
-            <p class="hint">O link fica salvo para esta conta. Baixe o CSV na aba autenticada e confirme o arquivo abaixo.</p>
+            <p class="hint">Colar o link não carrega os dados. Baixe o CSV desta aba e confirme o arquivo abaixo; ao trocar o link, os dados anteriores são removidos.</p>
             <div class="row">
               <a id="directExport" class="button-link" target="_blank" rel="noopener">Baixar CSV da aba</a>
               <a id="openSheet" class="button-link" target="_blank" rel="noopener">Abrir planilha</a>
@@ -241,7 +243,72 @@
             <label class="field-label" for="serviceKey">Credencial de conta de serviço <small>(JSON, para planilha privada)</small></label>
             <input id="serviceKey" type="file" accept=".json,application/json">
             <p class="hint">A planilha deve ser compartilhada como Leitor com o e-mail da conta de serviço. A chave é usada somente nesta leitura e não entra no relatório.</p>
+            <button id="loadUrlTasks" type="button" class="secondary">Ler tarefas do link</button>
           </div>
+          <div class="row header-config-row" style="margin-top:14px;align-items:flex-end;gap:12px">
+            <label style="flex:1;max-width:200px">
+              Linha do cabeçalho
+              <input id="headerRowInput" type="number" min="1" max="100" value="1" style="margin-top:4px">
+            </label>
+            <button id="inspectSourceBtn" type="button" class="primary" style="margin-bottom:0">Conhecer estrutura da fonte</button>
+          </div>
+          <p id="sourceStatus" class="source-status" role="status" aria-live="polite">Selecione uma fonte para carregar os dados da aba.</p>
+
+          <!-- ETAPA 2: EDITOR DE MAPEAMENTO E PERFIL -->
+          <section id="mappingEditorSection" class="mapping-editor-card" hidden style="margin-top:20px;border-top:1px solid #dce7e5;padding-top:16px">
+            <div class="card-headline" style="display:flex;justify-content:space-between;align-items:flex-start">
+              <div>
+                <h3 style="margin:0 0 4px">Editor de Mapeamento de Colunas</h3>
+                <span id="mappingEditorSubtitle" class="sub-hint">Associe as colunas de origem aos campos internos antes de carregar registros para a automação</span>
+              </div>
+              <div class="account-pill" id="profileVersionBadge" style="margin:0">Perfil: Não salvo</div>
+            </div>
+
+            <div class="row mapping-config-bar" style="margin:14px 0 16px;gap:12px;align-items:flex-end">
+              <label style="flex:2">
+                Objetivo do Mapeamento / Modelo de Destino
+                <select id="targetModelSelect" style="margin-top:4px">
+                  <option value="enquete_automacao">Automação da Enquete G-Click (exige tarefas/obrigações e clientes)</option>
+                  <option value="cliente_identificacao">Cadastro de Clientes (sem tarefas/obrigações)</option>
+                  <option value="generico_consulta">Importação Geral (Visualização / Consulta)</option>
+                </select>
+              </label>
+              <div style="flex:1;display:flex;gap:8px">
+                <button id="saveProfileBtn" type="button" class="secondary" style="flex:1">Salvar perfil</button>
+                <button id="applyAndLoadBtn" type="button" class="primary" style="flex:1">Validar & Carregar</button>
+              </div>
+            </div>
+
+            <p id="mappingWarningBanner" class="queue-warning" hidden></p>
+
+            <div class="source-table-wrap" style="max-height:360px;overflow:auto;border:1px solid #dce7e5;border-radius:8px">
+              <table id="mappingColumnsTable" class="mapping-table" style="width:100%;border-collapse:collapse;font-size:13px">
+                <thead>
+                  <tr style="background:#eef4f3;text-align:left">
+                    <th style="padding:8px 10px;width:40px">#</th>
+                    <th style="padding:8px 10px">Coluna de Origem</th>
+                    <th style="padding:8px 10px">Amostra</th>
+                    <th style="padding:8px 10px;width:120px">Ação</th>
+                    <th style="padding:8px 10px;width:190px">Campo de Destino</th>
+                    <th style="padding:8px 10px;width:150px">Transformação</th>
+                    <th style="padding:8px 10px;width:90px;text-align:center">Confirmado</th>
+                  </tr>
+                </thead>
+                <tbody id="mappingColumnsBody"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section id="sourcePreview" class="source-preview" hidden>
+            <h3>Dados importados</h3>
+            <p id="sourcePreviewInfo" class="hint"></p>
+            <div class="source-table-wrap"><table id="sourceTable"></table></div>
+            <div class="row source-pager">
+              <button id="sourcePrev" type="button" class="secondary">Anterior</button>
+              <span id="sourcePageInfo"></span>
+              <button id="sourceNext" type="button" class="secondary">Próxima</button>
+            </div>
+          </section>
         </section>
       </div>
 
@@ -359,6 +426,7 @@
               <option value="ready">Associadas</option>
               <option value="excluded">Excluídas</option>
             </select>
+            <button id="btnConfirmAllSuggestions" type="button" class="ghost" style="white-space:nowrap;margin-left:auto" title="Confirma todas as sugestões seguras identificadas pelo nome ou código">Confirmar sugestões seguras</button>
           </div>
           <div id="queueList" class="queue-list"></div>
           <div id="mappingEditor" class="mapping-editor" hidden>

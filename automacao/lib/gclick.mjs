@@ -1,10 +1,20 @@
 import { chromium } from 'playwright';
-import { normalizeCnpj } from './data.mjs';
+import { normalizeCnpj, validCnpj, formatCnpj } from './data.mjs';
 import { validateAnswerMapping } from './answer-map.mjs';
 import { buildCatalog } from './catalog.mjs';
 
 const BASE = 'https://app.gclick.com.br/Listar.do?obj=enqueteopen&tipo=0&empId=';
 export const LOGIN_URL = 'https://appp.gclick.com.br/autenticacao';
+function findEnquetePage(context, accountId) {
+  return context.pages().find(page => {
+    if (page.isClosed()) return false;
+    try {
+      const url = new URL(page.url());
+      return url.hostname === 'app.gclick.com.br' && url.pathname === '/Listar.do' &&
+        url.searchParams.get('obj') === 'enqueteopen' && url.searchParams.get('empId') === String(accountId);
+    } catch { return false; }
+  });
+}
 const radioSelector = rules => `input[type="radio"][name$="-${rules.questionRef}"]`;
 const checkboxSelector = rules => `input[type="checkbox"][value="${rules.answerValue}"][id^="cb."]`;
 const targetSelector = rules => rules.inputType === 'checkbox' ? checkboxSelector(rules) : `${radioSelector(rules)}[value="${rules.answerValue}"]`;
@@ -109,17 +119,21 @@ export async function hasGclickSession(context, accountId) {
     } catch {}
   }
 
-  const page = await context.newPage();
+  const enquiryUrl = BASE + encodeURIComponent(accountId);
+  const existingPage = findEnquetePage(context, accountId);
+  const page = existingPage ?? await context.newPage();
+  let verified = false;
   try {
-    await gotoWithRetry(page, BASE + encodeURIComponent(accountId));
+    if (!existingPage) await gotoWithRetry(page, enquiryUrl);
     if (!page.url().startsWith('https://app.gclick.com.br/')) return false;
     try {
       await page.getByText('Respondendo Enquete', { exact: false }).first().waitFor({ state: 'visible', timeout: 5000 });
+      verified = true;
       return true;
     } catch {
       return false;
     }
-  } finally { await page.close(); }
+  } finally { if (!verified && !existingPage) await page.close(); }
 }
 const loggedInUrl = url => { try { const u = new URL(url); return /(^|\.)gclick\.com\.br$/.test(u.hostname) && !u.pathname.startsWith('/autenticacao'); } catch { return false; } };
 // Espera o operador entrar no G-Click e abre sozinho a Enquete da conta; não depende de navegação manual até o módulo.
@@ -157,9 +171,10 @@ export async function readGoogleCsv(context, url) {
   return body;
 }
 export async function readQuestionCatalog(context, accountId) {
-  const page = await context.newPage();
+  const existingPage = findEnquetePage(context, accountId);
+  const page = existingPage ?? await context.newPage();
   try {
-    await gotoWithRetry(page, BASE + encodeURIComponent(accountId));
+    if (!existingPage) await gotoWithRetry(page, BASE + encodeURIComponent(accountId));
     if (!page.url().includes('app.gclick.com.br') || (await page.getByText('Respondendo Enquete', { exact: true }).count()) === 0)
       throw new Error('A sessão do G-Click expirou antes da leitura das perguntas');
     const table = page.locator('#DataTables_Table_0');
@@ -167,11 +182,7 @@ export async function readQuestionCatalog(context, accountId) {
     const search = page.locator('#DataTables_Table_0_filter input');
     if (await search.count()) await search.fill('');
     const lengthSelect = page.locator('select[name="DataTables_Table_0_length"]');
-    if (await lengthSelect.count()) {
-      if (await lengthSelect.locator('option[value="-1"]').count()) await lengthSelect.selectOption('-1');
-      else if (await lengthSelect.locator('option[value="100"]').count()) await lengthSelect.selectOption('100');
-      await page.waitForTimeout(500);
-    }
+    if (await lengthSelect.count() && await lengthSelect.locator('option[value="-1"]').count()) await lengthSelect.selectOption('-1');
     const rows = [];
     for (let pageNumber = 0; pageNumber < 100; pageNumber++) {
       const current = await table.locator('tbody tr').evaluateAll(els => els.map(el => {
@@ -181,16 +192,11 @@ export async function readQuestionCatalog(context, accountId) {
       rows.push(...current);
       const next = page.locator('#DataTables_Table_0_next');
       if (!(await next.count()) || (await next.getAttribute('class'))?.includes('disabled')) break;
-      const firstRefBefore = current[0]?.ref;
-      await next.locator('a').click();
-      await page.waitForFunction(prev => {
-        const first = document.querySelector('#DataTables_Table_0 tbody tr td:nth-child(3)');
-        return first && first.textContent.trim() !== prev;
-      }, firstRefBefore, { timeout: 5000 }).catch(() => page.waitForTimeout(500));
+      await next.click();
       if (pageNumber === 99) throw new Error('Catálogo da Enquete excede o limite de páginas');
     }
     return buildCatalog(rows, accountId);
-  } finally { await page.close(); }
+  } finally { if (!existingPage) await page.close(); }
 }
 
 export async function openQuestion(page, rules) {
@@ -198,9 +204,8 @@ export async function openQuestion(page, rules) {
   if (!page.url().includes('app.gclick.com.br') || (await page.getByText('Respondendo Enquete', { exact: true }).count()) === 0) throw new Error('Sessão do G-Click ausente/expirada. Execute o comando login.');
   const search = page.locator('#DataTables_Table_0_filter input');
   await search.waitFor({ state: 'visible', timeout: 15000 });
-  async function configurationRow(ref, expectedLabel) {
-    const cleanRef = ref.split('_')[0];
-    await search.fill(cleanRef);
+  async function configurationRow(ref) {
+    await search.fill(ref);
     const next = page.locator('#DataTables_Table_0_next');
     let found = null;
     for (let pageNumber = 0; pageNumber < 100; pageNumber++) {
@@ -208,26 +213,18 @@ export async function openQuestion(page, rules) {
         const cells = Array.from(el.cells, cell => cell.innerText.replace(/\s+/g, ' ').trim());
         return { type: cells[1], ref: cells[2], label: cells[3] };
       }));
-      const matches = rows.filter(row => row.ref === cleanRef);
-      if (matches.length > 0) {
-        if (expectedLabel) {
-          found = matches.find(r => r.label === expectedLabel || r.label.includes(expectedLabel)) ?? matches[0];
-        } else {
-          found = matches[0];
-        }
-        if (found) {
-          found = { ...found, ref };
-          break;
-        }
+      for (const row of rows.filter(row => row.ref === ref)) {
+        if (found) throw new Error(`Referência ${ref} duplicada na aba Enquete`);
+        found = row;
       }
       if (!(await next.count()) || (await next.getAttribute('class'))?.includes('disabled')) break;
-      await next.locator('a').click();
+      await next.click();
     }
     if (!found) throw new Error(`Referência ${ref} não encontrada na aba Enquete`);
     return found;
   }
-  const questionRow = await configurationRow(rules.questionRef, rules.question);
-  const answerRow = await configurationRow(rules.answerRef, rules.answerLabel);
+  const questionRow = await configurationRow(rules.questionRef);
+  const answerRow = await configurationRow(rules.answerRef);
   validateAnswerMapping(questionRow, answerRow, rules);
   await page.getByText('Respondendo Enquete', { exact: true }).click();
   const respondingTab = page.locator('#tabenqconfiglist');
@@ -295,23 +292,84 @@ export async function questionStillOpen(page, rules) {
   if (page.isClosed() || !page.url().startsWith('https://app.gclick.com.br/')) return false;
   try { return (await page.locator(targetSelector(rules)).count()) > 0; } catch { return false; }
 }
+function escapeRegex(s) {
+  return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 function rowFor(page, item) {
-  return page.locator('tr').filter({ hasText: item.cnpj });
+  if (item.cnpj && validCnpj(item.cnpj)) {
+    return page.locator('tr').filter({ hasText: formatCnpj(item.cnpj) });
+  }
+  const id = String(item.empId ?? item.cod ?? '').trim();
+  if (id && id !== '-') {
+    const idAtEnd = new RegExp(`(?:^|\\s)${escapeRegex(id)}\\s*$`);
+    if (item.empresa) {
+      const firstWord = item.empresa
+        .replace(/^(ASSOC|CLINICA|INSTITUTO|SOCIEDADE|FARMACIA|CENTRO|COMERCIO)\s+/i, '')
+        .trim().split(/\s+/)[0];
+      if (firstWord && firstWord.length >= 3) {
+        return page.locator('tr')
+          .filter({ hasText: new RegExp(escapeRegex(firstWord), 'i') })
+          .filter({ has: page.locator('a, td').filter({ hasText: idAtEnd }) });
+      }
+    }
+    return page.locator('tr').filter({
+      has: page.locator('a, td').filter({ hasText: idAtEnd })
+    });
+  }
+  if (item.empresa) {
+    return page.locator('tr').filter({ hasText: item.empresa });
+  }
+  return page.locator('tr').filter({ hasText: String(item.cnpj || '') });
 }
 export async function inspectClient(page, item, rules) {
-  const matches = rowFor(page, item);
-  const count = await matches.count();
-  if (count === 0) return { ...item, uiStatus: 'nao_encontrado', uiReason: 'CNPJ da planilha não localizado na enquete' };
-  if (count !== 1) return { ...item, uiStatus: 'bloqueado', uiReason: `CNPJ encontrado em ${count} linhas` };
+  let matches = rowFor(page, item);
+  let count = await matches.count();
+  const id = String(item.empId ?? item.cod ?? '').trim();
+  const idAtEnd = id && id !== '-' ? new RegExp(`(?:^|\\s)${escapeRegex(id)}\\s*$`) : null;
+  if (count === 0 && idAtEnd) {
+    matches = page.locator('tr').filter({
+      has: page.locator('a, td').filter({ hasText: idAtEnd })
+    });
+    count = await matches.count();
+  }
+  if (count === 0 && item.empresa) {
+    matches = page.locator('tr').filter({ hasText: item.empresa });
+    count = await matches.count();
+  }
+  if (count > 1 && idAtEnd) {
+    const refined = matches.filter({
+      has: page.locator('a').filter({ hasText: idAtEnd })
+    });
+    const refinedCount = await refined.count();
+    if (refinedCount === 1) {
+      matches = refined;
+      count = 1;
+    }
+  }
+  const idLabel = item.cnpj && validCnpj(item.cnpj) ? `CNPJ ${formatCnpj(item.cnpj)}` : `Cliente (Cod./ID ${item.empId ?? item.cod ?? item.empresa ?? '-'})`;
+  if (count === 0) return { ...item, uiStatus: 'nao_encontrado', uiReason: `${idLabel} não localizado na enquete` };
+  if (count !== 1) return { ...item, uiStatus: 'bloqueado', uiReason: `${idLabel} encontrado em ${count} linhas` };
   const row = matches.first();
   const text = await row.innerText();
   const cnpjs = text.match(/\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}/g) ?? [];
-  if (cnpjs.length !== 1 || normalizeCnpj(cnpjs[0]) !== normalizeCnpj(item.cnpj)) return { ...item, uiStatus: 'bloqueado', uiReason: 'CNPJ não é único na linha' };
+  if (item.cnpj && validCnpj(item.cnpj)) {
+    if (cnpjs.length !== 1 || normalizeCnpj(cnpjs[0]) !== normalizeCnpj(item.cnpj)) return { ...item, uiStatus: 'bloqueado', uiReason: 'CNPJ não é único na linha' };
+  } else if (cnpjs.length === 1 && (!item.cnpj || !validCnpj(item.cnpj))) {
+    item.cnpj = formatCnpj(cnpjs[0]);
+  }
   const links = await row.locator('a').allInnerTexts();
-  const foundEmpId = links.find(t => /^\d+$/.test(t.trim()))?.trim() ?? null;
-  if (item.empId && !links.some(t => new RegExp(`(?:^|\\s)${String(item.empId).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`).test(t.trim())))
-    return { ...item, uiStatus: 'bloqueado', uiReason: 'EmpID não confere com a linha do G-Click' };
-  const effectiveEmpId = item.empId ?? foundEmpId;
+  let foundEmpId = links.find(t => /^\d+$/.test(t.trim()))?.trim() ?? null;
+  if (!foundEmpId) {
+    for (const t of links) {
+      const m = t.trim().match(/(?:^|\s)(\d+)\s*$/);
+      if (m) { foundEmpId = m[1]; break; }
+    }
+  }
+  const targetId = item.empId ?? item.cod;
+  if (targetId && foundEmpId && String(foundEmpId) !== String(targetId))
+    return { ...item, uiStatus: 'bloqueado', uiReason: `EmpID/Cod. ${targetId} não confere com a linha do G-Click (${foundEmpId})` };
+  const effectiveEmpId = targetId ?? foundEmpId;
   if (rules.inputType === 'checkbox') {
     const target = row.locator(checkboxSelector(rules));
     if (await target.count() !== 1) return { ...item, uiStatus: 'bloqueado', uiReason: 'Caixa da resposta não encontrada uma única vez' };

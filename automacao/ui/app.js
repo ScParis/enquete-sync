@@ -1,12 +1,41 @@
 const $ = id => document.getElementById(id);
 let authToken = '', previewId = null, lastReport = null, working = false, downloadFiles = [], liveCatalog = null, catalogLive = false, taskCatalog = [], tasksAutoFilled = false, loginPoll = null, loginPollBusy = false, savedMappings = [], editingTask = null, selectedTasks = new Set();
 let sourceVersion = 0, lastAuditKey = '', auditPoll = null, resultsPage = 0;
+let importedTable = null, importedPage = 0;
+const SOURCE_PAGE_SIZE = 25;
 const RESULTS_PAGE_SIZE = 50;
 const labels = { vazio: 'Sem resposta', ja_correto: 'Já correto', divergente: 'Divergente', nao_encontrado: 'Não localizado', bloqueado: 'Bloqueado', sem_mapeamento: 'Sem mapeamento', nao_verificado: 'Não verificado', a_conferir: 'A conferir', pronto: 'Elegível' };
 let focusTask = null, auditRunning = false, auditMessage = '';
 const ACCOUNT_KEY = 'gclick.lastAccount';
 const currentAccount = () => $('accountId').value.trim();
 function status(message, kind = '') { $('status').textContent = message; $('status').className = `status ${kind}`; }
+function sourceStatus(message, kind = '') { $('sourceStatus').textContent = message; $('sourceStatus').className = `source-status ${kind}`; }
+function clearImportedTable() { importedTable = null; importedPage = 0; $('sourcePreview').hidden = true; $('sourceTable').replaceChildren(); }
+function renderImportedTable() {
+  if (!importedTable) { $('sourcePreview').hidden = true; return; }
+  const { columns, rows } = importedTable;
+  const start = importedPage * SOURCE_PAGE_SIZE;
+  const table = $('sourceTable'); table.replaceChildren();
+  const head = document.createElement('thead'), headerRow = document.createElement('tr');
+  const number = document.createElement('th'); number.textContent = '#'; headerRow.append(number);
+  for (const column of columns) {
+    const cell = document.createElement('th'); cell.textContent = column.name;
+    cell.title = `${column.filled} de ${rows.length} linha(s) preenchida(s) · ${column.distinct} valor(es) distinto(s)`;
+    headerRow.append(cell);
+  }
+  head.append(headerRow); table.append(head);
+  const body = document.createElement('tbody');
+  for (let i = start; i < Math.min(start + SOURCE_PAGE_SIZE, rows.length); i++) {
+    const row = document.createElement('tr'), numberCell = document.createElement('td'); numberCell.textContent = String(i + 1); row.append(numberCell);
+    for (const value of rows[i]) { const cell = document.createElement('td'); cell.textContent = value; row.append(cell); }
+    body.append(row);
+  }
+  table.append(body);
+  $('sourcePreview').hidden = false;
+  $('sourcePageInfo').textContent = rows.length ? `${start + 1}–${Math.min(start + SOURCE_PAGE_SIZE, rows.length)} de ${rows.length}` : '0 linhas';
+  $('sourcePrev').disabled = importedPage === 0;
+  $('sourceNext').disabled = start + SOURCE_PAGE_SIZE >= rows.length;
+}
 function sourceType() { return document.querySelector('input[name="sourceType"]:checked').value; }
 const normalizeTask = value => String(value ?? '').trim().replace(/\s+/g, ' ').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('pt-BR');
 function clearPreview() { previewId = null; lastReport = null; focusTask = null; $('focusChip').hidden = true; $('summary').hidden = true; $('downloads').hidden = true; $('missingPanel').hidden = true; $('invalidPanel').hidden = true; $('mappingResult').hidden = true; $('results').innerHTML = '<tr><td colspan="5" class="empty">Nenhum resultado ainda.</td></tr>'; resultsPage = 0; $('resultsPager').hidden = true; updateApply(); }
@@ -89,6 +118,11 @@ function renderQueue() {
       const chip = document.createElement('span'); chip.textContent = `${count} ${label}`; $('queueSummary').append(chip, document.createTextNode(' '));
     }
   } else $('queueSummary').textContent = 'Carregue a planilha para listar as obrigações e tarefas.';
+  const btnConfirm = $('btnConfirmAllSuggestions');
+  if (btnConfirm) {
+    btnConfirm.textContent = suggested ? `Confirmar ${suggested} sugestão(ões) seguras` : 'Confirmar sugestões seguras';
+    btnConfirm.disabled = !suggested || !liveCatalog;
+  }
   const query = normalizeTask($('queueSearch').value), filter = $('queueFilter').value;
   const visible = all.filter(({ task, mapping }) => normalizeTask(task.name).includes(query) &&
     (filter === 'all' || filter === 'attention' && ['suggested', 'attention', 'known', 'awaiting'].includes(mapping.state) || filter === 'ready' && ['ready', 'candidate'].includes(mapping.state) || filter === 'excluded' && mapping.state === 'excluded'));
@@ -214,32 +248,268 @@ function startLoginPoll() {
         useCatalog(result.catalog, true);
         stopLoginPoll();
         status(`Enquete da conta ${result.catalog.accountId} aberta automaticamente. Catálogo com ${result.catalog.questionCount} perguntas carregado.`, 'ok');
-      } else if (result.message) status(result.message, result.stage === 'no_access' ? 'error' : '');
+      } else if (result.message) {
+        status(result.message, result.stage === 'no_access' ? 'error' : '');
+        if (result.stage === 'no_access') stopLoginPoll();
+      }
     } catch { /* O login ou a escolha da conta ainda está em andamento. */ }
     finally { loginPollBusy = false; }
   }, 5000);
 }
 let lastSourceKey = '';
+let currentStructure = null;
+let currentProfile = null;
+
 function sourceKey() {
   if (sourceType() === 'recent') { const f = downloadFiles.find(x => x.name === $('downloadFile').value); return `recent:${f?.name}:${f?.modifiedAt}:${f?.size}`; }
   if (sourceType() === 'file') { const f = $('file').files[0]; return `file:${f?.name}:${f?.lastModified}:${f?.size}`; }
   return `url:${$('sourceUrl').value.trim()}:${Date.now()}`;
 }
-async function loadTasks() {
+
+async function inspectSource() {
   try {
-    $('taskStatus').textContent = 'Lendo as tarefas da fonte selecionada…';
-    const result = await api('tasks', await payload('tasks'));
-    taskCatalog = result.tasks;
-    // Só uma planilha diferente (outro arquivo, outra versão) dispara nova conferência; reler a mesma não.
+    sourceStatus('Inspecionando estrutura da fonte…');
+    const loadPayload = await payload('inspect');
+    const result = await api('source/inspect', loadPayload);
+    currentStructure = result.structure;
+    currentProfile = result.existingProfile ?? result.suggestedProfile;
+    renderMappingEditor();
+    $('mappingEditorSection').hidden = false;
+    sourceStatus(`Estrutura conhecida: ${result.structure.columnCount} coluna(s) identificada(s). Configure ou confirme o mapeamento abaixo.`, 'ok');
+  } catch (e) {
+    sourceStatus(`Falha ao inspecionar estrutura: ${e.message}`, 'error');
+  }
+}
+
+function renderMappingEditor() {
+  if (!currentStructure || !currentProfile) return;
+  if ($('targetModelSelect')) $('targetModelSelect').value = currentProfile.targetModel || 'enquete_automacao';
+  if ($('profileVersionBadge')) $('profileVersionBadge').textContent = currentProfile.version ? `Perfil: v${currentProfile.version}` : 'Perfil: Proposta';
+
+  const body = $('mappingColumnsBody');
+  if (!body) return;
+  body.replaceChildren();
+
+  const targetFields = [
+    { id: '', label: '(Não mapeado / Preservar)' },
+    { id: 'cnpj', label: 'CNPJ' },
+    { id: 'empresa', label: 'Empresa / Razão Social' },
+    { id: 'empId', label: 'EmpID (G-Click)' },
+    { id: 'cod', label: 'Código Interno (Cod.)' },
+    { id: 'tarefa', label: 'Obrigação / Tarefa' },
+    { id: 'resposta', label: 'Resposta / Opção' },
+    { id: 'data_base', label: 'Data-base' },
+    { id: 'competencia', label: 'Competência' }
+  ];
+
+  const transforms = [
+    { id: 'trim_texto', label: 'Texto simples (trim)' },
+    { id: 'limpar_cnpj', label: 'Apenas números (CNPJ)' },
+    { id: 'maiusculo', label: 'MAIÚSCULO' },
+    { id: 'minusculo', label: 'minúsculo' },
+    { id: 'preservar', label: 'Preservar original' }
+  ];
+
+  currentStructure.columns.forEach((col) => {
+    const pCol = currentProfile.columns?.find(c => c.sourceIndex === col.index) || {
+      sourceIndex: col.index,
+      position: col.position,
+      sourceName: col.rawHeader || col.name,
+      targetField: col.suggestedField || '',
+      action: col.suggestedField ? 'map' : 'preserve',
+      transform: col.suggestedField === 'cnpj' ? 'limpar_cnpj' : 'trim_texto',
+      userConfirmed: !col.needsConfirmation
+    };
+
+    const tr = document.createElement('tr');
+    tr.style.borderBottom = '1px solid #eef4f3';
+
+    // 1. #
+    const tdIdx = document.createElement('td');
+    tdIdx.textContent = col.position;
+    tdIdx.style.padding = '6px 10px';
+    tdIdx.style.color = '#5e727b';
+
+    // 2. Coluna de Origem
+    const tdName = document.createElement('td');
+    tdName.style.padding = '6px 10px';
+    const strongName = document.createElement('strong');
+    strongName.textContent = col.rawHeader || col.name;
+    tdName.appendChild(strongName);
+    if (col.isDuplicate) {
+      const dup = document.createElement('span');
+      dup.className = 'tag-pill';
+      dup.style.marginLeft = '6px';
+      dup.style.background = '#fef3c7';
+      dup.style.color = '#92400e';
+      dup.textContent = 'Repetida';
+      tdName.appendChild(dup);
+    }
+    if (col.isUnnamed) {
+      const un = document.createElement('span');
+      un.className = 'tag-pill';
+      un.style.marginLeft = '6px';
+      un.style.background = '#f3f4f6';
+      un.style.color = '#4b5563';
+      un.textContent = 'Sem nome';
+      tdName.appendChild(un);
+    }
+
+    // 3. Amostra
+    const tdSample = document.createElement('td');
+    tdSample.style.padding = '6px 10px';
+    tdSample.style.color = '#5e727b';
+    tdSample.textContent = col.samples.slice(0, 2).join(' | ') || '—';
+
+    // 4. Ação
+    const tdAction = document.createElement('td');
+    tdAction.style.padding = '6px 10px';
+    const selAction = document.createElement('select');
+    selAction.style.padding = '3px 6px';
+    selAction.style.fontSize = '12px';
+    [
+      { id: 'map', label: 'Mapear' },
+      { id: 'preserve', label: 'Preservar sem mapear' },
+      { id: 'ignore', label: 'Ignorar' }
+    ].forEach(opt => {
+      const o = new Option(opt.label, opt.id);
+      if (opt.id === pCol.action) o.selected = true;
+      selAction.appendChild(o);
+    });
+    tdAction.appendChild(selAction);
+
+    // 5. Campo de Destino
+    const tdTarget = document.createElement('td');
+    tdTarget.style.padding = '6px 10px';
+    const selTarget = document.createElement('select');
+    selTarget.style.padding = '3px 6px';
+    selTarget.style.fontSize = '12px';
+    targetFields.forEach(opt => {
+      const o = new Option(opt.label, opt.id);
+      if (opt.id === (pCol.targetField || '')) o.selected = true;
+      selTarget.appendChild(o);
+    });
+    tdTarget.appendChild(selTarget);
+
+    // 6. Transformação
+    const tdTrans = document.createElement('td');
+    tdTrans.style.padding = '6px 10px';
+    const selTrans = document.createElement('select');
+    selTrans.style.padding = '3px 6px';
+    selTrans.style.fontSize = '12px';
+    transforms.forEach(opt => {
+      const o = new Option(opt.label, opt.id);
+      if (opt.id === pCol.transform) o.selected = true;
+      selTrans.appendChild(o);
+    });
+    tdTrans.appendChild(selTrans);
+
+    // 7. Confirmação
+    const tdConfirm = document.createElement('td');
+    tdConfirm.style.padding = '6px 10px';
+    tdConfirm.style.textAlign = 'center';
+    const chkConfirm = document.createElement('input');
+    chkConfirm.type = 'checkbox';
+    chkConfirm.checked = Boolean(pCol.userConfirmed);
+    if (col.needsConfirmation && !pCol.userConfirmed) {
+      tr.style.background = '#fffbeb';
+    }
+    chkConfirm.addEventListener('change', () => {
+      if (chkConfirm.checked) tr.style.background = '';
+      else if (col.needsConfirmation) tr.style.background = '#fffbeb';
+    });
+    tdConfirm.appendChild(chkConfirm);
+
+    selAction.addEventListener('change', () => {
+      selTarget.disabled = selAction.value !== 'map';
+    });
+    selAction.dispatchEvent(new Event('change'));
+
+    tr.append(tdIdx, tdName, tdSample, tdAction, tdTarget, tdTrans, tdConfirm);
+    body.appendChild(tr);
+  });
+}
+
+function gatherProfileFromEditor() {
+  if (!currentProfile || !currentStructure) return null;
+  const rows = $('mappingColumnsBody')?.querySelectorAll('tr') || [];
+  const columns = [];
+  rows.forEach((tr, idx) => {
+    const colStruct = currentStructure.columns[idx];
+    const selects = tr.querySelectorAll('select');
+    const chk = tr.querySelector('input[type="checkbox"]');
+    columns.push({
+      sourceIndex: colStruct.index,
+      position: colStruct.position,
+      sourceName: colStruct.rawHeader || colStruct.name,
+      action: selects[0].value,
+      targetField: selects[0].value === 'map' ? selects[1].value : null,
+      transform: selects[2].value,
+      userConfirmed: chk ? chk.checked : true
+    });
+  });
+  return {
+    ...currentProfile,
+    targetModel: $('targetModelSelect')?.value || currentProfile.targetModel || 'enquete_automacao',
+    headerRow: parseInt($('headerRowInput')?.value || '1', 10),
+    columns
+  };
+}
+
+async function saveMappingProfile() {
+  const profile = gatherProfileFromEditor();
+  if (!profile) return;
+  try {
+    sourceStatus('Salvando perfil de mapeamento…');
+    const res = await api('mapping/profiles/save', { profile });
+    currentProfile = res.profile;
+    if ($('profileVersionBadge')) $('profileVersionBadge').textContent = `Perfil: v${currentProfile.version}`;
+    sourceStatus(`Perfil salvo com sucesso (v${currentProfile.version}).`, 'ok');
+  } catch (e) {
+    sourceStatus(`Erro ao salvar perfil: ${e.message}`, 'error');
+  }
+}
+
+async function applyMappingAndLoad() {
+  const profile = gatherProfileFromEditor();
+  if (!profile) return;
+  currentProfile = profile;
+  clearPreview();
+  await loadTasks(profile);
+}
+
+async function loadTasks(profileParam) {
+  try {
+    $('taskStatus').textContent = 'Lendo e normalizando dados da fonte…';
+    sourceStatus('Lendo e normalizando dados da fonte…');
+    const p = await payload('tasks');
+    if (profileParam || currentProfile) p.profile = profileParam || currentProfile;
+    const result = await api('tasks', p);
+    if (result.profile && !currentProfile) {
+      currentProfile = result.profile;
+      if ($('profileVersionBadge')) $('profileVersionBadge').textContent = currentProfile.version ? `Perfil: v${currentProfile.version}` : 'Perfil: Sugerido';
+    }
+    taskCatalog = result.tasks ?? [];
+    importedTable = result.table ?? null; importedPage = 0; renderImportedTable();
+    if (importedTable) {
+      const auditNote = result.audit ? ` · Auditados: ${result.audit.totalRows} registros (${result.audit.uniqueCnpjs ?? 0} CNPJs distintos)` : '';
+      $('sourcePreviewInfo').textContent = `${result.rowCount} linha(s) e ${importedTable.columns.length} coluna(s) lidas de ${result.source}${auditNote}.`;
+    }
     const key = sourceKey();
     if (key !== lastSourceKey) { lastSourceKey = key; sourceVersion++; }
-    $('taskStatus').textContent = `${taskCatalog.length} nomes de tarefa encontrados em ${result.rowCount} linhas (${result.source}).`;
+    const message = result.kind === 'table'
+      ? `${result.rowCount} linha(s) e ${importedTable.columns.length} coluna(s) importadas. Esta aba não possui ${result.missingForAutomation.join(', ')}; a conferência e a gravação de obrigações ficam indisponíveis para ela.`
+      : `${taskCatalog.length} nomes de tarefa encontrados em ${result.rowCount} linhas (${result.source}).`;
+    $('taskStatus').textContent = message;
+    sourceStatus(message, 'ok');
     if ($('queueFilter').value === 'attention' && !$('queueSearch').value.trim() && taskCatalog.some(task => ['ready', 'candidate'].includes(mappingFor(task).state))) $('queueFilter').value = 'ready';
     renderQueue();
     updateAuditTaskSelect();
-    maybeAutoAudit();
-  } catch (e) { taskCatalog = []; renderQueue(); updateAuditTaskSelect(); $('taskStatus').textContent = e.message; }
+    if (result.kind !== 'table') maybeAutoAudit();
+  } catch (e) { taskCatalog = []; clearImportedTable(); renderQueue(); updateAuditTaskSelect(); $('taskStatus').textContent = e.message; sourceStatus(e.message, 'error'); }
 }
+$('sourcePrev').addEventListener('click', () => { if (importedPage) { importedPage--; renderImportedTable(); } });
+$('sourceNext').addEventListener('click', () => { if (importedTable && (importedPage + 1) * SOURCE_PAGE_SIZE < importedTable.rows.length) { importedPage++; renderImportedTable(); } });
 function updateAuditTaskSelect() {
   const select = $('auditTaskSelect');
   if (!select) return;
@@ -265,7 +535,9 @@ function updateAuditTaskSelect() {
 }
 function dataUrl(file) { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result).split(',')[1]); reader.onerror = reject; reader.readAsDataURL(file); }); }
 async function payload(mode) {
-  const out = { mode, sourceType: sourceType() };
+  const out = { mode, sourceType: sourceType(), accountId: currentAccount() };
+  if ($('headerRowInput')) out.headerRow = parseInt($('headerRowInput').value || '1', 10);
+  if (currentProfile) out.profile = currentProfile;
   if (out.sourceType === 'recent') { out.downloadFile = $('downloadFile').value; if (!out.downloadFile) throw new Error('Selecione o CSV baixado da aba da planilha'); }
   else if (out.sourceType === 'file') { const file = $('file').files[0]; if (!file) throw new Error('Selecione um arquivo CSV ou XLSX'); out.fileName = file.name; out.fileLastModified = file.lastModified; out.fileBase64 = await dataUrl(file); out.sheetName = $('sheetName').value.trim(); }
   else { out.sourceUrl = $('sourceUrl').value.trim(); const key = $('serviceKey').files[0]; if (key) { if (key.size > 100 * 1024) throw new Error('JSON da conta de serviço maior que 100 KB'); out.serviceKeyBase64 = await dataUrl(key); } }
@@ -450,6 +722,7 @@ async function runAuditExecution({ filterTask = null, force = false } = {}) {
     const request = await payload('account_audit');
     request.accountId = currentAccount();
     request.autoAudit = true;
+    if (currentProfile) request.profile = currentProfile;
     if (filterTask) request.filterTask = filterTask;
     const result = await api('mappings/preview', request);
     previewId = result.previewId;
@@ -510,7 +783,20 @@ async function apply() {
   } catch (e) { applyRunning = false; status(`${e.message} Confira o relatório e a Enquete antes de repetir.`, 'error'); previewId = null; }
   finally { clearInterval(poll); applyRunning = false; setBusy(false); lastAuditKey = ''; setTimeout(maybeAutoAudit, 500); }
 }
-function showDownloadSelection() { const selected = downloadFiles.find(x => x.name === $('downloadFile').value); $('downloadHint').textContent = selected ? `Selecionado: ${selected.name} · baixado em ${new Date(selected.modifiedAt).toLocaleString('pt-BR')}${selected.stale ? ' · antigo para gravação' : ''}` : 'Nenhum CSV da aba selecionado.'; }
+let awaitingSheetDownload = false, sheetDownloadRequestedAt = 0;
+function showDownloadSelection() {
+  const selected = downloadFiles.find(x => x.name === $('downloadFile').value);
+  $('downloadHint').textContent = selected ? `Selecionado: ${selected.name} · baixado em ${new Date(selected.modifiedAt).toLocaleString('pt-BR')}${selected.stale ? ' · antigo para gravação' : ''}`
+    : awaitingSheetDownload ? 'Link alterado. Clique em “Baixar CSV da aba” e aguarde o novo arquivo, ou selecione manualmente o CSV correto.' : 'Nenhum CSV da aba selecionado.';
+}
+function invalidateRecentSource() {
+  awaitingSheetDownload = true; sheetDownloadRequestedAt = 0;
+  $('downloadFile').value = '';
+  taskCatalog = []; selectedTasks.clear(); lastSourceKey = ''; lastAuditKey = '';
+  clearPreview(); clearImportedTable(); renderQueue(); updateAuditTaskSelect(); showDownloadSelection();
+  $('taskStatus').textContent = 'Link da aba alterado. Baixe o CSV desta aba para carregar as tarefas.';
+  sourceStatus('Link alterado. Baixe o CSV desta aba ou selecione Arquivo para importar o CSV da sua pasta Downloads.');
+}
 function updateRecentSheetLinks() {
   const download = $('directExport'), open = $('openSheet'), hint = $('recentUrlHint');
   try {
@@ -519,7 +805,7 @@ function updateRecentSheetLinks() {
     const match = url.pathname.match(/^\/spreadsheets\/d\/([A-Za-z0-9_-]+)(?:\/|$)/);
     if (url.protocol !== 'https:' || url.hostname !== 'docs.google.com' || !match) throw new Error('Informe um link válido de uma aba do Google Sheets.');
     const hash = new URLSearchParams(url.hash.replace(/^#/, ''));
-    const gid = url.searchParams.get('gid') ?? hash.get('gid') ?? '0';
+    const gid = hash.get('gid') ?? url.searchParams.get('gid') ?? '0';
     if (!/^\d+$/.test(gid)) throw new Error('O link precisa indicar uma aba válida (gid numérico).');
     const sheet = `https://docs.google.com/spreadsheets/d/${match[1]}`;
     download.href = `${sheet}/export?format=csv&gid=${gid}`;
@@ -531,17 +817,24 @@ function updateRecentSheetLinks() {
 }
 async function refreshDownloads() {
   try {
-    const selectedBefore = downloadFiles.find(x => x.name === $('downloadFile').value);
+    const selectedName = $('downloadFile').value;
+    const selectedBefore = downloadFiles.find(x => x.name === selectedName);
     const previous = selectedBefore && `${selectedBefore.name}:${selectedBefore.modifiedAt}:${selectedBefore.size}`;
     const result = await api('downloads', {});
     downloadFiles = result.files;
     const select = $('downloadFile'); select.replaceChildren();
     if (!result.files.length) {
       const option = document.createElement('option'); option.value = ''; option.textContent = 'Nenhum CSV recente com as colunas exigidas'; select.append(option);
+      if (sourceType() === 'recent') sourceStatus('Nenhum CSV recente com as colunas exigidas foi encontrado em ~/Downloads. Baixe a aba ou use Arquivo para escolher o CSV em outra pasta.', 'error');
     } else for (const file of result.files) {
       const option = document.createElement('option'); option.value = file.name;
       option.textContent = `${file.name} — ${new Date(file.modifiedAt).toLocaleString('pt-BR')}${file.stale ? ' (antigo)' : ''}`;
       select.append(option);
+    }
+    if (awaitingSheetDownload) {
+      const downloaded = sheetDownloadRequestedAt && downloadFiles.find(file => new Date(file.modifiedAt).getTime() >= sheetDownloadRequestedAt);
+      if (downloaded) { select.value = downloaded.name; awaitingSheetDownload = false; sheetDownloadRequestedAt = 0; }
+      else { select.add(new Option('Baixe o CSV da nova aba ou selecione o arquivo correto', ''), 0); select.value = ''; }
     }
     const selectedAfter = downloadFiles.find(x => x.name === select.value);
     const current = selectedAfter && `${selectedAfter.name}:${selectedAfter.modifiedAt}:${selectedAfter.size}`;
@@ -568,7 +861,7 @@ async function login(endpoint) {
   } catch (error) { status(error.message, 'error'); if (endpoint === 'login/close') startLoginPoll(); }
   finally { setBusy(false); maybeAutoAudit(); }
 }
-for (const input of document.querySelectorAll('input[name="sourceType"]')) input.addEventListener('change', () => { $('fileBox').hidden = sourceType() !== 'file'; $('urlBox').hidden = sourceType() !== 'url'; $('recentBox').hidden = sourceType() !== 'recent'; taskCatalog = []; selectedTasks.clear(); renderQueue(); $('taskStatus').textContent = 'Leia as tarefas da fonte selecionada.'; clearPreview(); if (sourceType() === 'recent') refreshDownloads(); });
+for (const input of document.querySelectorAll('input[name="sourceType"]')) input.addEventListener('change', () => { $('fileBox').hidden = sourceType() !== 'file'; $('urlBox').hidden = sourceType() !== 'url'; $('recentBox').hidden = sourceType() !== 'recent'; taskCatalog = []; selectedTasks.clear(); clearImportedTable(); renderQueue(); $('taskStatus').textContent = 'Leia as tarefas da fonte selecionada.'; sourceStatus(sourceType() === 'url' ? 'Links privados exigem JSON de conta de serviço. Para usar seu login do Google, baixe a aba como CSV e importe em Arquivo.' : sourceType() === 'file' ? 'Escolha o CSV ou XLSX e clique em Importar arquivo selecionado.' : 'Baixe o CSV da aba e selecione o arquivo recebido.'); clearPreview(); if (sourceType() === 'recent') refreshDownloads(); });
 for (const id of ['accountId','file','sheetName','sourceUrl','recentSheetUrl','serviceKey']) $(id).addEventListener('input', () => { previewId = null; updateApply(); if (id === 'accountId') updateSidebarBadges(); });
 function setSheetUrl(value) {
   if ($('recentSheetUrl').value === value && $('sourceUrl').value === value) return;
@@ -589,24 +882,57 @@ function renderAccountList() {
   $('accountList').replaceChildren(...(config.accounts ?? []).map(a => new Option(`${a.mappings} mapeamento(s)${a.capturedAt ? ` · catálogo de ${new Date(a.capturedAt).toLocaleDateString('pt-BR')}` : ''}${a.sheetUrl ? ' · planilha salva' : ''}`, a.accountId)));
 }
 $('recentSheetUrl').addEventListener('input', updateRecentSheetLinks);
+$('recentSheetUrl').addEventListener('input', invalidateRecentSource);
 $('recentSheetUrl').addEventListener('change', saveSheetUrl);
 $('sourceUrl').addEventListener('change', saveSheetUrl);
 $('directExport').addEventListener('click', () => {
+  if (!$('directExport').href) return;
   const requestedAt = Date.now();
+  invalidateRecentSource();
+  awaitingSheetDownload = true; sheetDownloadRequestedAt = requestedAt;
+  $('downloadFile').value = ''; showDownloadSelection();
   status('Download solicitado. Aguardando o arquivo chegar em ~/Downloads…');
   let attempts = 0;
   const check = async () => {
     attempts++;
     await refreshDownloads();
-    if (downloadFiles.some(file => new Date(file.modifiedAt).getTime() >= requestedAt - 5000)) { status('CSV novo encontrado em ~/Downloads e selecionado.', 'ok'); return; }
+    if (!awaitingSheetDownload && $('downloadFile').value) { status('CSV novo encontrado em ~/Downloads e selecionado.', 'ok'); return; }
     if (attempts < 8) { setTimeout(check, 3000); return; }
     status('O CSV não chegou em ~/Downloads. Confira se o navegador salvou em outra pasta ou pediu para escolher o local, e se a planilha abriu logada. Alternativa: em Fonte da planilha, escolha Arquivo e envie o CSV baixado.', 'error');
   };
   setTimeout(check, 2500);
 });
-$('refreshDownloads').addEventListener('click', refreshDownloads); $('downloadFile').addEventListener('change', () => { taskCatalog = []; selectedTasks.clear(); renderQueue(); clearPreview(); showDownloadSelection(); loadTasks(); });
-$('file').addEventListener('change', () => { if (sourceType() === 'file' && $('file').files.length) loadTasks(); });
+$('refreshDownloads').addEventListener('click', refreshDownloads); $('downloadFile').addEventListener('change', () => { awaitingSheetDownload = false; sheetDownloadRequestedAt = 0; taskCatalog = []; selectedTasks.clear(); clearImportedTable(); renderQueue(); clearPreview(); showDownloadSelection(); if ($('downloadFile').value) loadTasks(); });
+$('loadUrlTasks').addEventListener('click', () => { clearPreview(); loadTasks(); });
+$('loadFileTasks').addEventListener('click', () => { clearPreview(); loadTasks(); });
+$('inspectSourceBtn')?.addEventListener('click', inspectSource);
+$('saveProfileBtn')?.addEventListener('click', saveMappingProfile);
+$('applyAndLoadBtn')?.addEventListener('click', applyMappingAndLoad);
+$('file').addEventListener('change', () => { if (sourceType() === 'file' && $('file').files.length) { taskCatalog = []; selectedTasks.clear(); clearPreview(); clearImportedTable(); renderQueue(); loadTasks(); } });
+$('sourceUrl').addEventListener('input', () => { if (sourceType() === 'url') { taskCatalog = []; selectedTasks.clear(); clearPreview(); clearImportedTable(); renderQueue(); sourceStatus('Link alterado. Clique em Ler tarefas do link; links privados exigem uma conta de serviço.'); } });
 $('queueSearch').addEventListener('input', renderQueue); $('queueFilter').addEventListener('change', renderQueue);
+$('btnConfirmAllSuggestions')?.addEventListener('click', async () => {
+  const accountId = currentAccount();
+  if (!liveCatalog || !accountId) return;
+  const all = taskCatalog.map(task => ({ task, mapping: mappingFor(task) }));
+  const suggestions = all.filter(x => x.mapping.state === 'suggested' && x.mapping.ref).map(x => ({
+    task: x.task.name,
+    answerRef: x.mapping.ref
+  }));
+  if (!suggestions.length) return;
+  try {
+    setBusy(true);
+    status(`Salvando ${suggestions.length} mapeamento(s)...`);
+    const res = await api('mappings/save-batch', { accountId, mappings: suggestions });
+    savedMappings = res.savedMappings;
+    status(`${res.updatedCount} sugestões seguras foram confirmadas!`, 'ok');
+    renderQueue();
+  } catch (err) {
+    status(`Falha ao confirmar sugestões: ${err.message}`, 'error');
+  } finally {
+    setBusy(false);
+  }
+});
 $('editorSearch').addEventListener('input', () => fillEditorQuestions($('editorSearch').value));
 $('catalogOverviewSearch').addEventListener('input', renderCatalogOverview);
 $('editorQuestion').addEventListener('change', () => fillEditorAnswers());
@@ -619,7 +945,7 @@ async function loadAccountCatalog() {
   const accountId = currentAccount();
   // A planilha é de um escritório: ao trocar de conta, a fonte escolhida antes deixa de valer.
   if (loadedAccount && loadedAccount !== accountId) {
-    taskCatalog = []; selectedTasks.clear(); clearPreview();
+    taskCatalog = []; selectedTasks.clear(); clearPreview(); clearImportedTable();
     $('downloadFile').value = ''; showDownloadSelection();
     $('taskStatus').textContent = 'Conta alterada: selecione a planilha deste escritório.';
   }
@@ -806,6 +1132,7 @@ function updateSidebarBadges() {
   const badgeSource = $('navBadgeSource');
   if (badgeSource) {
     if (taskCatalog.length) { badgeSource.textContent = `${taskCatalog.length} tarefas`; badgeSource.className = 'nav-badge badge-ok'; }
+    else if (importedTable) { badgeSource.textContent = `${importedTable.rows.length} linhas`; badgeSource.className = 'nav-badge badge-ok'; }
     else { badgeSource.textContent = 'Pendente'; badgeSource.className = 'nav-badge badge-neutral'; }
   }
 
@@ -897,4 +1224,3 @@ $('sidebarToggle')?.addEventListener('click', () => {
 const savedSection = localStorage.getItem(SECTION_STORAGE_KEY) || 'all';
 switchSection(savedSection);
 updateSidebarBadges();
-

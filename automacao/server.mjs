@@ -5,7 +5,9 @@ import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { parseCsv, makePlan, scopeFromEligible, formatCnpj, normalizeCnpj, validCnpj } from './lib/data.mjs';
+import { parseCsv, parseCsvTable, makePlan, scopeFromEligible, formatCnpj, normalizeCnpj, validCnpj } from './lib/data.mjs';
+import { parseHeaderAndSample } from './lib/source-inspector.mjs';
+import { TARGET_MODELS, AVAILABLE_FIELDS, TRANSFORMS, createSuggestedProfile, validateProfileAgainstStructure, normalizeTable } from './lib/mapping-engine.mjs';
 import { LOGIN_URL, hasGclickSession, openBrowser, openQuestion, questionStillOpen, resolveColumnValue, readQuestionCatalog, inspectAll, applyQuestionWithOperator, enterEmpresa, getActiveEmpresa, getAccessEmpresas } from './lib/gclick.mjs';
 import { readPublicGoogleCsv, readWithServiceAccount, parseSheetUrl } from './lib/google-service.mjs';
 import { appsScriptSource, validScriptUrl, testSheetWriter, writeMarks } from './lib/sheet-writer.mjs';
@@ -23,12 +25,22 @@ const writersFile = path.join(root, 'escrita-planilha.json');
 const token = crypto.randomBytes(24).toString('hex');
 const accountsFile = path.join(root, 'contas.json');
 const mappingsFile = path.join(root, 'mapeamentos.json');
+const profilesFile = path.join(root, 'perfis-mapeamento.json');
 const APPLY_CHUNK = 100;
 const PREVIEW_TTL = 2 * 60 * 60 * 1000;
 let savedMappings = [];
 try { savedMappings = JSON.parse(await fs.readFile(mappingsFile, 'utf8')); }
 catch (error) { if (error.code !== 'ENOENT') throw error; }
 if (!Array.isArray(savedMappings)) throw new Error('mapeamentos.json inválido');
+let savedProfiles = [];
+try { savedProfiles = JSON.parse(await fs.readFile(profilesFile, 'utf8')); }
+catch (error) { if (error.code !== 'ENOENT') throw error; }
+if (!Array.isArray(savedProfiles)) savedProfiles = [];
+async function saveProfiles() {
+  const temp = `${profilesFile}.tmp-${process.pid}-${crypto.randomBytes(3).toString('hex')}`;
+  await fs.writeFile(temp, JSON.stringify(savedProfiles, null, 2) + '\n', { mode: 0o600 });
+  await fs.rename(temp, profilesFile);
+}
 // Dados de cada escritório que não vêm da Enquete, como o link da planilha de obrigações.
 let accountSettings = {};
 try { accountSettings = JSON.parse(await fs.readFile(accountsFile, 'utf8')); }
@@ -36,7 +48,7 @@ catch (error) { if (error.code !== 'ENOENT') throw error; }
 if (!accountSettings || typeof accountSettings !== 'object' || Array.isArray(accountSettings)) throw new Error('contas.json inválido');
 let busy = false, loginContext = null, loginLock = null, loginReady = false, catalogState = null, lastReport = null, previewState = null;
 let auditProgress = { running: false, completed: 0, total: 0, task: '', error: null };
-let lastAutoOpen = 0;
+let autoAttemptedAccountId = null;
 let applyProgress = { running: false };
 // Leitura de cada tarefa na Enquete, reaproveitada enquanto planilha, catálogo e mapeamento não mudam.
 const auditCache = new Map();
@@ -305,12 +317,42 @@ function mappingRules(accountId, task, mapping) {
     questionRef: question.ref, answerRef: answer.ref, answerValue: answer.valueKnown === false ? '' : answer.value, answerLabel: answer.display,
     inputType: answer.valueKnown === false ? 'checkbox' : 'auto', allowedTasks: [task], excludedTasks: [] });
 }
+const normalizeTaskStr = value => String(value ?? '').trim().replace(/\s+/g, ' ').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('pt-BR');
+
+function findAutoMatch(task, taskRows, catalog) {
+  if (!catalog?.questions) return null;
+  const codeVal = taskRows.find(r => r._norm?.resposta)?._norm?.resposta;
+  if (codeVal && String(codeVal).trim()) {
+    const code = String(codeVal).trim();
+    for (const q of catalog.questions) {
+      for (const a of q.answers) {
+        if (String(a.value ?? '').trim() === code) {
+          return { question: q, answer: a, matchBy: 'code' };
+        }
+      }
+    }
+  }
+  const normTask = normalizeTaskStr(task);
+  const matches = [];
+  for (const q of catalog.questions) {
+    for (const a of q.answers) {
+      if (normalizeTaskStr(a.label) === normTask || normalizeTaskStr(a.display) === normTask) {
+        matches.push({ question: q, answer: a });
+      }
+    }
+  }
+  if (matches.length === 1) {
+    return { question: matches[0].question, answer: matches[0].answer, matchBy: 'exact_name' };
+  }
+  return null;
+}
 async function route(req, res) {
   const url = new URL(req.url, `http://${host}:${port}`);
   if (req.method === 'GET' && url.pathname === '/') return send(res, 200, await fs.readFile(path.join(root, 'ui/index.html'), 'utf8'), 'text/html; charset=utf-8');
   if (req.method === 'GET' && url.pathname === '/ui/app.js') return send(res, 200, await fs.readFile(path.join(root, 'ui/app.js'), 'utf8'), 'text/javascript; charset=utf-8');
   if (req.method === 'GET' && url.pathname === '/ui/style.css') return send(res, 200, await fs.readFile(path.join(root, 'ui/style.css'), 'utf8'), 'text/css; charset=utf-8');
   if (req.method === 'GET' && url.pathname === '/api/config') return send(res, 200, { token, savedMappings,
+    savedProfiles, targetModels: TARGET_MODELS, availableFields: AVAILABLE_FIELDS,
     accounts: await listStoredAccounts(), loginOpen: Boolean(loginContext), loginReady, sessionLostAt, catalog: loginReady ? catalogState : null, catalogLive: Boolean(catalogState && loginReady), busy });
   if (req.method === 'GET' && url.pathname === '/api/report.json') return lastReport ? send(res, 200, lastReport) : send(res, 404, { error: 'Nenhum relatório gerado' });
   if (req.method === 'GET' && url.pathname === '/api/report.csv') return lastReport ? send(res, 200, csvExport(lastReport), 'text/csv; charset=utf-8') : send(res, 404, { error: 'Nenhum relatório gerado' });
@@ -321,6 +363,67 @@ async function route(req, res) {
   if (req.method !== 'POST' || !url.pathname.startsWith('/api/')) return send(res, 404, { error: 'Rota não encontrada' });
   if (req.headers.host !== `${host}:${port}` || req.headers['x-gclick-token'] !== token || !String(req.headers['content-type']).startsWith('application/json')) return send(res, 403, { error: 'Sessão da interface expirada ou requisição não autorizada', code: 'invalid_session' });
   const payload = await body(req);
+  if (url.pathname === '/api/source/inspect') {
+    const source = await loadSource(payload);
+    const headerRow = Number.isInteger(payload.headerRow) ? payload.headerRow : 1;
+    const structure = parseHeaderAndSample(source.csv, { headerRow });
+    const accountId = payload.accountId ? String(payload.accountId).trim() : '';
+    const sheetId = String(payload.sheetName ?? payload.sheetId ?? source.label);
+    const existing = savedProfiles.find(p => p.accountId === accountId && (p.sourceFingerprint === source.label || p.sheetIdentifier === sheetId));
+    const suggested = createSuggestedProfile(accountId || '0000', source.label, sheetId, structure, payload.targetModel || 'enquete_automacao');
+    return send(res, 200, {
+      source: source.label,
+      stale: source.stale,
+      structure,
+      existingProfile: existing ?? null,
+      suggestedProfile: suggested,
+      targetModels: TARGET_MODELS,
+      availableFields: AVAILABLE_FIELDS
+    });
+  }
+  if (url.pathname === '/api/mapping/profiles') {
+    const accountId = payload.accountId ? String(payload.accountId).trim() : '';
+    const profiles = accountId ? savedProfiles.filter(p => p.accountId === accountId) : savedProfiles;
+    return send(res, 200, { profiles });
+  }
+  if (url.pathname === '/api/mapping/profiles/save') {
+    const profile = payload.profile;
+    if (!profile || typeof profile !== 'object') throw new Error('Perfil inválido');
+    previewState = null;
+    profile.version = (profile.version || 0) + 1;
+    profile.updatedAt = new Date().toISOString();
+    const idx = savedProfiles.findIndex(p => p.id === profile.id || (p.accountId === profile.accountId && p.sourceFingerprint === profile.sourceFingerprint && p.sheetIdentifier === profile.sheetIdentifier));
+    if (idx >= 0) savedProfiles[idx] = profile;
+    else savedProfiles.push(profile);
+    await saveProfiles();
+    return send(res, 200, { success: true, profile, savedProfiles });
+  }
+  if (url.pathname === '/api/source/load') {
+    previewState = null;
+    const source = await loadSource(payload);
+    const table = parseCsvTable(source.csv);
+    const accountId = payload.accountId ? String(payload.accountId).trim() : '';
+    const sheetId = String(payload.sheetName ?? payload.sheetId ?? source.label);
+    const profile = payload.profile ?? savedProfiles.find(p => p.accountId === accountId && (p.sourceFingerprint === source.label || p.sheetIdentifier === sheetId));
+    if (profile) {
+      const normResult = normalizeTable(table, profile);
+      return send(res, 200, {
+        source: source.label,
+        stale: source.stale,
+        rowCount: table.rows.length,
+        profile,
+        normalized: normResult.normalizedRows,
+        audit: normResult.audit,
+        table: { columns: table.columns, rows: table.rows }
+      });
+    }
+    return send(res, 200, {
+      source: source.label,
+      stale: source.stale,
+      rowCount: table.rows.length,
+      table: { columns: table.columns, rows: table.rows }
+    });
+  }
   if (url.pathname === '/api/catalog/reference') {
     const accountId = requireAccount(payload.accountId);
     const sheetUrl = accountSettings[accountId]?.sheetUrl ?? '';
@@ -378,6 +481,38 @@ async function route(req, res) {
     previewState = null;
     return send(res, 200, { savedMappings });
   }
+  if (url.pathname === '/api/mappings/save-batch') {
+    const accountId = requireAccount(payload.accountId);
+    const mappingsToSave = Array.isArray(payload.mappings) ? payload.mappings : [];
+    const availableCatalog = catalogState?.accountId === accountId && loginReady ? catalogState : null;
+    if (!availableCatalog) throw new Error('Conecte a Enquete desta conta antes de salvar lote de mapeamentos.');
+    let updatedCount = 0;
+    for (const item of mappingsToSave) {
+      const task = String(item.task ?? '').trim();
+      const answerRef = String(item.answerRef ?? '').trim();
+      if (!task || !answerRef) continue;
+      let found = null;
+      for (const question of availableCatalog.questions) {
+        const answer = question.answers.find(a => a.ref === answerRef);
+        if (answer) { found = { question, answer }; break; }
+      }
+      if (!found) continue;
+      savedMappings = savedMappings.filter(x => !(x.accountId === accountId && x.task === task));
+      savedMappings.push({
+        accountId, task, answerRef,
+        questionLabel: found.question.label,
+        answerLabel: found.answer.label,
+        catalogSource: 'live',
+        updatedAt: new Date().toISOString()
+      });
+      updatedCount++;
+    }
+    if (updatedCount > 0) {
+      await saveMappings();
+      previewState = null;
+    }
+    return send(res, 200, { savedMappings, updatedCount });
+  }
   if (url.pathname === '/api/audit/progress') return send(res, 200, auditProgress);
   if (url.pathname === '/api/sheet-writer/status') {
     const accountId = requireAccount(payload.accountId);
@@ -424,19 +559,70 @@ async function route(req, res) {
   if (url.pathname === '/api/downloads') return send(res, 200, { files: await listCsvDownloads(downloadsDir) });
   if (url.pathname === '/api/tasks') {
     const source = await loadSource(payload);
-    const rows = parseCsv(source.csv);
-    if (!rows.length || !('Obrigação / Tarefa' in rows[0])) throw new Error('Planilha sem coluna Obrigação / Tarefa');
+    const table = parseCsvTable(source.csv);
+    const accountId = payload.accountId ? String(payload.accountId).trim() : '';
+    const sheetId = String(payload.sheetName ?? payload.sheetId ?? source.label);
+    let profile = payload.profile ?? savedProfiles.find(p => p.accountId === accountId && (p.sourceFingerprint === source.label || p.sheetIdentifier === sheetId));
+    let normalized = null;
+    let audit = null;
+    let isEligible = true;
+    let missingForAutomation = [];
+
+    if (!profile) {
+      const structure = parseHeaderAndSample(source.csv, { headerRow: payload.headerRow ?? 1 });
+      const suggested = createSuggestedProfile(accountId, source.label, sheetId, structure, 'enquete_automacao');
+      const val = validateProfileAgainstStructure(suggested, structure);
+      if (val.valid) profile = suggested;
+    }
+
+    if (profile) {
+      const normResult = normalizeTable(table, profile);
+      normalized = normResult.normalizedRows;
+      audit = normResult.audit;
+      if (profile.targetModel !== 'enquete_automacao') {
+        isEligible = false;
+        missingForAutomation = ['Obrigações/Tarefas (perfil: ' + (TARGET_MODELS[profile.targetModel]?.label || profile.targetModel) + ')'];
+      } else {
+        const mappedFields = new Set(profile.columns?.filter(c => c.action === 'map').map(c => c.targetField));
+        const missing = [];
+        if (!mappedFields.has('tarefa')) missing.push('Obrigação / Tarefa');
+        if (!mappedFields.has('empresa')) missing.push('Empresa');
+        if (!mappedFields.has('cnpj') && !mappedFields.has('empId') && !mappedFields.has('cod')) {
+          missing.push('Identificador do Cliente (CNPJ ou Cod./EmpID)');
+        }
+        missingForAutomation = missing;
+        if (missingForAutomation.length) isEligible = false;
+      }
+    } else {
+      const required = ['Obrigação / Tarefa', 'Empresa', 'EmpID', 'CNPJ'];
+      missingForAutomation = required.filter(column => !table.columns.includes(column));
+      if (missingForAutomation.length) isEligible = false;
+    }
+
+    const columns = table.columns.map((name, index) => {
+      const values = table.rows.map(row => row[index].trim()).filter(Boolean);
+      return { name, index, filled: values.length, distinct: new Set(values).size };
+    });
+    const tableResult = { columns, rows: table.rows, profile: profile ?? null, audit };
+    if (!isEligible || missingForAutomation.length) return send(res, 200, { source: source.label, stale: source.stale,
+      rowCount: table.rows.length, kind: 'table', missingForAutomation, tasks: [], table: tableResult, profile: profile ?? null, audit });
+
+    const rows = normalized ?? parseCsv(source.csv);
     const counts = new Map();
     for (const row of rows) {
-      const name = String(row['Obrigação / Tarefa'] ?? '').trim();
+      const name = String(row._norm?.tarefa ?? row['Obrigação / Tarefa'] ?? '').trim();
       if (!name) continue;
       const item = counts.get(name) ?? { name, count: 0, clients: new Set(), invalidCnpjs: 0 };
       item.count++;
-      if (validCnpj(row.CNPJ)) item.clients.add(normalizeCnpj(row.CNPJ));
+      const cnpjVal = row._norm?.cnpj ?? row.CNPJ;
+      const idVal = row._norm?.empId ?? row._norm?.cod ?? row.EmpID ?? row['Cod.'];
+      if (validCnpj(cnpjVal)) item.clients.add(normalizeCnpj(cnpjVal));
+      else if (idVal && String(idVal).trim() && String(idVal).trim() !== '-') item.clients.add(`id:${String(idVal).trim()}`);
       else item.invalidCnpjs++;
       counts.set(name, item);
     }
-    return send(res, 200, { source: source.label, stale: source.stale, rowCount: rows.length,
+    return send(res, 200, { source: source.label, stale: source.stale, rowCount: rows.length, kind: 'tasks', table: tableResult,
+      profile: profile ?? null, audit,
       tasks: [...counts.values()].map(({ name, count, clients, invalidCnpjs }) => ({ name, count, clients: clients.size, invalidCnpjs }))
         .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')) });
   }
@@ -458,10 +644,32 @@ async function route(req, res) {
     if (accountId !== catalogState.accountId) throw new Error('A conta selecionada difere da Enquete conectada');
     previewState = null;
     const source = await loadSource(payload);
-    const rows = parseCsv(source.csv);
-    if (!rows.length || !('Obrigação / Tarefa' in rows[0])) throw new Error('Planilha sem coluna Obrigação / Tarefa');
-    if (['Empresa', 'EmpID', 'CNPJ'].some(column => !(column in rows[0]))) throw new Error('Planilha sem colunas Empresa, EmpID ou CNPJ');
-    const sourceTasks = new Set(rows.map(row => String(row['Obrigação / Tarefa'] ?? '').trim()).filter(Boolean));
+    const table = parseCsvTable(source.csv);
+    const sheetId = String(payload.sheetName ?? payload.sheetId ?? source.label);
+    let profile = payload.profile ?? savedProfiles.find(p => p.accountId === accountId && (p.sourceFingerprint === source.label || p.sheetIdentifier === sheetId));
+    if (!profile) {
+      const structure = parseHeaderAndSample(source.csv, { headerRow: payload.headerRow ?? 1 });
+      const suggested = createSuggestedProfile(accountId, source.label, sheetId, structure, 'enquete_automacao');
+      const val = validateProfileAgainstStructure(suggested, structure);
+      if (val.valid) profile = suggested;
+    }
+    let rows;
+    if (profile) {
+      if (profile.targetModel !== 'enquete_automacao') {
+        throw new Error(`O perfil "${TARGET_MODELS[profile.targetModel]?.label ?? profile.targetModel}" não permite conferência de Enquete.`);
+      }
+      const normResult = normalizeTable(table, profile);
+      rows = normResult.normalizedRows;
+      if (!rows.length || !rows[0]._norm.tarefa) throw new Error('Planilha sem coluna Obrigação / Tarefa mapeada');
+      if (!('empresa' in rows[0]._norm)) throw new Error('Planilha sem coluna Empresa / Razão Social mapeada');
+      const hasId = ['empId', 'cod', 'cnpj'].some(col => col in rows[0]._norm);
+      if (!hasId) throw new Error('Planilha sem colunas de identificação (CNPJ, EmpID ou Cod.) mapeadas');
+    } else {
+      rows = parseCsv(source.csv);
+      if (!rows.length || !('Obrigação / Tarefa' in rows[0])) throw new Error('Planilha sem coluna Obrigação / Tarefa');
+      if (['Empresa', 'EmpID', 'CNPJ'].some(column => !(column in rows[0]))) throw new Error('Planilha sem colunas Empresa, EmpID ou CNPJ');
+    }
+    const sourceTasks = new Set(rows.map(row => String(row._norm?.tarefa ?? row['Obrigação / Tarefa'] ?? '').trim()).filter(Boolean));
     const filterTask = typeof payload.filterTask === 'string' && payload.filterTask.trim() ? payload.filterTask.trim() : null;
     if (filterTask && !sourceTasks.has(filterTask)) throw new Error(`Obrigação "${filterTask}" não encontrada na planilha`);
     const autoAudit = payload.autoAudit === true;
@@ -472,26 +680,57 @@ async function route(req, res) {
     if (autoAudit) auditProgress = { running: true, completed: 0, total: taskNames.length, task: filterTask ? `Conferindo ${filterTask}` : 'Identificando tarefas da planilha', error: null };
     try {
     const mappings = [], pending = [], excluded = [];
+    let savedChanged = false;
     for (const task of taskNames) {
-      const saved = savedMappings.find(x => x.accountId === accountId && x.task === task);
+      let saved = savedMappings.find(x => x.accountId === accountId && x.task === task);
+      if (!saved && catalogState?.questions) {
+        const taskRows = rows.filter(item => String(item._norm?.tarefa ?? item['Obrigação / Tarefa'] ?? '').trim() === task);
+        const match = findAutoMatch(task, taskRows, catalogState);
+        if (match) {
+          saved = {
+            accountId,
+            task,
+            answerRef: match.answer.ref,
+            questionLabel: match.question.label,
+            answerLabel: match.answer.label,
+            catalogSource: 'live',
+            updatedAt: new Date().toISOString()
+          };
+          savedMappings.push(saved);
+          savedChanged = true;
+        }
+      }
       if (saved?.excluded) { excluded.push(task); if (autoAudit) auditProgress.completed++; continue; }
       const rules = saved ? mappingRules(accountId, task, saved) : null;
       if (!rules) { pending.push(task); if (autoAudit) auditProgress.completed++; continue; }
       mappings.push({ task, rules });
     }
+    if (savedChanged) await saveMappings();
     if (!autoAudit && (pending.length || excluded.length)) throw new Error(`Há ${pending.length + excluded.length} tarefa(s) selecionada(s) sem mapeamento válido; revise a fila`);
     if (!autoAudit && !mappings.length) throw new Error('Nenhum mapeamento confirmado foi encontrado na planilha');
     const results = [], inspected = [], invalidSource = [], failedTasks = [], applicable = [];
     let incompleteReason = null;
     if (autoAudit) for (const task of pending) {
       const seen = new Set();
-      for (const row of rows.filter(item => String(item['Obrigação / Tarefa'] ?? '').trim() === task)) {
-        if (!validCnpj(row.CNPJ)) { invalidSource.push({ row: row._row, cnpj: row.CNPJ, empresa: row.Empresa, task, reason: 'CNPJ inválido ou ausente' }); continue; }
-        const cnpj = normalizeCnpj(row.CNPJ);
-        if (seen.has(cnpj)) continue;
-        seen.add(cnpj);
-        inspected.push({ cnpj: formatCnpj(cnpj), empId: row.EmpID, empresa: row.Empresa, mappingTask: task,
-          uiStatus: 'sem_mapeamento', uiReason: 'Tarefa sem associação confirmada com uma resposta da Enquete; estado não verificado' });
+      for (const row of rows.filter(item => String(item._norm?.tarefa ?? item['Obrigação / Tarefa'] ?? '').trim() === task)) {
+        const cnpjVal = row._norm?.cnpj ?? row.CNPJ;
+        const empVal = row._norm?.empresa ?? row.Empresa;
+        const idVal = row._norm?.empId ?? row._norm?.cod ?? row.EmpID ?? row['Cod.'];
+        const hasCnpj = validCnpj(cnpjVal);
+        const hasId = Boolean(idVal && String(idVal).trim() && String(idVal).trim() !== '-');
+        if (!hasCnpj && !hasId) { invalidSource.push({ row: row._row, cnpj: cnpjVal || '-', empresa: empVal, task, reason: 'CNPJ e ID do cliente (Cod.) ausentes' }); continue; }
+        const key = hasCnpj ? normalizeCnpj(cnpjVal) : `id:${String(idVal).trim()}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        inspected.push({
+          cnpj: hasCnpj ? formatCnpj(cnpjVal) : `ID ${String(idVal).trim()}`,
+          empId: idVal,
+          cod: idVal,
+          empresa: empVal,
+          mappingTask: task,
+          uiStatus: 'sem_mapeamento',
+          uiReason: 'Tarefa sem associação confirmada com uma resposta da Enquete; estado não verificado'
+        });
       }
     }
     const listScope = !autoAudit && payload.scopeMode === 'list' ? parseScope(payload.cnpjsText) : null;
@@ -581,7 +820,13 @@ async function route(req, res) {
     }
     const report = { mode: autoAudit ? 'account_audit' : 'mapping_preview', createdAt: new Date().toISOString(), source: source.label, sourceSha256: sha256(source.csv), sourceStale: source.stale,
       accountId, complete: !incompleteReason && !failedTasks.length, incompleteReason, rules: { inputType: 'mixed', allowedTasks: mappings.map(x => x.task) }, mappings: results, pendingTasks: pending,
-      excludedTasks: excluded, failedTasks, sourceTaskCount: sourceTasks.size, sourceCnpjCount: new Set(rows.filter(row => validCnpj(row.CNPJ)).map(row => normalizeCnpj(row.CNPJ))).size,
+      excludedTasks: excluded, failedTasks, sourceTaskCount: sourceTasks.size,
+      sourceCnpjCount: new Set(rows.map(row => {
+        const c = row._norm?.cnpj ?? row.CNPJ;
+        if (validCnpj(c)) return normalizeCnpj(c);
+        const id = row._norm?.empId ?? row._norm?.cod ?? row.EmpID ?? row['Cod.'];
+        return id ? `id:${id}` : null;
+      }).filter(Boolean)).size,
       invalidSource, inspected, filterTask };
     const toWrite = inspected.filter(x => x.uiStatus === 'vazio').length;
     // Muitos CNPJs ausentes na Enquete costumam indicar planilha de outro escritório: a gravação fica bloqueada.
@@ -685,7 +930,7 @@ async function route(req, res) {
     busy = true;
     try {
       if (loginContext) await loginContext.close();
-      loginContext = null; loginReady = false; catalogState = null; previewState = null; lastAutoOpen = 0; auditCache.clear(); await persistAuditCache();
+      loginContext = null; loginReady = false; catalogState = null; previewState = null; autoAttemptedAccountId = null; auditCache.clear(); await persistAuditCache();
       if (loginLock) await loginLock();
       loginLock = null;
       loginLock = await acquireLock();
@@ -724,10 +969,11 @@ async function route(req, res) {
           }
         }
 
-        if (!onEnquete && Date.now() - lastAutoOpen < 20000) return send(res, 200, { open: true, ready: false, stage: 'opening', message: `Login detectado. Abrindo a Enquete da conta ${accountId}…` });
-        lastAutoOpen = Date.now();
+        if (autoAttemptedAccountId === accountId)
+          return send(res, 200, { open: true, ready: false, stage: 'no_access', message: `A Enquete da conta ${accountId} não abriu. Confira o acesso ao escritório e clique em Verificar sessão / Repetir captura para tentar novamente.` });
+        autoAttemptedAccountId = accountId;
         if (!(await hasGclickSession(loginContext, accountId)))
-          return send(res, 200, { open: true, ready: false, stage: 'no_access', message: `Login detectado, mas a Enquete da conta ${accountId} não abriu. Confira se o usuário tem acesso a esse escritório; nova tentativa em 20 s.` });
+          return send(res, 200, { open: true, ready: false, stage: 'no_access', message: `A Enquete da conta ${accountId} não abriu. Confira o acesso ao escritório e clique em Verificar sessão / Repetir captura para tentar novamente.` });
       } else if (!(await hasGclickSession(loginContext, accountId)))
         throw new Error(`A Enquete da conta ${accountId} não abriu no Chrome da automação. Confira o login e o acesso a esse escritório.`);
       await captureCatalog(accountId);

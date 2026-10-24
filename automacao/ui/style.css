@@ -638,6 +638,18 @@ input[type=search] {
   margin: 11px 0 0;
 }
 
+.source-status { margin: 16px 0 0; padding: 12px 14px; border-radius: 8px; background: #edf3f3; color: #36525a; font-size: 13px; }
+.source-status.error { background: #fff1f0; color: #a32925; }
+.source-status.ok { background: #e8f6f0; color: #176347; }
+.source-preview { margin-top: 20px; }
+.source-preview h3 { margin: 0 0 6px; }
+.source-table-wrap { overflow: auto; max-height: 560px; margin-top: 12px; border: 1px solid #d8e3e5; border-radius: 8px; }
+.source-table-wrap table { border-collapse: collapse; width: max-content; min-width: 100%; font-size: 12px; }
+.source-table-wrap th, .source-table-wrap td { padding: 9px 12px; border: 1px solid #e2e9ea; min-width: 110px; max-width: 280px; overflow-wrap: anywhere; vertical-align: top; text-align: left; }
+.source-table-wrap th { position: sticky; top: 0; background: #eaf2f2; z-index: 1; }
+.source-table-wrap td:first-child, .source-table-wrap th:first-child { min-width: 48px; }
+.source-pager { align-items: center; margin-top: 12px; }
+
 .row {
   display: flex;
   gap: 10px;

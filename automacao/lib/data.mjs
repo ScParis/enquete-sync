@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 
-export function parseCsv(input) {
+export function parseCsvTable(input) {
   const s = input.replace(/^\uFEFF/, '');
   let firstLine = '';
   let inQ = false;
@@ -30,7 +30,14 @@ export function parseCsv(input) {
   row.push(field.replace(/\r$/, '')); if (row.some(Boolean)) rows.push(row);
   if (!rows.length) throw new Error('CSV vazio');
   const headers = rows.shift().map(x => x.trim());
-  return rows.map((cells, i) => ({ ...Object.fromEntries(headers.map((h, j) => [h, cells[j] ?? ''])), _row: i + 2 }));
+  const width = rows.reduce((current, cells) => Math.max(current, cells.length), headers.length);
+  const columns = Array.from({ length: width }, (_, i) => headers[i] || `Coluna ${i + 1}`);
+  return { columns, rows: rows.map(cells => Array.from({ length: width }, (_, i) => cells[i] ?? '')) };
+}
+
+export function parseCsv(input) {
+  const table = parseCsvTable(input);
+  return table.rows.map((cells, i) => ({ ...Object.fromEntries(table.columns.map((h, j) => [h, cells[j]])), _row: i + 2 }));
 }
 
 export function normalizeCnpj(v) { return String(v ?? '').replace(/\D/g, ''); }
@@ -58,29 +65,74 @@ export async function readScope(path) {
   return ids;
 }
 
+function rowField(r, field) {
+  if (r._norm && (field in r._norm)) {
+    if (field === 'empId' && (!r._norm.empId || r._norm.empId === '') && r._norm.cod) return r._norm.cod;
+    return r._norm[field];
+  }
+  if (field === 'tarefa') return r['Obrigação / Tarefa'] ?? r.tarefa;
+  if (field === 'empresa') return r.Empresa ?? r.empresa;
+  if (field === 'empId') return r.EmpID ?? r.empId ?? r['Cod.'] ?? r.cod;
+  if (field === 'cod') return r['Cod.'] ?? r.cod ?? r.EmpID ?? r.empId;
+  if (field === 'cnpj') return r.CNPJ ?? r.cnpj;
+  return r[field];
+}
+
 export function scopeFromEligible(rows, rules) {
-  const matching = rows.filter(r => rules.allowedTasks.includes(r['Obrigação / Tarefa']));
-  const invalid = matching.filter(r => !validCnpj(r.CNPJ)).map(r => ({ row: r._row, cnpj: r.CNPJ, empresa: r.Empresa, reason: 'CNPJ inválido ou ausente' }));
-  const scope = [...new Set(matching.filter(r => validCnpj(r.CNPJ)).map(r => normalizeCnpj(r.CNPJ)))];
+  const matching = rows.filter(r => rules.allowedTasks.includes(rowField(r, 'tarefa')));
+  const invalid = [];
+  const scopeKeys = [];
+  for (const r of matching) {
+    const cnpj = rowField(r, 'cnpj');
+    const empId = rowField(r, 'empId');
+    const hasCnpj = validCnpj(cnpj);
+    const hasId = Boolean(empId && String(empId).trim() && String(empId).trim() !== '-');
+    if (!hasCnpj && !hasId) {
+      invalid.push({ row: r._row, cnpj: cnpj || '-', empresa: rowField(r, 'empresa'), reason: 'CNPJ e ID do cliente (Cod.) ausentes' });
+    } else {
+      scopeKeys.push(hasCnpj ? normalizeCnpj(cnpj) : `id:${String(empId).trim()}`);
+    }
+  }
+  const scope = [...new Set(scopeKeys)];
   return { scope, invalid };
 }
 
 export function makePlan(rows, scope, rules) {
-  const required = ['Obrigação / Tarefa', 'Empresa', 'EmpID', 'CNPJ'];
-  if (!rows.length || required.some(k => !(k in rows[0]))) throw new Error(`CSV sem colunas obrigatórias: ${required.join(', ')}`);
+  const isNormalized = Boolean(rows[0]?._norm);
+  const required = isNormalized ? ['tarefa', 'empresa'] : ['Obrigação / Tarefa', 'Empresa'];
+  if (!rows.length || required.some(k => isNormalized ? !(k in rows[0]._norm) : !(k in rows[0]))) {
+    throw new Error(`Planilha sem colunas obrigatórias: ${required.join(', ')}`);
+  }
   if (!Array.isArray(rules.allowedTasks) || !rules.allowedTasks.length || !Array.isArray(rules.excludedTasks)) throw new Error('Regras sem listas de tarefas válidas');
   if (rules.allowedTasks.some(t => rules.excludedTasks.includes(t))) throw new Error('Regras permitidas e excluídas se sobrepõem');
-  return scope.map(cnpj => {
-    const found = rows.filter(r => normalizeCnpj(r.CNPJ) === cnpj);
-    const allowed = found.filter(r => rules.allowedTasks.includes(r['Obrigação / Tarefa']));
-    const identities = new Set(found.map(r => String(r.EmpID).trim()));
+  return scope.map(key => {
+    const isId = key.startsWith('id:');
+    const rawId = isId ? key.slice(3) : null;
+    const found = rows.filter(r => isId
+      ? String(rowField(r, 'empId') ?? rowField(r, 'cod') ?? '').trim() === rawId
+      : normalizeCnpj(rowField(r, 'cnpj')) === key
+    );
+    const allowed = found.filter(r => rules.allowedTasks.includes(rowField(r, 'tarefa')));
+    const identities = new Set(found.map(r => String(rowField(r, 'empId') ?? rowField(r, 'cod') ?? '').trim()).filter(x => x && x !== '-'));
     let status = 'pronto', reason = '';
-    if (!found.length) { status = 'bloqueado'; reason = 'CNPJ ausente na planilha'; }
-    else if (identities.size !== 1 || [...identities][0] === '') { status = 'bloqueado'; reason = 'EmpID ausente ou divergente'; }
+    if (!found.length) { status = 'bloqueado'; reason = 'Cliente ausente na planilha'; }
     else if (!allowed.length) { status = 'bloqueado'; reason = 'Nenhuma Obrigação/Tarefa corresponde exatamente à regra'; }
-    else if (new Set(allowed.map(r => String(r.EmpID).trim())).size !== 1) { status = 'bloqueado'; reason = 'EmpID divergente nas tarefas elegíveis'; }
-    return { cnpj: formatCnpj(cnpj), empId: found[0]?.EmpID ?? null, empresa: found[0]?.Empresa ?? null,
-      status, reason, tasks: [...new Set(found.map(r => r['Obrigação / Tarefa']))],
-      matchingRows: allowed.map(r => r._row), target: rules.answerRef };
+    else if (identities.size > 1) { status = 'bloqueado'; reason = 'ID/EmpID divergente nas tarefas elegíveis'; }
+
+    const first = found[0];
+    const cnpjRaw = first ? rowField(first, 'cnpj') : null;
+    const cnpjFormatted = validCnpj(cnpjRaw) ? formatCnpj(cnpjRaw) : (rawId ? `ID ${rawId}` : (first?.empId ? `ID ${first.empId}` : ''));
+    const empIdVal = identities.size ? [...identities][0] : (rowField(first, 'empId') || rowField(first, 'cod') || null);
+
+    return {
+      cnpj: cnpjFormatted,
+      empId: empIdVal,
+      cod: rowField(first, 'cod') ?? empIdVal,
+      empresa: rowField(first, 'empresa') ?? null,
+      status, reason,
+      tasks: [...new Set(found.map(r => rowField(r, 'tarefa')))],
+      matchingRows: allowed.map(r => r._row),
+      target: rules.answerRef
+    };
   });
 }

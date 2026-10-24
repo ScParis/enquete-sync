@@ -1,6 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseCsv, makePlan, validCnpj } from '../lib/data.mjs';
+import { parseCsv, parseCsvTable, makePlan, validCnpj } from '../lib/data.mjs';
+test('tabela preserva todas as colunas, inclusive duplicadas, vazias e além do cabeçalho', () => {
+  const table = parseCsvTable('Cliente,Cód. Enquete,Cód. Enquete,\nA,582,583,extra\nB,,,\n');
+  assert.deepEqual(table.columns, ['Cliente', 'Cód. Enquete', 'Cód. Enquete', 'Coluna 4']);
+  assert.deepEqual(table.rows, [['A', '582', '583', 'extra'], ['B', '', '', '']]);
+});
 const rules = { allowedTasks: ['DAS - Mensal', 'DAS - Mensal - Sem Movimento'], excludedTasks: ['DAS - Mensal - CDB'], questionRef: '01.02', answerLabel: '04 - Simples' };
 test('CSV com aspas, vírgula e quebras de linha', () => {
   const rows = parseCsv('Obrigação / Tarefa,Empresa,EmpID,CNPJ\r\nDAS - Mensal,"Empresa, LTDA",887,19.402.991/0001-67\r\n');

@@ -20,21 +20,38 @@ function doPost(e) {
     if (pedido.teste) return resposta({ ok: true, aba: aba.getName() });
     const valores = aba.getDataRange().getValues();
     const cabecalho = valores[0].map(v => String(v).trim());
-    const iCnpj = cabecalho.indexOf('CNPJ'), iTarefa = cabecalho.indexOf('Obrigação / Tarefa');
-    if (iCnpj < 0 || iTarefa < 0) return resposta({ ok: false, erro: 'Colunas CNPJ e Obrigação / Tarefa não encontradas na aba' });
+    const norm = v => String(v || '').trim().toLowerCase();
+    const findCol = names => cabecalho.findIndex(c => names.some(n => norm(c) === n || norm(c).includes(n)));
+    let iCnpj = findCol(['cnpj']);
+    let iCod = findCol(['cod.', 'cod', 'empid', 'código', 'codigo']);
+    let iTarefa = findCol(['obrigação / tarefa', 'obrigacao / tarefa', 'descrição da enquete', 'descricao da enquete', 'tarefa', 'column 18']);
+    if ((iCnpj < 0 && iCod < 0) || iTarefa < 0) return resposta({ ok: false, erro: 'Colunas de identificação (CNPJ ou Cod.) e Tarefa não encontradas na aba' });
     let iColuna = cabecalho.indexOf(COLUNA);
     if (iColuna < 0) { iColuna = cabecalho.length; aba.getRange(1, iColuna + 1).setValue(COLUNA); }
-    const digitos = v => String(v).replace(/\\D/g, '');
+    const digitos = v => String(v || '').replace(/\\D/g, '');
     const chave = (cnpj, tarefa) => digitos(cnpj) + '|' + String(tarefa).trim();
-    const pedidos = new Map(pedido.marcacoes.map(m => [chave(m.cnpj, m.tarefa), m.texto]));
+    const chaveCod = (cod, tarefa) => 'id:' + String(cod || '').trim() + '|' + String(tarefa).trim();
+    const pedidos = new Map();
+    (pedido.marcacoes || []).forEach(m => {
+      if (m.cnpj) pedidos.set(chave(m.cnpj, m.tarefa), m.texto);
+      const codVal = m.cod || m.empId;
+      if (codVal) pedidos.set(chaveCod(codVal, m.tarefa), m.texto);
+    });
     const encontrados = new Set();
     let linhas = 0;
     const alteracoes = [];
     valores.slice(1).forEach((linha, i) => {
-      const k = chave(linha[iCnpj], linha[iTarefa]);
-      if (!pedidos.has(k)) return;
-      encontrados.add(k); linhas++;
-      alteracoes.push({ row: i + 2, text: pedidos.get(k) });
+      const valCnpj = iCnpj >= 0 ? linha[iCnpj] : '';
+      const valCod = iCod >= 0 ? linha[iCod] : '';
+      const valTarefa = linha[iTarefa];
+      const k1 = chave(valCnpj, valTarefa);
+      const k2 = chaveCod(valCod, valTarefa);
+      const text = pedidos.get(k1) || pedidos.get(k2);
+      if (!text) return;
+      if (pedidos.has(k1)) encontrados.add(k1);
+      if (pedidos.has(k2)) encontrados.add(k2);
+      linhas++;
+      alteracoes.push({ row: i + 2, text: text });
     });
     let bloco = null;
     for (let j = 0; j < alteracoes.length; j++) {
@@ -64,8 +81,15 @@ function resposta(objeto) {
 export function validScriptUrl(value) {
   let url;
   try { url = new URL(String(value ?? '').trim()); } catch { throw new Error('Endereço do Apps Script inválido'); }
-  if (url.protocol !== 'https:' || url.hostname !== 'script.google.com' || !/^\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(url.pathname))
+  if (url.protocol !== 'https:' || url.hostname !== 'script.google.com') {
     throw new Error('Use o endereço do app da web do Apps Script (https://script.google.com/macros/s/…/exec)');
+  }
+  if (url.pathname.endsWith('/dev')) {
+    throw new Error('Você colou o endereço de teste (/dev). No Apps Script, clique no botão azul "Implantar" > "Nova implantação" > Tipo "App da Web" para gerar o endereço final que termina em /exec.');
+  }
+  if (!/^\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(url.pathname)) {
+    throw new Error('Use o endereço do app da web do Apps Script (https://script.google.com/macros/s/…/exec)');
+  }
   return url.toString();
 }
 
@@ -85,5 +109,5 @@ export function testSheetWriter({ url, token, gid }, fetcher = fetch) {
 }
 
 export function writeMarks({ url, token, gid }, marks, fetcher = fetch) {
-  return call(url, { chave: token, gid, marcacoes: marks.map(m => ({ cnpj: m.cnpj, tarefa: m.task, texto: m.texto })) }, fetcher);
+  return call(url, { chave: token, gid, marcacoes: marks.map(m => ({ cnpj: m.cnpj, ...(m.empId || m.cod ? { cod: m.empId ?? m.cod } : {}), tarefa: m.task, texto: m.texto })) }, fetcher);
 }

@@ -6,7 +6,7 @@ export function parseSheetUrl(raw) {
   const u = new URL(raw);
   if (u.protocol !== 'https:' || u.hostname !== 'docs.google.com' || !/^\/spreadsheets\/d\/[A-Za-z0-9_-]+(?:\/|$)/.test(u.pathname)) throw new Error('Link de Google Sheets inválido');
   const id = u.pathname.split('/')[3];
-  const gid = u.searchParams.get('gid') ?? new URLSearchParams(u.hash.slice(1)).get('gid');
+  const gid = new URLSearchParams(u.hash.slice(1)).get('gid') ?? u.searchParams.get('gid');
   if (!/^\d+$/.test(gid ?? '')) throw new Error('gid da aba não encontrado no link');
   return { id, gid: Number(gid) };
 }
@@ -57,6 +57,6 @@ export async function readPublicGoogleCsv(rawUrl, fetcher = fetch) {
   if (res.status === 401 || res.status === 403) throw new Error('A planilha exige acesso. Envie um CSV/XLSX ou informe um JSON de conta de serviço com acesso de Leitor. O login do Google na janela automatizada é recusado pelo próprio Google.');
   if (!res.ok) throw new Error(`Falha ao exportar planilha pública (HTTP ${res.status})`);
   const body = await res.text();
-  if (/^\s*<!doctype html|^\s*<html/i.test(body) || !body.includes('Obrigação / Tarefa')) throw new Error('O link não retornou um CSV válido. Use uma exportação local ou uma conta de serviço.');
+  if (/^\s*<!doctype html|^\s*<html/i.test(body)) throw new Error('O link não retornou um CSV. Use uma exportação local ou uma conta de serviço.');
   return body;
 }

@@ -56,6 +56,19 @@ test('script grava na coluna "Enquete G-Click" só as linhas do CNPJ e da tarefa
   assert.equal(grid[3][4], 'Marcado na Enquete: 02.03 → GIA ST');
 });
 
+test('script grava por Cod. e Descrição da enquete mesmo sem CNPJ', () => {
+  const rows = [['Cod.', 'Cliente', 'Descrição da enquete'],
+    ['173', 'VORDELLI CENTRO AUTOMOTIVO LTDA', 'COMERCIÁRIOS X SINCOPEÇAS'],
+    ['5', 'FLORIR COSMETICOS', 'COM X SINCOMERCIO']];
+  const { result, grid } = run(rows, { chave: TOKEN, gid: 150007372, marcacoes: [
+    { cod: '173', tarefa: 'COMERCIÁRIOS X SINCOPEÇAS', texto: 'Marcado na Enquete: 04.06.13 → COMERCIÁRIOS X SINCOPEÇAS' }] });
+  assert.equal(result.ok, true);
+  assert.equal(result.linhas, 1);
+  assert.equal(grid[0][3], 'Enquete G-Click');
+  assert.equal(grid[1][3], 'Marcado na Enquete: 04.06.13 → COMERCIÁRIOS X SINCOPEÇAS');
+  assert.equal(grid[2][3] ?? '', '');
+});
+
 test('script recusa chave errada e informa aba no teste', () => {
   const rows = [['Obrigação / Tarefa', 'CNPJ']];
   assert.deepEqual(run(rows, { chave: 'b'.repeat(48), gid: 150007372, teste: true }).result, { ok: false, erro: 'Chave inválida' });
