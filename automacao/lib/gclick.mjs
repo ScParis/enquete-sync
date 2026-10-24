@@ -19,7 +19,96 @@ export async function gotoWithRetry(page, url, { attempts = 3, delayMs = 3000 } 
     }
   }
 }
+export async function getActiveEmpresa(page) {
+  try {
+    return await page.evaluate(() => {
+      try {
+        const raw = localStorage.getItem('g3CurrentEmpresa');
+        return raw ? JSON.parse(raw) : null;
+      } catch { return null; }
+    });
+  } catch { return null; }
+}
+
+export async function getAccessEmpresas(page) {
+  try {
+    return await page.evaluate(() => {
+      try {
+        const raw = localStorage.getItem('g3AccessEmpresas');
+        return raw ? JSON.parse(raw) : null;
+      } catch { return null; }
+    });
+  } catch { return null; }
+}
+
+export async function enterEmpresa(page, accountId) {
+  if (!page || page.isClosed()) return { entered: false };
+  let currentUrl;
+  try { currentUrl = new URL(page.url()); } catch { return { entered: false }; }
+
+  // Se estiver na tela de empresas (/empresas)
+  if (currentUrl.hostname === 'appp.gclick.com.br' && currentUrl.pathname.includes('/empresas')) {
+    try {
+      await page.waitForSelector('.empresa-card', { timeout: 8000 });
+      const card = page.locator('.empresa-card').filter({
+        has: page.locator(`img[src*="/empresa/${accountId}/"]`)
+      }).first();
+      if (await card.count() > 0) {
+        await card.click();
+        await page.waitForURL(u => !u.pathname.endsWith('/empresas'), { timeout: 15000 });
+        await page.waitForTimeout(1500);
+        return { entered: true, accountId };
+      }
+    } catch {}
+    return { entered: false };
+  }
+
+  // Se já está no painel ou outra tela autenticada do appp
+  if (currentUrl.hostname === 'appp.gclick.com.br' && !currentUrl.pathname.startsWith('/autenticacao')) {
+    const current = await getActiveEmpresa(page);
+    if (current && String(current.id) === String(accountId)) {
+      return { entered: true, accountId };
+    }
+    try {
+      const switchBtn = page.locator('i[title="Minhas Empresas"]').last();
+      if (await switchBtn.count() > 0) {
+        await switchBtn.click();
+        await page.waitForURL(u => u.pathname.includes('/empresas'), { timeout: 10000 });
+        await page.waitForSelector('.empresa-card', { timeout: 8000 });
+        const card = page.locator('.empresa-card').filter({
+          has: page.locator(`img[src*="/empresa/${accountId}/"]`)
+        }).first();
+        if (await card.count() > 0) {
+          await card.click();
+          await page.waitForURL(u => !u.pathname.endsWith('/empresas'), { timeout: 15000 });
+          await page.waitForTimeout(1500);
+          return { entered: true, accountId };
+        }
+      }
+    } catch {}
+  }
+  return { entered: false };
+}
+
 export async function hasGclickSession(context, accountId) {
+  const pages = context.pages().filter(p => !p.isClosed());
+  const apppPage = pages.find(p => {
+    try { return new URL(p.url()).hostname === 'appp.gclick.com.br'; } catch { return false; }
+  });
+  if (apppPage) {
+    try {
+      let u = new URL(apppPage.url());
+      if (u.pathname.includes('/empresas')) {
+        await enterEmpresa(apppPage, accountId);
+      } else if (!u.pathname.startsWith('/autenticacao')) {
+        const cur = await getActiveEmpresa(apppPage);
+        if (cur && String(cur.id) !== String(accountId)) {
+          await enterEmpresa(apppPage, accountId);
+        }
+      }
+    } catch {}
+  }
+
   const page = await context.newPage();
   try {
     await gotoWithRetry(page, BASE + encodeURIComponent(accountId));

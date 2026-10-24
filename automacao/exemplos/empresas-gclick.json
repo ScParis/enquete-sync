@@ -1,0 +1,114 @@
+[
+  {
+    "empId": "5569",
+    "nome": "61.030.773 JULIANY DESIRRE BITENCOURT COSTA",
+    "apelido": "JULIANY DESIRRE BITENCOURT COSTA",
+    "alt": "JULIANY DESIRRE BITENCOURT COSTA",
+    "disabled": false,
+    "classes": "empresa-card"
+  },
+  {
+    "empId": "6461",
+    "nome": "ASSERT CONTABILIDADE",
+    "apelido": "ASSERT CONTABILIDADE",
+    "alt": "ASSERT CONTABILIDADE",
+    "disabled": true,
+    "classes": "empresa-card disabled"
+  },
+  {
+    "empId": "7128",
+    "nome": "AUDCON ASSESSORIA CONTABIL LTDA",
+    "apelido": "AUDCON",
+    "alt": "AUDCON",
+    "disabled": false,
+    "classes": "empresa-card"
+  },
+  {
+    "empId": "5605",
+    "nome": "COLABORE CONTABILIDADE LTDA",
+    "apelido": "COLABORE CONTABILIDADE LTDA",
+    "alt": "COLABORE CONTABILIDADE LTDA",
+    "disabled": false,
+    "classes": "empresa-card"
+  },
+  {
+    "empId": "7291",
+    "nome": "CONTABILIDADE AGM LTDA",
+    "apelido": "AGM CONTABILIDADE",
+    "alt": "AGM CONTABILIDADE",
+    "disabled": false,
+    "classes": "empresa-card"
+  },
+  {
+    "empId": "6019",
+    "nome": "CONTABILIDADE MAGNUM LTDA",
+    "apelido": "CONTABILIDADE MAGNUM",
+    "alt": "CONTABILIDADE MAGNUM",
+    "disabled": false,
+    "classes": "empresa-card"
+  },
+  {
+    "empId": "838",
+    "nome": "CONTABILIDADE SAO JUDAS TADEU",
+    "apelido": "Wise Soluções Corporativas Inteligentes",
+    "alt": "Wise Soluções Corporativas Inteligentes",
+    "disabled": false,
+    "classes": "empresa-card"
+  },
+  {
+    "empId": "6761",
+    "nome": "E9 CONTABILIDADE LTDA",
+    "apelido": "E9 CONTABILIDADE",
+    "alt": "E9 CONTABILIDADE",
+    "disabled": false,
+    "classes": "empresa-card"
+  },
+  {
+    "empId": "4966",
+    "nome": "EXITO CONTABILIDADE",
+    "apelido": "EXITO CONTABILIDADE",
+    "alt": "EXITO CONTABILIDADE",
+    "disabled": false,
+    "classes": "empresa-card"
+  },
+  {
+    "empId": "4023",
+    "nome": "I7 CONTABILIDADE LTDA",
+    "apelido": "I7 CONTABILIDADE",
+    "alt": "I7 CONTABILIDADE",
+    "disabled": false,
+    "classes": "empresa-card"
+  },
+  {
+    "empId": "6581",
+    "nome": "NOU CERVELL",
+    "apelido": "NOU CERVELL",
+    "alt": "NOU CERVELL",
+    "disabled": false,
+    "classes": "empresa-card"
+  },
+  {
+    "empId": "3032",
+    "nome": "PROSPERA CONTABILIDADE E GESTAO DE NEGOCIOS LTDA",
+    "apelido": "PROSPERA CONTABILIDADE E GESTAO",
+    "alt": "PROSPERA CONTABILIDADE E GESTAO",
+    "disabled": false,
+    "classes": "empresa-card"
+  },
+  {
+    "empId": "5601",
+    "nome": "SALVADOR CONTABILISTAS ASSOCIADOS LTDA",
+    "apelido": "ETAPA Contabilidade",
+    "alt": "ETAPA Contabilidade",
+    "disabled": false,
+    "classes": "empresa-card"
+  },
+  {
+    "empId": "2420",
+    "nome": "Tekhne Contabil Ltda",
+    "apelido": "Tekhne Contabil",
+    "alt": "Tekhne Contabil",
+    "disabled": false,
+    "classes": "empresa-card"
+  }
+]

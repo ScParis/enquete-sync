@@ -206,7 +206,7 @@ function stopLoginPoll() { if (loginPoll) clearInterval(loginPoll); loginPoll = 
 function startLoginPoll() {
   if (loginPoll) return;
   loginPoll = setInterval(async () => {
-    if (working || loginPollBusy || catalogLive) return;
+    if (working || loginPollBusy || catalogLive || !/^\d+$/.test(currentAccount())) return;
     loginPollBusy = true;
     try {
       const result = await api('login/close', { accountId: currentAccount(), auto: true });

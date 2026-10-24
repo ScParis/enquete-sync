@@ -6,7 +6,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { parseCsv, makePlan, scopeFromEligible, formatCnpj, normalizeCnpj, validCnpj } from './lib/data.mjs';
-import { LOGIN_URL, hasGclickSession, openBrowser, openQuestion, questionStillOpen, resolveColumnValue, readQuestionCatalog, inspectAll, applyQuestionWithOperator } from './lib/gclick.mjs';
+import { LOGIN_URL, hasGclickSession, openBrowser, openQuestion, questionStillOpen, resolveColumnValue, readQuestionCatalog, inspectAll, applyQuestionWithOperator, enterEmpresa, getActiveEmpresa, getAccessEmpresas } from './lib/gclick.mjs';
 import { readPublicGoogleCsv, readWithServiceAccount, parseSheetUrl } from './lib/google-service.mjs';
 import { appsScriptSource, validScriptUrl, testSheetWriter, writeMarks } from './lib/sheet-writer.mjs';
 import { listCsvDownloads, readCsvDownload } from './lib/downloads.mjs';
@@ -344,7 +344,7 @@ async function route(req, res) {
       } finally {
         if (shouldClose) await context.close();
       }
-    }));
+    }, true));
   }
   if (url.pathname === '/api/accounts/save') {
     const accountId = requireAccount(payload.accountId);
@@ -704,12 +704,26 @@ async function route(req, res) {
     busy = true;
     try {
       if (payload.auto) {
-        const urls = loginContext.pages().map(page => { try { return new URL(page.url()); } catch { return null; } }).filter(Boolean);
+        const pages = loginContext.pages().filter(p => !p.isClosed());
+        const urls = pages.map(page => { try { return new URL(page.url()); } catch { return null; } }).filter(Boolean);
         const onEnquete = urls.some(current => current.hostname === 'app.gclick.com.br' && current.pathname.endsWith('/Listar.do') &&
           current.searchParams.get('obj') === 'enqueteopen' && current.searchParams.get('empId') === accountId);
-        // Após o login o G-Click abre o painel (appp.gclick.com.br); dali a Enquete abre direto pelo endereço da conta.
+        const onEmpresas = urls.some(current => current.hostname === 'appp.gclick.com.br' && current.pathname.includes('/empresas'));
         const loggedIn = urls.some(current => /(^|\.)gclick\.com\.br$/.test(current.hostname) && !current.pathname.startsWith('/autenticacao'));
+
         if (!onEnquete && !loggedIn) return send(res, 200, { open: true, ready: false, stage: 'login', message: 'Aguardando o login no Chrome da automação.' });
+
+        // Se está na tela de empresas, tenta entrar automaticamente no escritório selecionado
+        if (onEmpresas) {
+          const empPage = pages.find(p => { try { return new URL(p.url()).pathname.includes('/empresas'); } catch { return false; } });
+          if (empPage) {
+            const entered = await enterEmpresa(empPage, accountId).catch(() => null);
+            if (!entered?.entered) {
+              return send(res, 200, { open: true, ready: false, stage: 'select_company', message: `Login realizado. Selecione a empresa no G-Click (conta ${accountId}) para continuar.` });
+            }
+          }
+        }
+
         if (!onEnquete && Date.now() - lastAutoOpen < 20000) return send(res, 200, { open: true, ready: false, stage: 'opening', message: `Login detectado. Abrindo a Enquete da conta ${accountId}…` });
         lastAutoOpen = Date.now();
         if (!(await hasGclickSession(loginContext, accountId)))
