@@ -236,7 +236,7 @@ async function loadSource(payload) {
   } finally { await fs.rm(tempDir, { recursive: true, force: true }); }
 }
 const sha256 = text => crypto.createHash('sha256').update(text).digest('hex');
-const STATUSES = ['vazio', 'ja_correto', 'divergente', 'nao_encontrado', 'bloqueado', 'sem_mapeamento', 'nao_verificado'];
+const STATUSES = ['vazio', 'ja_correto', 'divergente', 'nao_encontrado', 'bloqueado', 'sem_mapeamento', 'sem_tarefa', 'nao_verificado'];
 function summarize(report) {
   const items = report.inspected ?? report.plan ?? [];
   const byStatus = Object.fromEntries(STATUSES.map(s => [s, items.filter(x => (x.uiStatus ?? x.status) === s).length]));
@@ -386,16 +386,19 @@ async function route(req, res) {
   }
   if (req.method === 'GET' && url.pathname === '/api/marcacoes.csv') {
     const accountId = requireAccount(url.searchParams.get('account'));
-    const type = url.searchParams.get('type') || 'ledger';
-    if (type === 'all' || type === 'audit') {
-      const rep = (await getLatestReport(accountId)) || lastReport;
-      if (!rep) return send(res, 404, { error: 'Nenhum relatório de auditoria gerado' });
-      const catalog = catalogState?.accountId === accountId ? catalogState : (await readStoredCatalog(accountId));
-      const ledger = await readLedger(accountId);
-      const rows = buildAuditLogRows(rep, catalog, savedMappings, ledger);
-      return send(res, 200, auditLogCsv(rows), 'text/csv; charset=utf-8');
+    const type = url.searchParams.get('type');
+    if (type === 'ledger_only') {
+      return send(res, 200, ledgerCsv(await readLedger(accountId)), 'text/csv; charset=utf-8');
     }
-    return send(res, 200, ledgerCsv(await readLedger(accountId)), 'text/csv; charset=utf-8');
+    const rep = (await getLatestReport(accountId)) || lastReport;
+    if (!rep) {
+      if (type === 'ledger') return send(res, 200, ledgerCsv(await readLedger(accountId)), 'text/csv; charset=utf-8');
+      return send(res, 404, { error: 'Nenhum relatório de auditoria gerado' });
+    }
+    const catalog = catalogState?.accountId === accountId ? catalogState : (await readStoredCatalog(accountId));
+    const ledger = await readLedger(accountId);
+    const rows = buildAuditLogRows(rep, catalog, savedMappings, ledger);
+    return send(res, 200, auditLogCsv(rows), 'text/csv; charset=utf-8');
   }
   if (req.method !== 'POST' || !url.pathname.startsWith('/api/')) return send(res, 404, { error: 'Rota não encontrada' });
   if (req.headers.host !== `${host}:${port}` || req.headers['x-gclick-token'] !== token || !String(req.headers['content-type']).startsWith('application/json')) return send(res, 403, { error: 'Sessão da interface expirada ou requisição não autorizada', code: 'invalid_session' });
@@ -764,26 +767,64 @@ async function route(req, res) {
     if (!autoAudit && !mappings.length) throw new Error('Nenhum mapeamento confirmado foi encontrado na planilha');
     const results = [], inspected = [], invalidSource = [], failedTasks = [], applicable = [];
     let incompleteReason = null;
-    if (autoAudit) for (const task of pending) {
-      const seen = new Set();
-      for (const row of rows.filter(item => String(item._norm?.tarefa ?? item['Obrigação / Tarefa'] ?? '').trim() === task)) {
+    if (autoAudit) {
+      for (const task of pending) {
+        const seen = new Set();
+        for (const row of rows.filter(item => String(item._norm?.tarefa ?? item['Obrigação / Tarefa'] ?? '').trim() === task)) {
+          const cnpjVal = row._norm?.cnpj ?? row.CNPJ;
+          const empVal = row._norm?.empresa ?? row.Empresa;
+          const idVal = row._norm?.empId ?? row._norm?.cod ?? row.EmpID ?? row['Cod.'];
+          const hasCnpj = validCnpj(cnpjVal);
+          const hasId = Boolean(idVal && String(idVal).trim() && String(idVal).trim() !== '-');
+          if (!hasCnpj && !hasId) { invalidSource.push({ row: row._row, cnpj: cnpjVal || '-', empresa: empVal, task, reason: 'CNPJ e ID do cliente (Cod.) ausentes' }); continue; }
+          const key = hasCnpj ? normalizeCnpj(cnpjVal) : `id:${String(idVal).trim()}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          inspected.push({
+            row: row._row,
+            matchingRows: [row._row],
+            cnpj: hasCnpj ? formatCnpj(cnpjVal) : `ID ${String(idVal).trim()}`,
+            empId: idVal,
+            cod: idVal,
+            empresa: empVal,
+            mappingTask: task,
+            uiStatus: 'sem_mapeamento',
+            uiReason: 'Tarefa sem associação confirmada com uma resposta da Enquete; estado não verificado'
+          });
+        }
+      }
+      const emptyTaskRows = rows.filter(item => !String(item._norm?.tarefa ?? item['Obrigação / Tarefa'] ?? '').trim());
+      for (const row of emptyTaskRows) {
         const cnpjVal = row._norm?.cnpj ?? row.CNPJ;
         const empVal = row._norm?.empresa ?? row.Empresa;
         const idVal = row._norm?.empId ?? row._norm?.cod ?? row.EmpID ?? row['Cod.'];
         const hasCnpj = validCnpj(cnpjVal);
         const hasId = Boolean(idVal && String(idVal).trim() && String(idVal).trim() !== '-');
-        if (!hasCnpj && !hasId) { invalidSource.push({ row: row._row, cnpj: cnpjVal || '-', empresa: empVal, task, reason: 'CNPJ e ID do cliente (Cod.) ausentes' }); continue; }
-        const key = hasCnpj ? normalizeCnpj(cnpjVal) : `id:${String(idVal).trim()}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
+        const fallbackTask = String(row._raw?.['Enquadramento informado'] ?? row['Enquadramento informado'] ?? '').trim();
+        const rowNum = row._row ?? (rows.indexOf(row) + 2);
+        if (!hasCnpj && !hasId) {
+          invalidSource.push({
+            row: rowNum,
+            cnpj: cnpjVal || '-',
+            empresa: empVal,
+            task: fallbackTask || '',
+            reason: 'CNPJ, ID do cliente (Cod.) e tarefa ausentes na planilha'
+          });
+          continue;
+        }
         inspected.push({
+          row: rowNum,
+          matchingRows: [rowNum],
           cnpj: hasCnpj ? formatCnpj(cnpjVal) : `ID ${String(idVal).trim()}`,
-          empId: idVal,
-          cod: idVal,
-          empresa: empVal,
-          mappingTask: task,
-          uiStatus: 'sem_mapeamento',
-          uiReason: 'Tarefa sem associação confirmada com uma resposta da Enquete; estado não verificado'
+          empId: idVal || '',
+          cod: idVal || '',
+          empresa: empVal || '',
+          mappingTask: fallbackTask ? `${fallbackTask} (sem enquete)` : 'Sem obrigação / tarefa na planilha',
+          task: fallbackTask || '',
+          uiStatus: 'sem_tarefa',
+          uiReason: fallbackTask 
+            ? `Coluna "Descrição da enquete" vazia na planilha (enquadramento informado: "${fallbackTask}")`
+            : 'Coluna "Descrição da enquete" vazia na planilha; nenhuma tarefa informada para este cliente'
         });
       }
     }

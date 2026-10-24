@@ -28,6 +28,7 @@ export function buildAuditLogRows(report, catalog, savedMappings = [], ledger = 
     bloqueado: 'Bloqueado',
     divergente: 'Divergente',
     sem_mapeamento: 'Sem mapeamento',
+    sem_tarefa: 'Sem obrigação / tarefa na planilha',
     nao_verificado: 'Não verificado',
     invalido: 'Dados incompletos na planilha'
   };
@@ -40,11 +41,12 @@ export function buildAuditLogRows(report, catalog, savedMappings = [], ledger = 
     bloqueado: 'Não alterado: bloqueado por validação',
     divergente: 'Não alterado: cliente possui outra opção marcada',
     sem_mapeamento: 'Não alterado: tarefa sem associação na Enquete',
+    sem_tarefa: 'Não alterado: nenhuma obrigação informada na planilha',
     nao_verificado: 'Não alterado: leitura não concluída',
     invalido: 'Não alterado: linha sem CNPJ e ID na planilha'
   };
 
-  const items = report.inspected ?? report.plan ?? [];
+  const items = [...(report.inspected ?? report.plan ?? []), ...(report.emptyTaskRows ?? [])];
   const out = [];
 
   for (const item of items) {
@@ -74,6 +76,8 @@ export function buildAuditLogRows(report, catalog, savedMappings = [], ledger = 
       currentDesc = `Marcado: ${ansLabel || ansVal || 'Sim'}`;
     } else if (status === 'vazio') {
       currentDesc = 'Não marcado / Vazio';
+    } else if (status === 'sem_tarefa') {
+      currentDesc = 'Não aplicável (sem tarefa)';
     } else {
       currentDesc = 'Não verificado';
     }
@@ -84,6 +88,7 @@ export function buildAuditLogRows(report, catalog, savedMappings = [], ledger = 
       else if (status === 'vazio') reason = 'Pergunta sem resposta para este cliente no G-Click (elegível para gravação)';
       else if (status === 'divergente') reason = `Cliente possui outra opção marcada no G-Click (${currentDesc})`;
       else if (status === 'nao_encontrado') reason = `Cliente não localizado na lista desta pergunta no G-Click`;
+      else if (status === 'sem_tarefa') reason = 'Nenhuma tarefa ou obrigação informada na planilha';
     }
 
     out.push({
@@ -134,10 +139,14 @@ export function buildAuditLogRows(report, catalog, savedMappings = [], ledger = 
   }
 
   return out.sort((a, b) => {
-    const na = Number(String(a.linhaPlanilha).split('|')[0]);
-    const nb = Number(String(b.linhaPlanilha).split('|')[0]);
-    if (Number.isFinite(na) && Number.isFinite(nb)) return na - nb;
-    return 0;
+    const na = Number(String(a.linhaPlanilha).split('|')[0].trim());
+    const nb = Number(String(b.linhaPlanilha).split('|')[0].trim());
+    const aHas = Number.isFinite(na) && na > 0;
+    const bHas = Number.isFinite(nb) && nb > 0;
+    if (aHas && bHas) return na - nb;
+    if (aHas) return -1;
+    if (bHas) return 1;
+    return String(a.empresa).localeCompare(String(b.empresa), 'pt-BR');
   });
 }
 

@@ -1181,6 +1181,11 @@ td {
   color: #a8423a;
 }
 
+.status-tag.sem_mapeamento, .status-tag.sem_tarefa {
+  background: #fdf5ea;
+  color: #9c6820;
+}
+
 .status-tag.vazio {
   background: #edf4fb;
   color: #396f9a;

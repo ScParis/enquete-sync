@@ -78,6 +78,18 @@ test('buildAuditLogRows gera todas as linhas de auditoria com detalhes completos
         matchingRows: [3],
         uiStatus: 'nao_encontrado',
         mappingAnswer: '04.06.01'
+      },
+      // Linha sem obrigação/tarefa na planilha (ex.: SPINOLA linha 35)
+      {
+        cnpj: '55.938.438/0001-07',
+        empId: '196',
+        cod: '196',
+        empresa: 'SPINOLA',
+        mappingTask: 'SECCOR COTIA x FECOMERCIO SP – COMÉRCIO GERAL (sem enquete)',
+        task: 'SECCOR COTIA x FECOMERCIO SP – COMÉRCIO GERAL',
+        matchingRows: [35],
+        uiStatus: 'sem_tarefa',
+        uiReason: 'Coluna "Descrição da enquete" vazia na planilha (enquadramento informado: "SECCOR COTIA x FECOMERCIO SP – COMÉRCIO GERAL")'
       }
     ],
     invalidSource: [
@@ -92,7 +104,7 @@ test('buildAuditLogRows gera todas as linhas de auditoria com detalhes completos
   };
 
   const rows = buildAuditLogRows(report, catalog, savedMappings);
-  assert.equal(rows.length, 5, 'Deve conter 5 linhas no total (4 inspecionadas + 1 inválida da fonte)');
+  assert.equal(rows.length, 6, 'Deve conter 6 linhas no total (5 inspecionadas incluindo sem_tarefa + 1 inválida da fonte)');
 
   // Linha 1 (ordem por linha da planilha: 2)
   assert.equal(rows[0].linhaPlanilha, '2');
@@ -132,20 +144,32 @@ test('buildAuditLogRows gera todas as linhas de auditoria com detalhes completos
   assert.equal(rows[3].statusCodigo, 'ja_correto');
   assert.equal(rows[3].codResposta, '04.06.13');
 
-  // Linha 5 (ordem por linha da planilha: 51 - DOMESTICAS)
-  assert.equal(rows[4].linhaPlanilha, 51);
-  assert.equal(rows[4].empresa, 'DOMESTICAS');
-  assert.equal(rows[4].statusCodigo, 'invalido');
-  assert.equal(rows[4].statusTexto, 'Dados incompletos na planilha');
-  assert.equal(rows[4].motivo, 'CNPJ e ID do cliente (Cod.) ausentes');
+  // Linha 5 (ordem por linha da planilha: 35 - SPINOLA com sem_tarefa)
+  assert.equal(rows[4].linhaPlanilha, '35');
+  assert.equal(rows[4].codCliente, '196');
+  assert.equal(rows[4].cnpj, '55.938.438/0001-07');
+  assert.equal(rows[4].empresa, 'SPINOLA');
+  assert.equal(rows[4].statusCodigo, 'sem_tarefa');
+  assert.equal(rows[4].statusTexto, 'Sem obrigação / tarefa na planilha');
+  assert.match(rows[4].motivo, /Coluna "Descrição da enquete" vazia na planilha/);
+  assert.equal(rows[4].acaoRobo, 'Não alterado: nenhuma obrigação informada na planilha');
+
+  // Linha 6 (ordem por linha da planilha: 51 - DOMESTICAS)
+  assert.equal(rows[5].linhaPlanilha, 51);
+  assert.equal(rows[5].empresa, 'DOMESTICAS');
+  assert.equal(rows[5].statusCodigo, 'invalido');
+  assert.equal(rows[5].statusTexto, 'Dados incompletos na planilha');
+  assert.equal(rows[5].motivo, 'CNPJ e ID do cliente (Cod.) ausentes');
 
   // Validação do CSV gerado
   const csv = auditLogCsv(rows);
   assert.ok(csv.startsWith('\uFEFF'), 'CSV deve iniciar com UTF-8 BOM para abertura perfeita no Excel/Google Sheets');
   const lines = csv.split('\r\n').filter(Boolean);
-  assert.equal(lines.length, 6, '1 linha de cabeçalho + 5 linhas de dados');
+  assert.equal(lines.length, 7, '1 linha de cabeçalho + 6 linhas de dados');
 
   assert.match(lines[0], /"Conta","Linha Planilha","Cod\. \/ ID Cliente","CNPJ","Razão Social \/ Empresa"/);
   assert.match(lines[0], /"Status da Auditoria","Código do Status","Resposta Atual no G-Click","Motivo \/ Detalhes da Validação","Ação do Robô"/);
   assert.match(lines[4], /"VORDELLI CENTRO AUTOMOTIVO","","COMERCIÁRIOS X SINCOPEÇAS"/);
+  assert.match(lines[5], /"SPINOLA","","SECCOR COTIA x FECOMERCIO SP – COMÉRCIO GERAL \(sem enquete\)"/);
+  assert.match(lines[6], /"DOMESTICAS","","SEDESP"/);
 });

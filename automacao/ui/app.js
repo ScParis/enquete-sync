@@ -4,7 +4,7 @@ let sourceVersion = 0, lastAuditKey = '', auditPoll = null, resultsPage = 0;
 let importedTable = null, importedPage = 0;
 const SOURCE_PAGE_SIZE = 25;
 const RESULTS_PAGE_SIZE = 50;
-const labels = { vazio: 'Sem resposta', ja_correto: 'Já correto', divergente: 'Divergente', nao_encontrado: 'Não localizado', bloqueado: 'Bloqueado', sem_mapeamento: 'Sem mapeamento', nao_verificado: 'Não verificado', a_conferir: 'A conferir', pronto: 'Elegível' };
+const labels = { vazio: 'Sem resposta', ja_correto: 'Já correto', divergente: 'Divergente', nao_encontrado: 'Não localizado', bloqueado: 'Bloqueado', sem_mapeamento: 'Sem mapeamento', sem_tarefa: 'Sem obrigação na planilha', nao_verificado: 'Não verificado', a_conferir: 'A conferir', pronto: 'Elegível' };
 let focusTask = null, auditRunning = false, auditMessage = '';
 const ACCOUNT_KEY = 'gclick.lastAccount';
 const currentAccount = () => $('accountId').value.trim();
@@ -1014,8 +1014,8 @@ function updateLedgerLink() {
   }
   if ($('ledgerLink')) {
     $('ledgerLink').hidden = !valid;
-    $('ledgerLink').href = `/api/marcacoes.csv?account=${encodeURIComponent(a)}&type=ledger`;
-    $('ledgerLink').setAttribute('download', `marcacoes-enquete-${a}.csv`);
+    $('ledgerLink').href = `/api/marcacoes.csv?account=${encodeURIComponent(a)}&type=ledger_only`;
+    $('ledgerLink').setAttribute('download', `marcacoes-gravadas-robo-${a}.csv`);
   }
 }
 $('accountId').addEventListener('change', () => { updateLedgerLink(); refreshWriterStatus(); updateSidebarBadges(); });
