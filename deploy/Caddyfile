@@ -1,0 +1,32 @@
+# Configuração do Caddy para HTTPS automático com Let's Encrypt
+# Substitua seu-dominio.com.br pelo domínio ou subdomínio real do seu servidor
+
+seu-dominio.com.br {
+    # Reverse proxy para a aplicação G-Click Enquete Sync
+    reverse_proxy 127.0.0.1:8766 {
+        # Mantém cabeçalhos de segurança e IP original
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+
+    # Compressão gzip e zstd
+    encode zstd gzip
+
+    # Cabeçalhos de segurança recomendados
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+
+    # Log de acesso
+    log {
+        output file /var/log/caddy/gclick-access.log {
+            roll_size 10mb
+            roll_keep 10
+        }
+    }
+}

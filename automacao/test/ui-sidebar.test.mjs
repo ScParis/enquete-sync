@@ -79,6 +79,7 @@ test('menu lateral alterna entre funcionalidades e atualiza visibilidade de seç
     assert.match(await page.locator('#navAll').getAttribute('class'), /active/);
 
     // Badges atualizados
+    await page.waitForFunction(() => document.querySelector('#navBadgeConnection')?.innerText.includes('Conectado'));
     assert.match(await page.locator('#navBadgeConnection').innerText(), /Conectado/);
 
     assert.equal(errors.length, 0);

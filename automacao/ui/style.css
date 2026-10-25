@@ -1535,3 +1535,138 @@ td {
     grid-template-columns: repeat(2, 1fr);
   }
 }
+
+/* Login Backdrop and Card */
+.login-backdrop {
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(circle at 50% 20%, #16434d 0%, #0a2025 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 20px;
+}
+.login-backdrop[hidden],
+.modal-overlay[hidden] {
+  display: none !important;
+}
+
+.login-card {
+  background: #ffffff;
+  border-radius: var(--radius-lg);
+  padding: 36px 32px;
+  width: 100%;
+  max-width: 420px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.35);
+  animation: fadeIn 0.25s ease-out;
+}
+
+.login-brand {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.login-logo-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: #e6f5f2;
+  color: #197f73;
+  font-size: 24px;
+  margin-bottom: 12px;
+}
+
+.login-brand h2 {
+  margin: 0 0 6px 0;
+  font-size: 20px;
+  color: var(--gclick-dark);
+}
+
+.login-brand p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+/* Modais de Usuários e Overrides */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(13, 40, 46, 0.7);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 5000;
+  padding: 20px;
+}
+
+.modal-box {
+  background: #ffffff;
+  border-radius: var(--radius-md);
+  width: 100%;
+  max-width: 580px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: var(--shadow-lg);
+  animation: fadeIn 0.2s ease;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 17px;
+  color: var(--text-main);
+}
+
+.override-btn-group {
+  display: inline-flex;
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.override-btn-group button {
+  border: none;
+  background: #f8fafc;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.override-btn-group button:hover {
+  background: #e2e8f0;
+}
+
+.override-btn-group button.active-allow {
+  background: #10b981;
+  color: #ffffff;
+}
+
+.override-btn-group button.active-deny {
+  background: #ef4444;
+  color: #ffffff;
+}
+
+.override-btn-group button.active-inherit {
+  background: #475569;
+  color: #ffffff;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}

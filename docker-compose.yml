@@ -1,0 +1,34 @@
+services:
+  gclick-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gclick-enquete-sync
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8766:8766"
+    environment:
+      - NODE_ENV=production
+      - PORT=8766
+      - GCLICK_PROFILE_DIR=/app/automacao/data/browser-profile
+      - INITIAL_ADMIN_EMAIL=admin@gclick.local
+      - INITIAL_ADMIN_PASSWORD=Admin@123456
+    volumes:
+      # Banco de dados SQLite de autenticação, usuários e sessões
+      - gclick-db:/app/automacao/data
+      # Catálogos de enquetes capturados por conta
+      - gclick-catalogos:/app/automacao/catalogos
+      # Registros de auditoria e logs gravados
+      - gclick-registros:/app/automacao/registros
+      # Execuções e relatórios
+      - gclick-runs:/app/automacao/runs
+
+volumes:
+  gclick-db:
+    name: gclick_data
+  gclick-catalogos:
+    name: gclick_catalogos
+  gclick-registros:
+    name: gclick_registros
+  gclick-runs:
+    name: gclick_runs

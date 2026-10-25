@@ -14,6 +14,10 @@ const otherCatalog = { accountId: '7000', capturedAt: '2026-10-20T12:00:00Z', qu
 
 test('conta nova carrega o próprio catálogo e recebe sugestão de mapeamento de outro escritório', async () => {
   const server = http.createServer(async (req, res) => {
+    if (req.url === '/api/auth/me') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ authenticated: true, user: { id: 1, name: 'Admin', email: 'admin@gclick.local', role: 'admin' }, token: 'test' }));
+    }
     const file = req.url === '/' ? 'ui/index.html' : req.url === '/ui/app.js' ? 'ui/app.js' : 'ui/style.css';
     res.writeHead(200, { 'Content-Type': file.endsWith('.js') ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : 'text/html' });
     res.end(await fs.readFile(path.join(root, file)));

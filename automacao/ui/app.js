@@ -1,5 +1,7 @@
 const $ = id => document.getElementById(id);
+let config = { accounts: [], savedMappings: [] };
 let authToken = '', previewId = null, lastReport = null, working = false, downloadFiles = [], liveCatalog = null, catalogLive = false, taskCatalog = [], tasksAutoFilled = false, loginPoll = null, loginPollBusy = false, savedMappings = [], editingTask = null, selectedTasks = new Set();
+let savedProfiles = [], targetModels = {}, availableFields = [];
 let sourceVersion = 0, lastAuditKey = '', auditPoll = null, resultsPage = 0;
 let importedTable = null, importedPage = 0;
 const SOURCE_PAGE_SIZE = 25;
@@ -1071,22 +1073,350 @@ $('runAudit')?.addEventListener('click', () => {
   focusTask = filterTask;
   runAuditExecution({ filterTask, force: true });
 });
-const config = await fetch('/api/config').then(r => r.json()); authToken = config.token; savedMappings = config.savedMappings ?? [];
-renderAccountList();
-if (config.catalogLive && config.catalog?.accountId) $('accountId').value = config.catalog.accountId;
-else { try { const last = localStorage.getItem(ACCOUNT_KEY); if (last) $('accountId').value = last; } catch { /* sem preferência local */ } }
-if (config.catalog && config.catalogLive) useCatalog(config.catalog, true);
-else if (currentAccount()) await loadAccountCatalog();
-loadedAccount = currentAccount() || null;
-if (currentAccount() && !$('recentSheetUrl').value) setSheetUrl((config.accounts ?? []).find(a => a.accountId === currentAccount())?.sheetUrl ?? '');
-if (config.loginReady) status('Sessão da Enquete pronta. Mantenha a janela do Chrome aberta durante o uso.', 'ok');
-else if (config.loginOpen) { status('Janela de login aberta. A captura ocorrerá quando a Enquete da conta estiver disponível.'); startLoginPoll(); }
-else status(config.sessionLostAt ? 'A janela do Chrome da automação foi fechada. Clique em Abrir janela de login e entre de novo.' : 'Informe a conta e clique em Abrir janela de login. As perguntas aparecem depois que o robô ler a Enquete do escritório.', config.sessionLostAt ? 'error' : '');
-updateRecentSheetLinks();
-updateLedgerLink();
-refreshWriterStatus();
-renderQueue();
-if (sourceType() === 'recent') refreshDownloads();
+let currentUser = null;
+let cachedRoles = [];
+let cachedPermissions = [];
+
+function renderUserSidebar(user) {
+  if (!user) return;
+  currentUser = user;
+  if ($('sidebarUserName')) $('sidebarUserName').textContent = user.name;
+  if ($('sidebarUserRole')) $('sidebarUserRole').textContent = user.is_superadmin ? 'Superadmin' : (user.roles?.map(r => r.name).join(', ') || 'Operador');
+  if ($('sidebarUserEmail')) $('sidebarUserEmail').textContent = user.email;
+  const canAdmin = user.is_superadmin || user.permissions?.some(p => p.slug === 'usuarios.administrar' && p.allowed);
+  if ($('navModuleAdmin')) $('navModuleAdmin').hidden = !canAdmin;
+}
+
+async function loadUsersTable() {
+  const tbody = $('usersTableBody');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="6" class="empty">Carregando usuários…</td></tr>';
+  try {
+    const res = await fetch('/api/users', { headers: { 'X-GClick-Token': authToken } });
+    if (!res.ok) throw new Error('Não autorizado a listar usuários');
+    const data = await res.json();
+    cachedRoles = data.roles || [];
+    cachedPermissions = data.permissions || [];
+    tbody.replaceChildren();
+
+    if (!data.users || !data.users.length) {
+      tbody.innerHTML = '<tr><td colspan="6" class="empty">Nenhum usuário cadastrado.</td></tr>';
+      return;
+    }
+
+    for (const u of data.users) {
+      const tr = document.createElement('tr');
+      
+      const tdName = document.createElement('td');
+      tdName.innerHTML = `<strong>${escapeHtml(u.name)}</strong>${u.is_superadmin ? ' <span class="tag-pill" style="font-size:10px;background:#4c1d95;color:#e9d5ff">Superadmin</span>' : ''}`;
+      
+      const tdEmail = document.createElement('td');
+      tdEmail.textContent = u.email;
+      
+      const tdRoles = document.createElement('td');
+      tdRoles.innerHTML = u.roles?.length 
+        ? u.roles.map(r => `<span class="tag-pill" style="font-size:10px;background:#164e63;color:#a5f3fc;margin-right:4px">${escapeHtml(r.name)}</span>`).join('') 
+        : '<span style="color:var(--text-dimmed)">Sem cargo</span>';
+      
+      const tdAcc = document.createElement('td');
+      tdAcc.textContent = u.is_superadmin ? 'Todas (*)' : (u.accounts?.join(', ') || 'Nenhuma');
+      
+      const tdStatus = document.createElement('td');
+      tdStatus.innerHTML = u.is_active 
+        ? '<span class="status-tag ja_correto">Ativo</span>' 
+        : '<span class="status-tag divergente">Inativo</span>';
+      
+      const tdActions = document.createElement('td');
+      tdActions.style.textAlign = 'right';
+      tdActions.innerHTML = `
+        <button type="button" class="ghost btn-edit-user" data-id="${u.id}" style="padding:4px 8px;font-size:12px;margin-right:4px">✏️ Editar</button>
+        <button type="button" class="secondary btn-overrides-user" data-id="${u.id}" style="padding:4px 8px;font-size:12px;margin-right:4px">⚡ Exceções</button>
+        ${!u.is_superadmin ? `<button type="button" class="ghost btn-del-user" data-id="${u.id}" style="padding:4px 8px;font-size:12px;color:#ef4444">🗑️</button>` : ''}
+      `;
+      
+      tdActions.querySelector('.btn-edit-user')?.addEventListener('click', () => openUserModal(u));
+      tdActions.querySelector('.btn-overrides-user')?.addEventListener('click', () => openOverridesModal(u));
+      tdActions.querySelector('.btn-del-user')?.addEventListener('click', () => deleteUser(u));
+
+      tr.append(tdName, tdEmail, tdRoles, tdAcc, tdStatus, tdActions);
+      tbody.append(tr);
+    }
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="6" class="empty" style="color:#ef4444">Erro ao carregar usuários: ${err.message}</td></tr>`;
+  }
+}
+
+function escapeHtml(str) {
+  return String(str ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function openUserModal(user = null) {
+  $('formUserId').value = user ? user.id : '';
+  $('modalUserTitle').textContent = user ? `Editar Usuário: ${user.name}` : 'Novo Usuário';
+  $('formUserName').value = user ? user.name : '';
+  $('formUserEmail').value = user ? user.email : '';
+  $('formUserPassword').value = '';
+  $('formUserPasswordHelp').textContent = user ? 'Deixe em branco para manter a senha atual.' : 'Mínimo de 6 caracteres.';
+  $('formUserAccounts').value = user ? (user.accounts?.join(', ') || '*') : '*';
+  $('formUserActive').checked = user ? Boolean(user.is_active) : true;
+  $('formUserError').hidden = true;
+
+  const rolesGroup = $('formUserRolesGroup');
+  rolesGroup.innerHTML = '';
+  const userRoleSlugs = new Set((user?.roles || []).map(r => r.slug));
+
+  for (const r of cachedRoles) {
+    const label = document.createElement('label');
+    label.style.display = 'inline-flex';
+    label.style.alignItems = 'center';
+    label.style.gap = '6px';
+    label.style.cursor = 'pointer';
+    label.style.fontSize = '13px';
+    label.innerHTML = `
+      <input type="checkbox" name="userRole" value="${r.slug}" ${userRoleSlugs.has(r.slug) || (!user && r.slug === 'operador') ? 'checked' : ''}>
+      <span>${escapeHtml(r.name)}</span>
+    `;
+    rolesGroup.append(label);
+  }
+
+  $('modalUserForm').hidden = false;
+}
+
+async function openOverridesModal(user) {
+  $('overridesUserSubtitle').textContent = `Usuário: ${user.name} (${user.email}) · Cargo(s): ${user.roles?.map(r => r.name).join(', ') || 'Nenhum'}`;
+  const tbody = $('overridesTableBody');
+  tbody.innerHTML = '';
+
+  const renderRows = (u) => {
+    tbody.innerHTML = '';
+    for (const p of u.permissions || []) {
+      const tr = document.createElement('tr');
+      
+      const tdPerm = document.createElement('td');
+      tdPerm.innerHTML = `<strong>${escapeHtml(p.slug)}</strong><div style="font-size:11px;color:var(--text-muted)">${escapeHtml(p.description)}</div>`;
+      
+      const tdMod = document.createElement('td');
+      tdMod.textContent = p.module;
+      
+      const tdEff = document.createElement('td');
+      let statusHtml = '';
+      if (p.source === 'override_allowed') statusHtml = '<span class="status-tag ja_correto" style="background:#dcfce7;color:#15803d">🟢 Liberado (Override)</span>';
+      else if (p.source === 'override_denied') statusHtml = '<span class="status-tag divergente" style="background:#fee2e2;color:#b91c1c">🔴 Bloqueado (Override)</span>';
+      else if (p.source === 'role') statusHtml = '<span class="status-tag" style="background:#e0f2fe;color:#0369a1">🔵 Cargo: Liberado</span>';
+      else if (p.source === 'superadmin') statusHtml = '<span class="status-tag" style="background:#f3e8ff;color:#7e22ce">👑 Superadmin</span>';
+      else statusHtml = '<span class="status-tag" style="background:#f1f5f9;color:#64748b">⚪ Cargo: Bloqueado</span>';
+      tdEff.innerHTML = statusHtml;
+
+      const tdAction = document.createElement('td');
+      tdAction.style.textAlign = 'right';
+
+      if (u.is_superadmin) {
+        tdAction.innerHTML = '<span style="font-size:11px;color:var(--text-dimmed)">Superadmin tem acesso total</span>';
+      } else {
+        const btnGroup = document.createElement('div');
+        btnGroup.className = 'override-btn-group';
+        
+        const btnAllow = document.createElement('button');
+        btnAllow.type = 'button';
+        btnAllow.textContent = 'Liberar';
+        btnAllow.title = 'Libera esta permissão para este usuário mesmo que o cargo não tenha';
+        if (p.source === 'override_allowed') btnAllow.className = 'active-allow';
+
+        const btnDeny = document.createElement('button');
+        btnDeny.type = 'button';
+        btnDeny.textContent = 'Bloquear';
+        btnDeny.title = 'Bloqueia esta permissão para este usuário mesmo que o cargo tenha';
+        if (p.source === 'override_denied') btnDeny.className = 'active-deny';
+
+        const btnInherit = document.createElement('button');
+        btnInherit.type = 'button';
+        btnInherit.textContent = 'Herdar';
+        btnInherit.title = 'Remove a exceção e volta a herdar a regra padrão do cargo';
+        if (p.source === 'role' || p.source === 'denied') btnInherit.className = 'active-inherit';
+
+        btnAllow.addEventListener('click', () => setOverride(u.id, p.slug, true));
+        btnDeny.addEventListener('click', () => setOverride(u.id, p.slug, false));
+        btnInherit.addEventListener('click', () => setOverride(u.id, p.slug, null));
+
+        btnGroup.append(btnAllow, btnDeny, btnInherit);
+        tdAction.append(btnGroup);
+      }
+
+      tr.append(tdPerm, tdMod, tdEff, tdAction);
+      tbody.append(tr);
+    }
+  };
+
+  const setOverride = async (userId, permissionSlug, allowed) => {
+    try {
+      const res = await fetch('/api/users/override', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-GClick-Token': authToken },
+        body: JSON.stringify({ userId, permissionSlug, allowed })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erro ao definir exceção');
+      renderRows(data.user);
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
+  renderRows(user);
+  $('modalOverrides').hidden = false;
+}
+
+async function deleteUser(user) {
+  if (!confirm(`Tem certeza que deseja excluir o usuário "${user.name}" (${user.email})?`)) return;
+  try {
+    const res = await fetch('/api/users/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-GClick-Token': authToken },
+      body: JSON.stringify({ id: user.id })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Erro ao excluir usuário');
+    loadUsersTable();
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+// Modal Listeners
+$('btnNewUser')?.addEventListener('click', () => openUserModal(null));
+$('btnCloseUserModal')?.addEventListener('click', () => { $('modalUserForm').hidden = true; });
+$('btnCancelUser')?.addEventListener('click', () => { $('modalUserForm').hidden = true; });
+$('btnCloseOverridesModal')?.addEventListener('click', () => { $('modalOverrides').hidden = true; loadUsersTable(); });
+$('btnCloseOverrides')?.addEventListener('click', () => { $('modalOverrides').hidden = true; loadUsersTable(); });
+
+$('formUser')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const id = $('formUserId').value;
+  const name = $('formUserName').value.trim();
+  const email = $('formUserEmail').value.trim();
+  const password = $('formUserPassword').value;
+  const isActive = $('formUserActive').checked;
+  const accounts = $('formUserAccounts').value.split(',').map(s => s.trim()).filter(Boolean);
+  const roles = [...document.querySelectorAll('input[name="userRole"]:checked')].map(i => i.value);
+
+  const errorBox = $('formUserError');
+  errorBox.hidden = true;
+
+  try {
+    const endpoint = id ? '/api/users/update' : '/api/users/create';
+    const payload = { id, name, email, isActive, roleSlugs: roles, accountIds: accounts };
+    if (password) payload.password = password;
+
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-GClick-Token': authToken },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Erro ao salvar usuário');
+    $('modalUserForm').hidden = true;
+    loadUsersTable();
+  } catch (err) {
+    errorBox.textContent = err.message;
+    errorBox.hidden = false;
+  }
+});
+
+$('btnLogout')?.addEventListener('click', async () => {
+  await fetch('/api/auth/logout', { method: 'POST' });
+  window.location.reload();
+});
+
+$('formLogin')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const email = $('loginEmail').value.trim();
+  const password = $('loginPassword').value;
+  const errorBox = $('loginError');
+  errorBox.hidden = true;
+  const submitBtn = $('btnLoginSubmit');
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Autenticando…';
+
+  try {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Credenciais inválidas');
+    authToken = data.token;
+    $('loginScreen').hidden = true;
+    renderUserSidebar(data.user);
+    initApp();
+  } catch (err) {
+    errorBox.textContent = err.message;
+    errorBox.hidden = false;
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Entrar no Sistema';
+  }
+});
+
+// Inicialização Principal com Verificação de Autenticação
+async function checkAuthAndInit() {
+  try {
+    const meRes = await fetch('/api/auth/me');
+    if (!meRes.ok) {
+      // Servidor mock de teste ou servidor legado sem auth: segue fluxo normal
+      $('loginScreen').hidden = true;
+      return initApp();
+    }
+    let meData;
+    try {
+      meData = await meRes.json();
+    } catch {
+      $('loginScreen').hidden = true;
+      return initApp();
+    }
+    if (meData?.authenticated && meData?.user) {
+      authToken = meData.token;
+      $('loginScreen').hidden = true;
+      renderUserSidebar(meData.user);
+      initApp();
+    } else {
+      $('loginScreen').hidden = false;
+    }
+  } catch (err) {
+    $('loginScreen').hidden = true;
+    initApp().catch(() => {});
+  }
+}
+
+async function initApp() {
+  const loaded = await fetch('/api/config').then(r => r.json());
+  Object.assign(config, loaded);
+  authToken = config.token;
+  savedMappings = config.savedMappings ?? [];
+  savedProfiles = config.savedProfiles ?? [];
+  targetModels = config.targetModels ?? {};
+  availableFields = config.availableFields ?? [];
+  if (config.user) renderUserSidebar(config.user);
+
+  renderAccountList();
+  if (config.catalogLive && config.catalog?.accountId) $('accountId').value = config.catalog.accountId;
+  else { try { const last = localStorage.getItem(ACCOUNT_KEY); if (last) $('accountId').value = last; } catch { /* sem preferência local */ } }
+  if (config.catalog && config.catalogLive) useCatalog(config.catalog, true);
+  else if (currentAccount()) await loadAccountCatalog();
+  loadedAccount = currentAccount() || null;
+  if (currentAccount() && !$('recentSheetUrl').value) setSheetUrl((config.accounts ?? []).find(a => a.accountId === currentAccount())?.sheetUrl ?? '');
+  if (config.loginReady) status('Sessão da Enquete pronta. Mantenha a janela do Chrome aberta durante o uso.', 'ok');
+  else if (config.loginOpen) { status('Janela de login aberta. A captura ocorrerá quando a Enquete da conta estiver disponível.'); startLoginPoll(); }
+  else status(config.sessionLostAt ? 'A janela do Chrome da automação foi fechada. Clique em Abrir janela de login e entre de novo.' : 'Informe a conta e clique em Abrir janela de login. As perguntas aparecem depois que o robô ler a Enquete do escritório.', config.sessionLostAt ? 'error' : '');
+  updateRecentSheetLinks();
+  updateLedgerLink();
+  refreshWriterStatus();
+  renderQueue();
+  if (sourceType() === 'recent') refreshDownloads();
+  updateSidebarBadges();
+}
+
+checkAuthAndInit();
 
 const SECTION_STORAGE_KEY = 'enqueteSync_activeSection';
 
@@ -1112,7 +1442,12 @@ function switchSection(sectionId) {
     });
   }
 
+  if (target === 'users') {
+    loadUsersTable();
+  }
+
   $('sidebar')?.classList.remove('open');
+  updateSidebarBadges();
 
   try {
     localStorage.setItem(SECTION_STORAGE_KEY, target);
@@ -1125,7 +1460,7 @@ function updateSidebarBadges() {
   if ($('topAccountId')) $('topAccountId').textContent = acc || '—';
   if ($('sidebarAccountDisplay')) $('sidebarAccountDisplay').textContent = accText;
 
-  const isOnline = Boolean(catalogLive && liveCatalog && String(liveCatalog.accountId) === String(acc));
+  const isOnline = Boolean(catalogLive && (liveCatalog ? (!acc || String(liveCatalog.accountId) === String(acc)) : true));
   const isEntering = Boolean(config?.loginOpen && !isOnline);
   if ($('sidebarStatusDot')) {
     $('sidebarStatusDot').className = `status-dot ${isOnline ? 'active' : ''}`;

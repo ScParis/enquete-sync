@@ -14,8 +14,10 @@ import { appsScriptSource, validScriptUrl, testSheetWriter, writeMarks, writeAud
 import { listCsvDownloads, readCsvDownload } from './lib/downloads.mjs';
 import { inspectObrigacoesPage } from './lib/obrigacoes.mjs';
 import { buildAuditLogRows, auditLogCsv } from './lib/audit-logger.mjs';
+import { AuthService } from './lib/auth-service.mjs';
 
 const root = path.dirname(new URL(import.meta.url).pathname);
+const authService = new AuthService();
 const host = '127.0.0.1';
 const port = Number(process.env.GCLICK_PORT ?? 8766);
 const profile = process.env.GCLICK_PROFILE_DIR ?? path.join(os.homedir(), '.local/share/gclick-enquete/browser-profile');
@@ -284,6 +286,26 @@ function send(res, code, data, type = 'application/json; charset=utf-8') {
   res.writeHead(code, { 'Content-Type': type, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
   res.end(type.startsWith('application/json') ? JSON.stringify(data) : data);
 }
+function sendCookie(res, code, data, cookieHeader, type = 'application/json; charset=utf-8') {
+  res.writeHead(code, {
+    'Content-Type': type,
+    'Cache-Control': 'no-store',
+    'X-Content-Type-Options': 'nosniff',
+    'Set-Cookie': cookieHeader
+  });
+  res.end(type.startsWith('application/json') ? JSON.stringify(data) : data);
+}
+function getCookie(req, name) {
+  const header = req.headers.cookie;
+  if (!header) return null;
+  const match = header.match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`));
+  return match ? decodeURIComponent(match[1]) : null;
+}
+function getAuthUser(req) {
+  const sessionId = getCookie(req, 'gclick_session') || (req.headers.authorization?.startsWith('Bearer ') ? req.headers.authorization.slice(7).trim() : null);
+  if (!sessionId) return null;
+  return authService.validateSession(sessionId);
+}
 async function body(req) {
   let total = 0; const chunks = [];
   for await (const chunk of req) { total += chunk.length; if (total > 25 * 1024 * 1024) throw new Error('Envio maior que 25 MB'); chunks.push(chunk); }
@@ -364,19 +386,66 @@ function findAutoMatch(task, taskRows, catalog) {
 }
 async function route(req, res) {
   const url = new URL(req.url, `http://${host}:${port}`);
-  if (req.method === 'GET' && url.pathname === '/') return send(res, 200, await fs.readFile(path.join(root, 'ui/index.html'), 'utf8'), 'text/html; charset=utf-8');
+  if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/login')) return send(res, 200, await fs.readFile(path.join(root, 'ui/index.html'), 'utf8'), 'text/html; charset=utf-8');
   if (req.method === 'GET' && url.pathname === '/ui/app.js') return send(res, 200, await fs.readFile(path.join(root, 'ui/app.js'), 'utf8'), 'text/javascript; charset=utf-8');
   if (req.method === 'GET' && url.pathname === '/ui/style.css') return send(res, 200, await fs.readFile(path.join(root, 'ui/style.css'), 'utf8'), 'text/css; charset=utf-8');
-  if (req.method === 'GET' && url.pathname === '/api/config') return send(res, 200, { token, savedMappings,
-    savedProfiles, targetModels: TARGET_MODELS, availableFields: AVAILABLE_FIELDS,
-    accounts: await listStoredAccounts(), loginOpen: Boolean(loginContext), loginReady, sessionLostAt, catalog: loginReady ? catalogState : null, catalogLive: Boolean(catalogState && loginReady), busy });
+
+  // Rotas de Autenticação Públicas / Sessão
+  if (req.method === 'GET' && url.pathname === '/api/auth/me') {
+    const user = getAuthUser(req);
+    return send(res, 200, { authenticated: Boolean(user), user: user ?? null, token });
+  }
+  if (req.method === 'POST' && url.pathname === '/api/auth/login') {
+    const payload = await body(req);
+    const user = authService.authenticate(payload.email, payload.password);
+    if (!user) return send(res, 401, { error: 'E-mail ou senha incorretos' });
+    const { sessionId } = authService.createSession(user.id);
+    const cookie = `gclick_session=${sessionId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800`;
+    return sendCookie(res, 200, { ok: true, user, token }, cookie);
+  }
+  if (req.method === 'POST' && url.pathname === '/api/auth/logout') {
+    const sessionId = getCookie(req, 'gclick_session');
+    if (sessionId) authService.deleteSession(sessionId);
+    const cookie = `gclick_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
+    return sendCookie(res, 200, { ok: true }, cookie);
+  }
+
+  // Identificação e Autorização Geral
+  const authUser = getAuthUser(req);
+  const isTokenAuth = req.headers['x-gclick-token'] === token;
+  const currentUser = authUser || (isTokenAuth ? authService.getUserById(1) : null);
+
+  if (req.method === 'GET' && url.pathname === '/api/config') return send(res, 200, {
+    token, savedMappings, savedProfiles, targetModels: TARGET_MODELS, availableFields: AVAILABLE_FIELDS,
+    accounts: await listStoredAccounts(), loginOpen: Boolean(loginContext), loginReady, sessionLostAt,
+    catalog: loginReady ? catalogState : null, catalogLive: Boolean(catalogState && loginReady), busy,
+    user: currentUser ?? null
+  });
+
+  if (req.method === 'GET' && url.pathname === '/api/users') {
+    if (!currentUser || !authService.hasPermission(currentUser.id, 'usuarios.administrar')) {
+      return send(res, 403, { error: 'Acesso negado: permissão "usuarios.administrar" necessária' });
+    }
+    return send(res, 200, {
+      users: authService.listUsers(),
+      roles: authService.listRoles(),
+      permissions: authService.listPermissions()
+    });
+  }
+
   if (req.method === 'GET' && url.pathname === '/api/report.json') {
     const accountId = url.searchParams.get('account') || lastReport?.accountId || '2420';
+    if (!currentUser || !authService.hasPermission(currentUser.id, 'enquete.visualizar', accountId)) {
+      return send(res, 403, { error: 'Acesso negado: sem permissão para esta conta' });
+    }
     const rep = (await getLatestReport(accountId)) || lastReport;
     return rep ? send(res, 200, rep) : send(res, 404, { error: 'Nenhum relatório gerado' });
   }
   if (req.method === 'GET' && (url.pathname === '/api/report.csv' || url.pathname === '/api/audit/log.csv')) {
     const accountId = url.searchParams.get('account') || lastReport?.accountId || '2420';
+    if (!currentUser || !authService.hasPermission(currentUser.id, 'enquete.exportar', accountId)) {
+      return send(res, 403, { error: 'Acesso negado: sem permissão para esta conta' });
+    }
     const rep = (await getLatestReport(accountId)) || lastReport;
     if (!rep) return send(res, 404, { error: 'Nenhum relatório de auditoria gerado' });
     const catalog = catalogState?.accountId === rep.accountId ? catalogState : (await readStoredCatalog(rep.accountId));
@@ -386,6 +455,9 @@ async function route(req, res) {
   }
   if (req.method === 'GET' && url.pathname === '/api/marcacoes.csv') {
     const accountId = requireAccount(url.searchParams.get('account'));
+    if (!currentUser || !authService.hasPermission(currentUser.id, 'enquete.exportar', accountId)) {
+      return send(res, 403, { error: 'Acesso negado: sem permissão para esta conta' });
+    }
     const type = url.searchParams.get('type');
     if (type === 'ledger_only') {
       return send(res, 200, ledgerCsv(await readLedger(accountId)), 'text/csv; charset=utf-8');
@@ -401,8 +473,30 @@ async function route(req, res) {
     return send(res, 200, auditLogCsv(rows), 'text/csv; charset=utf-8');
   }
   if (req.method !== 'POST' || !url.pathname.startsWith('/api/')) return send(res, 404, { error: 'Rota não encontrada' });
-  if (req.headers.host !== `${host}:${port}` || req.headers['x-gclick-token'] !== token || !String(req.headers['content-type']).startsWith('application/json')) return send(res, 403, { error: 'Sessão da interface expirada ou requisição não autorizada', code: 'invalid_session' });
+  if (!currentUser) return send(res, 401, { error: 'Sessão da interface expirada ou não autenticada', code: 'unauthenticated' });
   const payload = await body(req);
+
+  // Endpoints Administrativos de Usuários
+  if (url.pathname === '/api/users/create') {
+    if (!authService.hasPermission(currentUser.id, 'usuarios.administrar')) return send(res, 403, { error: 'Acesso negado' });
+    const user = authService.createUser(payload);
+    return send(res, 200, { ok: true, user });
+  }
+  if (url.pathname === '/api/users/update') {
+    if (!authService.hasPermission(currentUser.id, 'usuarios.administrar')) return send(res, 403, { error: 'Acesso negado' });
+    const user = authService.updateUser(payload.id, payload);
+    return send(res, 200, { ok: true, user });
+  }
+  if (url.pathname === '/api/users/delete') {
+    if (!authService.hasPermission(currentUser.id, 'usuarios.administrar')) return send(res, 403, { error: 'Acesso negado' });
+    authService.deleteUser(payload.id);
+    return send(res, 200, { ok: true });
+  }
+  if (url.pathname === '/api/users/override') {
+    if (!authService.hasPermission(currentUser.id, 'usuarios.administrar')) return send(res, 403, { error: 'Acesso negado' });
+    authService.setUserOverride(payload.userId, payload.permissionSlug, payload.allowed);
+    return send(res, 200, { ok: true, user: authService.getUserById(payload.userId) });
+  }
   if (url.pathname === '/api/source/inspect') {
     const source = await loadSource(payload);
     const headerRow = Number.isInteger(payload.headerRow) ? payload.headerRow : 1;
@@ -498,6 +592,9 @@ async function route(req, res) {
   }
   if (url.pathname === '/api/mappings/save') {
     const accountId = requireAccount(payload.accountId);
+    if (!authService.hasPermission(currentUser.id, 'mapeamentos.gerenciar', accountId)) {
+      return send(res, 403, { error: 'Acesso negado: permissão "mapeamentos.gerenciar" necessária' });
+    }
     const task = String(payload.task ?? '').trim();
     const answerRef = String(payload.answerRef ?? '');
     const excluded = payload.excluded === true;
@@ -523,6 +620,9 @@ async function route(req, res) {
   }
   if (url.pathname === '/api/mappings/save-batch') {
     const accountId = requireAccount(payload.accountId);
+    if (!authService.hasPermission(currentUser.id, 'mapeamentos.gerenciar', accountId)) {
+      return send(res, 403, { error: 'Acesso negado: permissão "mapeamentos.gerenciar" necessária' });
+    }
     const mappingsToSave = Array.isArray(payload.mappings) ? payload.mappings : [];
     const availableCatalog = catalogState?.accountId === accountId && loginReady ? catalogState : null;
     if (!availableCatalog) throw new Error('Conecte a Enquete desta conta antes de salvar lote de mapeamentos.');
@@ -582,6 +682,9 @@ async function route(req, res) {
   if (url.pathname === '/api/sheet-writer/resend') return send(res, 200, await pushPendingMarks(requireAccount(payload.accountId)));
   if (url.pathname === '/api/audit/sync-sheet') {
     const accountId = requireAccount(payload.accountId);
+    if (!authService.hasPermission(currentUser.id, 'planilha.escrever', accountId)) {
+      return send(res, 403, { error: 'Acesso negado: permissão "planilha.escrever" necessária nesta conta' });
+    }
     const rep = (await getLatestReport(accountId)) || lastReport;
     if (!rep) throw new Error('Nenhum relatório de auditoria disponível para sincronizar');
     const catalog = catalogState?.accountId === accountId ? catalogState : (await readStoredCatalog(accountId));
@@ -696,8 +799,11 @@ async function route(req, res) {
     return { catalog: catalogState };
   }, true));
   if (url.pathname === '/api/mappings/preview') return send(res, 200, await exclusive(async () => {
-    if (!loginContext || !loginReady || !catalogState) throw new Error('Abra a Enquete da conta para capturar o catálogo antes da prévia');
     const accountId = requireAccount(payload.accountId);
+    if (!authService.hasPermission(currentUser.id, 'enquete.conferir', accountId)) {
+      return send(res, 403, { error: 'Acesso negado: permissão "enquete.conferir" necessária nesta conta' });
+    }
+    if (!loginContext || !loginReady || !catalogState) throw new Error('Abra a Enquete da conta para capturar o catálogo antes da prévia');
     if (accountId !== catalogState.accountId) throw new Error('A conta selecionada difere da Enquete conectada');
     previewState = null;
     const source = await loadSource(payload);
@@ -958,6 +1064,9 @@ async function route(req, res) {
   if (url.pathname === '/api/mappings/apply') return send(res, 200, await exclusive(async () => {
     const state = previewState;
     if (!state || state.kind !== 'mappings' || state.id !== payload.previewId || Date.now() - state.at > PREVIEW_TTL) throw new Error('Conferência ausente ou vencida. Recarregue a planilha para conferir de novo.');
+    if (!authService.hasPermission(currentUser.id, 'enquete.gravar', state.accountId)) {
+      return send(res, 403, { error: 'Acesso negado: permissão "enquete.gravar" necessária nesta conta' });
+    }
     if (!loginContext || !loginReady || catalogState?.accountId !== state.accountId || catalogState.capturedAt !== state.catalogCapturedAt)
       throw new Error('A Enquete conectada mudou desde a conferência. Confira de novo.');
     if (state.sourceType === 'recent') {

@@ -16,3 +16,7 @@ docs/
 *.png
 2026-10-17_*
 Relatório.xlsx
+*.db
+*.db-journal
+.env
+.env.local
