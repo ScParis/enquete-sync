@@ -681,7 +681,11 @@ function updateApply() {
   const ctx = applyContext();
   const step = nextStep(ctx);
   $('nextStep').hidden = !step; $('nextStep').textContent = step;
-  $('applyCard').hidden = !['mapping_preview', 'account_audit', 'mapping_apply'].includes(lastReport?.mode);
+  const isAuditComplete = ['mapping_preview', 'account_audit', 'mapping_apply'].includes(lastReport?.mode);
+  $('applyCard').hidden = !isAuditComplete;
+  if ($('applyAuditNeeded')) {
+    $('applyAuditNeeded').hidden = isAuditComplete || lastReport?.mode !== 'mapping_plan';
+  }
   $('apply').disabled = !ctx?.allowed;
   $('apply').textContent = ctx?.count ? `Marcar ${ctx.count} resposta(s) no G-Click` : 'Marcar respostas no G-Click';
   $('applyReason').textContent = ctx?.reason ?? 'A gravação só é liberada após uma prévia ou conferência completa e com opções a marcar.';
@@ -724,6 +728,7 @@ async function runAuditExecution({ filterTask = null, force = false } = {}) {
     const request = await payload('account_audit');
     request.accountId = currentAccount();
     request.autoAudit = true;
+    request.headless = $('headlessAuditToggle') ? $('headlessAuditToggle').checked : true;
     if (currentProfile) request.profile = currentProfile;
     if (filterTask) request.filterTask = filterTask;
     const result = await api('mappings/preview', request);
@@ -1031,12 +1036,25 @@ $('resultsTaskFilter')?.addEventListener('change', e => {
 $('resultsPrev').addEventListener('click', () => { if (lastReport && resultsPage > 0) { resultsPage--; renderResultRows(lastReport); } });
 $('resultsNext').addEventListener('click', () => { if (lastReport) { resultsPage++; renderResultRows(lastReport); } });
 $('apply').addEventListener('click', apply);
+$('runAuditFromApply')?.addEventListener('click', () => {
+  const isSingle = $('auditScopeSingle')?.checked;
+  const filterTask = isSingle ? $('auditTaskSelect')?.value : null;
+  runAuditExecution({ filterTask, force: true });
+});
 $('openLogin').addEventListener('click', () => login('login/open')); $('closeLogin').addEventListener('click', () => login('login/close'));
 const AUTO_AUDIT_KEY = 'enqueteSync_autoAudit';
+const HEADLESS_AUDIT_KEY = 'enqueteSync_headlessAudit';
 try {
   const savedAuto = localStorage.getItem(AUTO_AUDIT_KEY);
   if (savedAuto !== null && $('autoAuditToggle')) $('autoAuditToggle').checked = savedAuto === 'true';
 } catch { /* sem preferência local */ }
+try {
+  const savedHeadless = localStorage.getItem(HEADLESS_AUDIT_KEY);
+  if (savedHeadless !== null && $('headlessAuditToggle')) $('headlessAuditToggle').checked = savedHeadless === 'true';
+} catch { /* sem preferência local */ }
+$('headlessAuditToggle')?.addEventListener('change', () => {
+  try { localStorage.setItem(HEADLESS_AUDIT_KEY, String($('headlessAuditToggle').checked)); } catch {}
+});
 $('autoAuditToggle')?.addEventListener('change', () => {
   try { localStorage.setItem(AUTO_AUDIT_KEY, String($('autoAuditToggle').checked)); } catch {}
   if ($('autoAuditToggle').checked) maybeAutoAudit();
@@ -1056,11 +1074,13 @@ $('auditTaskSelect')?.addEventListener('change', () => {
     maybeAutoAudit();
   }
 });
+$('btnOpenLoginFromAudit')?.addEventListener('click', () => login('login/open'));
 $('runAudit')?.addEventListener('click', () => {
   if (working) return;
   if (!catalogLive) {
-    status('A sessão do G-Click não está ativa. Abra o menu "Conexão & Conta G-Click" e clique em "Abrir janela de login".', 'error');
-    $('auditStatus').textContent = 'Aguardando o login: a conferência começa quando o robô ler a Enquete da conta.';
+    status('A sessão do G-Click não está ativa. Abrindo a janela de login para conectar…', 'warn');
+    $('auditStatus').textContent = 'Abrindo o navegador para conectar a sessão do G-Click…';
+    login('login/open');
     return;
   }
   const isSingle = $('auditScopeSingle')?.checked;
@@ -1445,6 +1465,9 @@ function switchSection(sectionId) {
   if (target === 'users') {
     loadUsersTable();
   }
+  if (target === 'obrigacoes') {
+    loadObrigacoesSection();
+  }
 
   $('sidebar')?.classList.remove('open');
   updateSidebarBadges();
@@ -1533,8 +1556,18 @@ function updateSidebarBadges() {
 
   const badgeObrigacoes = $('navBadgeObrigacoes');
   if (badgeObrigacoes) {
-    badgeObrigacoes.textContent = 'Em breve';
-    badgeObrigacoes.className = 'nav-badge badge-new';
+    if (obrigacoesList?.length) {
+      const pend = obrigacoesAudit?.pendenteWhatsapp || 0;
+      badgeObrigacoes.textContent = pend > 0 ? `${pend} pendente(s)` : `${obrigacoesList.length} itens`;
+      badgeObrigacoes.className = `nav-badge ${pend > 0 ? 'badge-warn' : 'badge-ok'}`;
+    } else {
+      badgeObrigacoes.textContent = 'Obrigações';
+      badgeObrigacoes.className = 'nav-badge badge-neutral';
+    }
+  }
+
+  if ($('auditLoginNotice')) {
+    $('auditLoginNotice').style.display = catalogLive ? 'none' : 'flex';
   }
 }
 
@@ -1560,6 +1593,1301 @@ $('refreshCatalogManual')?.addEventListener('click', async () => {
     setBusy(false);
     if (btn) btn.disabled = false;
     updateSidebarBadges();
+  }
+});
+
+/* ==========================================================================
+   MÓDULO DE OBRIGAÇÕES (GESTÃO DE CATÁLOGO & PARIDADE DE CANAIS)
+   ========================================================================== */
+let obrigacoesList = [];
+let obrigacoesAudit = null;
+let obrigacoesPage = 0;
+const OBRIG_PAGE_SIZE = 15;
+let currentFocusedTextarea = null;
+const selectedObrigacoesIds = new Set();
+
+function updateBatchBarState(filteredItems = []) {
+  const depto = $('obrigDeptoFilter')?.value || '';
+  const countText = $('obrigBatchCountText');
+  const deptoWarning = $('obrigBatchDeptoWarning');
+  const btnBatchModal = $('btnOpenBatchEmailModal');
+  const btnClear = $('btnClearBatchSelection');
+  const selectAllCb = $('obrigSelectAll');
+
+  const count = selectedObrigacoesIds.size;
+  if (countText) countText.textContent = `${count} obrigação(ões) selecionada(s)`;
+
+  if (!depto) {
+    if (deptoWarning) deptoWarning.style.display = 'inline-flex';
+    if (btnBatchModal) {
+      btnBatchModal.disabled = true;
+      btnBatchModal.title = 'Selecione um departamento no filtro para habilitar a ação em massa.';
+    }
+    const btnBatchWhats = $('btnOpenBatchWhatsappModal');
+    if (btnBatchWhats) {
+      btnBatchWhats.disabled = true;
+      btnBatchWhats.title = 'Selecione um departamento no filtro para habilitar a ação em massa.';
+    }
+  } else {
+    if (deptoWarning) deptoWarning.style.display = 'none';
+    if (btnBatchModal) {
+      btnBatchModal.disabled = count === 0;
+      btnBatchModal.title = count === 0 ? 'Selecione pelo menos uma obrigação.' : `Configurar E-mail para ${count} obrigação(ões) do departamento ${depto}.`;
+    }
+    const btnBatchWhats = $('btnOpenBatchWhatsappModal');
+    if (btnBatchWhats) {
+      btnBatchWhats.disabled = count === 0;
+      btnBatchWhats.title = count === 0 ? 'Selecione pelo menos uma obrigação.' : `Criar WhatsApp para ${count} obrigação(ões) do departamento ${depto}.`;
+    }
+  }
+
+  if (btnClear) btnClear.disabled = count === 0;
+
+  if (selectAllCb) {
+    const selectable = filteredItems.map(it => it.id);
+    if (selectable.length > 0 && selectable.every(id => selectedObrigacoesIds.has(id))) {
+      selectAllCb.checked = true;
+      selectAllCb.indeterminate = false;
+    } else if (selectable.some(id => selectedObrigacoesIds.has(id))) {
+      selectAllCb.checked = false;
+      selectAllCb.indeterminate = true;
+    } else {
+      selectAllCb.checked = false;
+      selectAllCb.indeterminate = false;
+    }
+  }
+}
+
+async function loadObrigacoesSection() {
+  const accountId = currentAccount() || '6581';
+  try {
+    if ($('obrigMetricSource')) $('obrigMetricSource').textContent = 'Carregando catálogo da conta ' + accountId + '…';
+    const res = await api('obrigacoes/catalog', { accountId });
+    obrigacoesList = res.items || [];
+
+    if ($('obrigMetricTotal')) $('obrigMetricTotal').textContent = obrigacoesList.length;
+    if ($('obrigMetricSource')) {
+      $('obrigMetricSource').textContent = res.source === 'file'
+        ? `Arquivo da conta ${accountId}`
+        : (res.live ? 'Ao vivo no G-Click' : 'Sem catálogo salvo');
+    }
+
+    const deptos = Array.from(new Set(obrigacoesList.map(o => o.departamento).filter(Boolean))).sort();
+    if ($('obrigMetricDeptos')) $('obrigMetricDeptos').textContent = deptos.length;
+
+    const deptoSelect = $('obrigDeptoFilter');
+    if (deptoSelect) {
+      const currentVal = deptoSelect.value;
+      deptoSelect.innerHTML = '<option value="">Todos os Departamentos</option>';
+      for (const d of deptos) {
+        const opt = document.createElement('option');
+        opt.value = d;
+        opt.textContent = d;
+        if (d === currentVal) opt.selected = true;
+        deptoSelect.appendChild(opt);
+      }
+    }
+
+    await runObrigacoesAudit();
+    obrigacoesPage = 0;
+    renderObrigacoesTable();
+    updateSidebarBadges();
+  } catch (err) {
+    console.error('Erro ao carregar módulo de obrigações:', err);
+    if ($('obrigMetricSource')) $('obrigMetricSource').textContent = 'Falha ao carregar: ' + err.message;
+  }
+}
+
+async function runObrigacoesAudit() {
+  const accountId = currentAccount() || '6581';
+  try {
+    const auditRes = await api('obrigacoes/audit', { accountId, items: obrigacoesList });
+    obrigacoesAudit = auditRes;
+    if ($('obrigMetricConforme')) $('obrigMetricConforme').textContent = auditRes.conforme || 0;
+    if ($('obrigMetricPendente')) $('obrigMetricPendente').textContent = auditRes.pendenteWhatsapp || 0;
+
+    if (auditRes.items) {
+      const map = new Map(auditRes.items.map(it => [it.id, it.paridade]));
+      for (const o of obrigacoesList) {
+        o.paridade = map.get(o.id) || { status: 'sem_disparo' };
+      }
+    }
+  } catch (err) {
+    console.error('Erro ao auditar paridade de obrigações:', err);
+  }
+}
+
+function renderObrigacoesTable() {
+  const tbody = $('obrigacoesTableBody');
+  if (!tbody) return;
+
+  const search = ($('obrigSearchInput')?.value || '').trim().toLowerCase();
+  const depto = $('obrigDeptoFilter')?.value || '';
+  const paridade = $('obrigParidadeFilter')?.value || '';
+
+  const filtered = obrigacoesList.filter(item => {
+    if (depto && item.departamento !== depto) return false;
+    if (paridade && item.paridade?.status !== paridade) return false;
+    if (search) {
+      const matchName = (item.nome || '').toLowerCase().includes(search);
+      const matchId = String(item.id || '').includes(search);
+      const matchDepto = (item.departamento || '').toLowerCase().includes(search);
+      const matchOrgao = (item.orgao || '').toLowerCase().includes(search);
+      if (!matchName && !matchId && !matchDepto && !matchOrgao) return false;
+    }
+    return true;
+  });
+
+  updateBatchBarState(filtered);
+
+  const total = filtered.length;
+  const start = obrigacoesPage * OBRIG_PAGE_SIZE;
+  const end = Math.min(start + OBRIG_PAGE_SIZE, total);
+  const pageItems = filtered.slice(start, end);
+
+  const maxPage = Math.max(0, Math.ceil(total / OBRIG_PAGE_SIZE) - 1);
+  if (obrigacoesPage > maxPage) obrigacoesPage = maxPage;
+
+  if ($('obrigPaginationInfo')) {
+    $('obrigPaginationInfo').textContent = total > 0
+      ? `Exibindo ${start + 1}–${end} de ${total} obrigação(ões)`
+      : 'Nenhuma obrigação encontrada com os filtros selecionados';
+  }
+  if ($('obrigPrevPage')) $('obrigPrevPage').disabled = obrigacoesPage === 0;
+  if ($('obrigNextPage')) $('obrigNextPage').disabled = end >= total;
+
+  if (pageItems.length === 0) {
+    const acc = currentAccount() || '6581';
+    if (obrigacoesList.length === 0) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="11" style="text-align:center;padding:40px 20px;">
+            <div style="max-width:520px;margin:0 auto;display:flex;flex-direction:column;align-items:center;gap:12px;">
+              <span style="font-size:36px;display:block;">📁</span>
+              <h4 style="margin:0;color:#184f59;font-size:16px;">Nenhuma obrigação carregada para a conta ${escapeHtml(acc)}</h4>
+              <p style="margin:0;font-size:13px;color:var(--text-muted);line-height:1.5;">
+                O catálogo local desta conta ainda não foi lido ou está vazio. Você pode sincronizar as obrigações cadastradas diretamente do G-Click da conta logada.
+              </p>
+              <button type="button" class="primary" style="margin-top:8px;padding:9px 18px;font-size:13px;display:inline-flex;align-items:center;gap:6px;" onclick="document.getElementById('btnSyncObrigacoes').click();">
+                <span>🔄</span> Ler Obrigações da Conta ${escapeHtml(acc)} no G-Click
+              </button>
+            </div>
+          </td>
+        </tr>
+      `;
+    } else {
+      tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;padding:30px;color:var(--text-muted);">Nenhuma obrigação localizada com os filtros selecionados.</td></tr>`;
+    }
+    return;
+  }
+
+  tbody.innerHTML = pageItems.map(item => {
+    let paridadeBadge = `<span style="font-size:11px;color:var(--text-muted);background:#f0f4f3;padding:3px 8px;border-radius:4px;">Sem disparo</span>`;
+    const precisaOrdem = Boolean(item.paridade?.precisaReordenacao);
+    if (item.paridade?.status === 'conforme') {
+      if (item.paridade?.canalExclusivoEmail) {
+        paridadeBadge = `<span class="badge-ok" style="font-size:11px;padding:3px 8px;border-radius:4px;display:inline-flex;align-items:center;gap:4px;" title="Obrigação com canal exclusivo de e-mail (não requer WhatsApp)"><span>✓</span> ✉️ Canal E-mail</span>`;
+      } else if (precisaOrdem) {
+        paridadeBadge = `<span class="badge-warn" style="font-size:11px;padding:3px 8px;border-radius:4px;display:inline-flex;align-items:center;gap:4px;" title="Cada passo de WhatsApp deve ficar imediatamente antes do respectivo passo de e-mail"><span>↕️</span> Ordem a ajustar</span>`;
+      } else {
+        paridadeBadge = `<span class="badge-ok" style="font-size:11px;padding:3px 8px;border-radius:4px;display:inline-flex;align-items:center;gap:4px;"><span>✓</span> ✉️ + 💬 Alinhados</span>`;
+      }
+    } else if (item.paridade?.status === 'pendente_whatsapp') {
+      const faltam = item.paridade?.faltamWhatsapp || 1;
+      const totalEmail = item.paridade?.emailCount || faltam;
+      paridadeBadge = `<span class="badge-warn" style="font-size:11px;padding:3px 8px;border-radius:4px;display:inline-flex;align-items:center;gap:4px;" title="${totalEmail} passo(s) de e-mail e ${item.paridade?.whatsappCount || 0} de WhatsApp (regra 1:1)"><span>⚠️</span> Faltam ${faltam} WhatsApp</span>`;
+    } else if (item.paridade?.status === 'pendente_email') {
+      paridadeBadge = `<span style="font-size:11px;background:#e0e7ff;color:#3730a3;padding:3px 8px;border-radius:4px;">💬 Sem E-mail</span>`;
+    }
+
+    const deptoBadge = `<span style="font-size:11px;background:#eaf2f1;color:#184f59;padding:2px 8px;border-radius:4px;font-weight:600;">${escapeHtml(item.departamento || 'Geral')}</span>`;
+    const orgaoBadge = `<span style="font-size:11px;color:#4a6560;">${escapeHtml(item.orgao || 'Empresa')}</span>`;
+    const vencText = item.diaVencimento ? `Dia ${item.diaVencimento}` : '—';
+    const isChecked = selectedObrigacoesIds.has(item.id);
+
+    return `
+      <tr style="border-bottom:1px solid #edf3f2;font-size:13px;transition:background .15s ease;${isChecked ? 'background:#f0f9f8;' : ''}">
+        <td style="padding:10px 12px;text-align:center;">
+          <input type="checkbox" class="obrig-row-check" data-id="${item.id}" ${isChecked ? 'checked' : ''} style="cursor:pointer;">
+        </td>
+        <td style="padding:10px 14px;color:#184f59;font-weight:700;">#${item.id}</td>
+        <td style="padding:10px 16px;">
+          <strong style="color:#184f59;">${escapeHtml(item.nome)}</strong>
+        </td>
+        <td style="padding:10px 16px;">${deptoBadge}</td>
+        <td style="padding:10px 16px;color:#4a6560;">${escapeHtml(item.frequencia || '—')}</td>
+        <td style="padding:10px 16px;color:#4a6560;">${escapeHtml(vencText)}</td>
+        <td style="padding:10px 16px;color:#4a6560;">${escapeHtml(item.fatoGerador || '—')}</td>
+        <td style="padding:10px 16px;">${orgaoBadge}</td>
+        <td style="padding:10px 16px;text-align:center;">${paridadeBadge}</td>
+        <td style="padding:10px 16px;text-align:center;">
+          <span style="font-size:11.5px;color:#047857;font-weight:600;">${item.status === 'Ativo' ? '● Ativo' : item.status || 'Ativo'}</span>
+        </td>
+        <td style="padding:10px 16px;text-align:right;white-space:nowrap;">
+          <div style="display:inline-flex;gap:6px;align-items:center;">
+            <button type="button" class="ghost" style="padding:4px 9px;font-size:11.5px;display:inline-flex;align-items:center;gap:4px;border:1px solid #184f59;color:#184f59;" onclick="openFixEmailModal(${item.id})">
+              <span>✉️</span> Ajustar E-mail
+            </button>
+            ${item.paridade?.status === 'pendente_whatsapp' ? `
+              <button type="button" class="primary" style="padding:4px 9px;font-size:11.5px;display:inline-flex;align-items:center;gap:4px;" onclick="openCreateWhatsappModal(${item.id})">
+                <span>💬</span> Criar WhatsApp
+              </button>
+            ` : (item.paridade?.hasWhatsapp && item.paridade?.hasEmail && !item.paridade?.canalExclusivoEmail) ? `
+              <button type="button" class="ghost" style="padding:4px 9px;font-size:11.5px;display:inline-flex;align-items:center;gap:4px;border:1px solid #047857;color:#047857;" title="Confere e aplica a configuração padrão do robô nos passos de WhatsApp e reordena (WhatsApp antes do E-mail)" onclick="openCreateWhatsappModal(${item.id})">
+                <span>💬</span> Ajustar WhatsApp
+              </button>
+            ` : ''}
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  // Adiciona listeners para os checkboxes da tabela
+  tbody.querySelectorAll('.obrig-row-check').forEach(cb => {
+    cb.addEventListener('change', (e) => {
+      const id = Number(e.target.dataset.id);
+      if (e.target.checked) {
+        selectedObrigacoesIds.add(id);
+      } else {
+        selectedObrigacoesIds.delete(id);
+      }
+      renderObrigacoesTable();
+    });
+  });
+}
+
+async function openObrigTemplatesModal() {
+  const accountId = currentAccount() || '6581';
+  try {
+    const res = await api('obrigacoes/templates', { accountId });
+    const tmpl = res.templates || {};
+
+    if ($('tmplWhatsappHabilitado')) $('tmplWhatsappHabilitado').checked = tmpl.whatsapp?.habilitado !== false;
+    if ($('tmplWhatsappTexto')) $('tmplWhatsappTexto').value = tmpl.whatsapp?.texto || '';
+    if ($('tmplWhatsappParticularidade')) $('tmplWhatsappParticularidade').value = tmpl.whatsapp?.particularidadeId || '539';
+
+    if ($('tmplEmailAssunto')) $('tmplEmailAssunto').value = tmpl.email?.assunto || '';
+    if ($('tmplEmailTexto')) $('tmplEmailTexto').value = tmpl.email?.texto || '';
+
+    updateObrigPreview();
+    if ($('modalObrigTemplates')) $('modalObrigTemplates').style.display = 'flex';
+  } catch (err) {
+    status('Erro ao carregar modelos: ' + err.message, 'error');
+  }
+}
+
+function updateObrigPreview() {
+  const text = $('tmplWhatsappTexto')?.value || '';
+  const dummyData = {
+    '[cliente.apelido]': 'Indústria e Comércio Silva Ltda',
+    '[cliente.nome]': 'Silva Indústria e Comércio de Alimentos Ltda',
+    '[obrigacao.nome]': 'DAS SIMPLES',
+    '[tarefa.competencia]': '10/2026',
+    '[tarefa.vencimento]': '20/11/2026',
+    '[contato.nome]': 'Carlos Eduardo',
+    '[empresa.apelido]': 'Nosso Escritório Contábil'
+  };
+
+  let preview = text;
+  for (const [tag, val] of Object.entries(dummyData)) {
+    preview = preview.replaceAll(tag, val);
+  }
+  if ($('obrigPreviewWhatsapp')) {
+    $('obrigPreviewWhatsapp').textContent = preview || '(Nenhum texto informado)';
+  }
+}
+
+async function saveObrigTemplates() {
+  const accountId = currentAccount() || '6581';
+  const templates = {
+    whatsapp: {
+      habilitado: $('tmplWhatsappHabilitado')?.checked ?? true,
+      texto: $('tmplWhatsappTexto')?.value || '',
+      particularidadeId: $('tmplWhatsappParticularidade')?.value?.trim() || '539'
+    },
+    email: {
+      assunto: $('tmplEmailAssunto')?.value || '',
+      texto: $('tmplEmailTexto')?.value || ''
+    }
+  };
+
+  try {
+    setBusy(true);
+    await api('obrigacoes/templates/save', { accountId, templates });
+    status('Modelos flexíveis de mensagem salvos com sucesso!', 'ok');
+    if ($('modalObrigTemplates')) $('modalObrigTemplates').style.display = 'none';
+  } catch (err) {
+    status('Erro ao salvar modelos: ' + err.message, 'error');
+  } finally {
+    setBusy(false);
+  }
+}
+
+$('obrigSearchInput')?.addEventListener('input', () => { obrigacoesPage = 0; renderObrigacoesTable(); });
+$('obrigDeptoFilter')?.addEventListener('change', () => { obrigacoesPage = 0; renderObrigacoesTable(); });
+$('obrigParidadeFilter')?.addEventListener('change', () => { obrigacoesPage = 0; renderObrigacoesTable(); });
+$('obrigPrevPage')?.addEventListener('click', () => { if (obrigacoesPage > 0) { obrigacoesPage--; renderObrigacoesTable(); } });
+$('obrigNextPage')?.addEventListener('click', () => { obrigacoesPage++; renderObrigacoesTable(); });
+
+$('btnOpenObrigTemplates')?.addEventListener('click', openObrigTemplatesModal);
+$('btnCloseObrigTemplates')?.addEventListener('click', () => { if ($('modalObrigTemplates')) $('modalObrigTemplates').style.display = 'none'; });
+$('btnCancelObrigTemplates')?.addEventListener('click', () => { if ($('modalObrigTemplates')) $('modalObrigTemplates').style.display = 'none'; });
+$('btnSaveObrigTemplates')?.addEventListener('click', saveObrigTemplates);
+
+$('tmplWhatsappTexto')?.addEventListener('input', updateObrigPreview);
+$('tmplWhatsappTexto')?.addEventListener('focus', () => { currentFocusedTextarea = $('tmplWhatsappTexto'); });
+$('tmplEmailTexto')?.addEventListener('focus', () => { currentFocusedTextarea = $('tmplEmailTexto'); });
+$('tmplEmailAssunto')?.addEventListener('focus', () => { currentFocusedTextarea = $('tmplEmailAssunto'); });
+
+document.querySelectorAll('#obrigTemplateChips .tag-chip').forEach(chip => {
+  chip.addEventListener('click', (e) => {
+    e.preventDefault();
+    const tag = chip.dataset.tag;
+    const targetInput = currentFocusedTextarea || $('tmplWhatsappTexto');
+    if (!targetInput) return;
+    const start = targetInput.selectionStart ?? targetInput.value.length;
+    const end = targetInput.selectionEnd ?? targetInput.value.length;
+    const val = targetInput.value;
+    targetInput.value = val.substring(0, start) + tag + val.substring(end);
+    targetInput.selectionStart = targetInput.selectionEnd = start + tag.length;
+    targetInput.focus();
+    updateObrigPreview();
+  });
+});
+
+// ==========================================
+// MÓDULO DE AJUSTE / CORREÇÃO DE E-MAIL
+// ==========================================
+let currentEditingObrig = null;
+
+window.insertTagIntoFixEmail = function(tag) {
+  const el = $('fixEmailCorpo');
+  if (!el) return;
+  const start = el.selectionStart ?? el.value.length;
+  const end = el.selectionEnd ?? el.value.length;
+  const val = el.value;
+  el.value = val.substring(0, start) + tag + val.substring(end);
+  el.selectionStart = el.selectionEnd = start + tag.length;
+  el.focus();
+};
+
+window.openFixEmailModal = async function(obrigId) {
+  const item = obrigacoesList.find(o => o.id === obrigId);
+  if (!item) {
+    status('Obrigação não encontrada na lista local.', 'warn');
+    return;
+  }
+  currentEditingObrig = item;
+
+  const modal = $('modalFixEmail');
+  if (!modal) return;
+  modal.style.display = 'flex';
+
+  $('fixEmailLoading').style.display = 'block';
+  $('fixEmailFormContent').style.display = 'none';
+  $('fixEmailObrigBadge').innerText = `#${item.id}`;
+  $('fixEmailObrigNome').innerText = item.nome;
+  $('fixEmailDepto').innerText = item.departamento || 'Geral';
+  $('fixEmailSubhint').innerText = `Lendo configurações da obrigação #${item.id} no G-Click...`;
+
+  const accountId = currentAccount() || '6581';
+  try {
+    const res = await api('obrigacoes/email-inspect', {
+      accountId,
+      id: item.id,
+      coid: item.coid
+    });
+
+    $('fixEmailSubhint').innerText = `Configure categorias, assunto, corpo e gatilho de envio para #${item.id}.`;
+    $('fixEmailLoading').style.display = 'none';
+    $('fixEmailFormContent').style.display = 'block';
+
+    // 1. Renderizar Categorias
+    const catContainer = $('fixEmailCategoriasContainer');
+    catContainer.innerHTML = '';
+    const disponiveis = res.categoriasDisponiveis || [];
+    const selecionadas = res.categoriasSelecionadas || [];
+
+    // Se nenhuma categoria estiver selecionada, tenta sugerir a do departamento da obrigação
+    let autoSuggest = selecionadas.slice();
+    if (autoSuggest.length === 0 && item.departamento) {
+      const norm = str => String(str || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+      const depNorm = norm(item.departamento);
+      const root = depNorm.length >= 6 ? depNorm.slice(0, 6) : depNorm;
+      const matchDepto = disponiveis.find(c => {
+        const catNorm = norm(c.label);
+        return catNorm.includes(depNorm) || depNorm.includes(catNorm) || catNorm.startsWith(root) || depNorm.startsWith(catNorm.slice(0, 6));
+      });
+      if (matchDepto) autoSuggest.push(matchDepto.value);
+    }
+
+    if (disponiveis.length === 0) {
+      catContainer.innerHTML = `<span style="font-size:12px;color:var(--text-muted);">Nenhuma categoria cadastrada na conta.</span>`;
+    } else {
+      disponiveis.forEach(c => {
+        const isChecked = autoSuggest.includes(c.value);
+        const labelEl = document.createElement('label');
+        labelEl.style.cssText = 'display:inline-flex;align-items:center;gap:5px;font-size:12px;background:#eef6f5;padding:4px 8px;border-radius:4px;cursor:pointer;color:#184f59;font-weight:500;';
+        labelEl.innerHTML = `
+          <input type="checkbox" name="fixEmailCat" value="${escapeHtml(c.value)}" ${isChecked ? 'checked' : ''} style="cursor:pointer;">
+          <span>${escapeHtml(c.label)}</span>
+        `;
+        catContainer.appendChild(labelEl);
+      });
+    }
+
+    // 2. Assunto
+    $('fixEmailAssunto').value = res.assunto || `[obrigacao.nome] - [tarefa.competencia]`;
+
+    // 3. Corpo
+    $('fixEmailCorpo').value = res.corpoTexto || `Olá [cliente.apelido],\n\nSegue [obrigacao.nome] referente a [tarefa.competencia], com o vencimento: [tarefa.vencimento].\n\nQualquer dúvida, ficamos à disposição!\n\nAtenciosamente,`;
+
+    // 4. Formas de Envio
+    $('fixEmailAutomacao').value = res.automacao === '1' ? '1' : (res.automacao || '1');
+    $('fixEmailAnexarTodos').checked = true;
+
+    // 5. Lista de Anexos
+    const docsUl = $('fixEmailDocsUl');
+    docsUl.innerHTML = '';
+    const anexos = res.anexos || [];
+    if (anexos.length === 0) {
+      docsUl.innerHTML = `<li>Nenhuma atividade de documento detectada antes deste passo.</li>`;
+    } else {
+      anexos.forEach(a => {
+        const li = document.createElement('li');
+        li.style.marginBottom = '4px';
+        const statusText = a.anexado ? '<span style="color:#047857;font-weight:600;">[Já anexado]</span>' : '<span style="color:#d97706;font-weight:600;">[Será anexado]</span>';
+        li.innerHTML = `Ordem ${escapeHtml(a.ordem)}: <strong>${escapeHtml(a.nome)}</strong> — ${statusText}`;
+        docsUl.appendChild(li);
+      });
+    }
+
+    // 6. Tipo de Cancelamento
+    const cancelSelect = $('fixEmailCancelamento');
+    if (cancelSelect) {
+      cancelSelect.innerHTML = '';
+      const cancelOptions = res.tiposCancelamentoDisponiveis || [
+        { value: '0', label: 'Sem justificativa' },
+        { value: '1', label: 'Com justificativa' },
+        { value: '2', label: 'Sem cancelamento' }
+      ];
+      cancelOptions.forEach(opt => {
+        const optionEl = document.createElement('option');
+        optionEl.value = opt.value;
+        optionEl.innerText = opt.label;
+        if (opt.value === (res.tipoCancelamento || '1')) optionEl.selected = true;
+        cancelSelect.appendChild(optionEl);
+      });
+      // Padrão solicitado: 1 ("Com justificativa") se nada estiver explicitamente definido
+      if (!cancelSelect.value) cancelSelect.value = '1';
+    }
+
+    // 7. Particularidades / Clientes
+    const partSelect = $('fixEmailParticularidade');
+    if (partSelect) {
+      partSelect.innerHTML = '';
+      const partOptions = res.particularidadesDisponiveis || [];
+      if (partOptions.length === 0) {
+        partSelect.innerHTML = `<option value="">Nenhuma particularidade encontrada na conta</option>`;
+      } else {
+        let matchedEmail = false;
+        partOptions.forEach(opt => {
+          const optionEl = document.createElement('option');
+          optionEl.value = opt.value;
+          optionEl.innerText = opt.label;
+          // Se for a atualmente selecionada, ou se contiver "E-mail" / "Email"
+          const optLower = opt.label.toLowerCase();
+          const isEmail = optLower.includes('e-mail') || optLower.includes('email');
+          if (opt.value === res.particularidadeAtual || (!matchedEmail && isEmail)) {
+            optionEl.selected = true;
+            matchedEmail = true;
+          }
+          partSelect.appendChild(optionEl);
+        });
+      }
+    }
+
+  } catch (err) {
+    $('fixEmailLoading').style.display = 'none';
+    $('modalFixEmail').style.display = 'none';
+    status('Erro ao inspecionar e-mail da obrigação: ' + err.message, 'error');
+  }
+};
+
+async function submitFixEmail() {
+  if (!currentEditingObrig) return;
+  const accountId = currentAccount() || '6581';
+
+  const catCheckboxes = document.querySelectorAll('input[name="fixEmailCat"]:checked');
+  const categorias = Array.from(catCheckboxes).map(c => c.value);
+  if (categorias.length === 0) {
+    if (!confirm('Nenhuma categoria de e-mail foi selecionada. Deseja continuar mesmo assim?')) {
+      return;
+    }
+  }
+
+  const assunto = $('fixEmailAssunto').value.trim();
+  const corpoTexto = $('fixEmailCorpo').value.trim();
+  const automacao = $('fixEmailAutomacao').value;
+  const anexarTodos = $('fixEmailAnexarTodos').checked;
+  const tipoCancelamento = $('fixEmailCancelamento')?.value || '1';
+  const particularidadeCliente = $('fixEmailParticularidade')?.value || null;
+
+  if (!corpoTexto) {
+    alert('Por favor, informe o texto do corpo do e-mail.');
+    $('fixEmailCorpo').focus();
+    return;
+  }
+
+  setBusy(true);
+  status(`Gravando configurações de e-mail da obrigação #${currentEditingObrig.id} no G-Click...`, 'busy');
+  $('btnSubmitFixEmail').disabled = true;
+
+  try {
+    const res = await api('obrigacoes/fix-email', {
+      accountId,
+      id: currentEditingObrig.id,
+      coid: currentEditingObrig.coid,
+      categorias,
+      assunto,
+      corpoTexto,
+      automacao,
+      anexarTodos,
+      tipoCancelamento,
+      particularidadeCliente
+    });
+
+    status(`Obrigação #${currentEditingObrig.id} configurada com sucesso no G-Click!`, 'ok');
+    $('modalFixEmail').style.display = 'none';
+    currentEditingObrig = null;
+
+    // Atualiza status na lista local
+    await loadObrigacoesSection();
+  } catch (err) {
+    status('Erro ao gravar configuração de e-mail: ' + err.message, 'error');
+  } finally {
+    setBusy(false);
+    $('btnSubmitFixEmail').disabled = false;
+  }
+}
+
+$('btnCloseFixEmail')?.addEventListener('click', () => { if ($('modalFixEmail')) $('modalFixEmail').style.display = 'none'; });
+$('btnCancelFixEmail')?.addEventListener('click', () => { if ($('modalFixEmail')) $('modalFixEmail').style.display = 'none'; });
+$('btnSubmitFixEmail')?.addEventListener('click', submitFixEmail);
+
+// ==========================================
+// MÓDULO DE AÇÃO EM MASSA (LOTE) DE E-MAIL
+// ==========================================
+window.insertTagIntoBatchEmail = function(tag) {
+  const el = $('batchEmailCorpo');
+  if (!el) return;
+  const start = el.selectionStart ?? el.value.length;
+  const end = el.selectionEnd ?? el.value.length;
+  const val = el.value;
+  el.value = val.substring(0, start) + tag + val.substring(end);
+  el.selectionStart = el.selectionEnd = start + tag.length;
+  el.focus();
+};
+
+$('obrigSelectAll')?.addEventListener('change', (e) => {
+  const depto = $('obrigDeptoFilter')?.value || '';
+  const search = ($('obrigSearchInput')?.value || '').trim().toLowerCase();
+  const paridade = $('obrigParidadeFilter')?.value || '';
+
+  const filtered = obrigacoesList.filter(item => {
+    if (depto && item.departamento !== depto) return false;
+    if (paridade && item.paridade?.status !== paridade) return false;
+    if (search) {
+      const matchName = (item.nome || '').toLowerCase().includes(search);
+      const matchId = String(item.id || '').includes(search);
+      const matchDepto = (item.departamento || '').toLowerCase().includes(search);
+      const matchOrgao = (item.orgao || '').toLowerCase().includes(search);
+      if (!matchName && !matchId && !matchDepto && !matchOrgao) return false;
+    }
+    return true;
+  });
+
+  if (e.target.checked) {
+    filtered.forEach(item => selectedObrigacoesIds.add(item.id));
+  } else {
+    filtered.forEach(item => selectedObrigacoesIds.delete(item.id));
+  }
+  renderObrigacoesTable();
+});
+
+$('btnClearBatchSelection')?.addEventListener('click', () => {
+  selectedObrigacoesIds.clear();
+  renderObrigacoesTable();
+});
+
+$('obrigDeptoFilter')?.addEventListener('change', () => {
+  // Limpa seleções de outros departamentos para manter consistência
+  selectedObrigacoesIds.clear();
+  obrigacoesPage = 0;
+  renderObrigacoesTable();
+});
+
+$('obrigParidadeFilter')?.addEventListener('change', () => {
+  obrigacoesPage = 0;
+  renderObrigacoesTable();
+});
+
+$('obrigSearchInput')?.addEventListener('input', () => {
+  obrigacoesPage = 0;
+  renderObrigacoesTable();
+});
+
+async function openBatchEmailModal() {
+  const depto = $('obrigDeptoFilter')?.value || '';
+  if (!depto) {
+    alert('Para executar a ação em massa, o departamento deve estar obrigatoriamente selecionado no filtro.');
+    $('obrigDeptoFilter')?.focus();
+    return;
+  }
+
+  const selectedItems = obrigacoesList.filter(o => selectedObrigacoesIds.has(o.id));
+  if (selectedItems.length === 0) {
+    alert('Nenhuma obrigação selecionada. Marque as obrigações que deseja configurar.');
+    return;
+  }
+
+  const modal = $('modalBatchEmail');
+  if (!modal) return;
+  modal.style.display = 'flex';
+
+  $('batchEmailDeptoBadge').textContent = depto;
+  $('batchEmailTotalCount').textContent = `${selectedItems.length} obrigação(ões) selecionada(s)`;
+  $('batchEmailListPreview').textContent = selectedItems.map(o => o.nome).join(', ');
+  $('batchEmailProgressBox').style.display = 'none';
+
+  // Carrega opções reais de categorias e particularidades da conta logada
+  const catContainer = $('batchEmailCategoriasContainer');
+  const partSelect = $('batchEmailParticularidade');
+  catContainer.innerHTML = `<span style="font-size:12px;color:var(--text-muted);">Consultando conta no G-Click...</span>`;
+  partSelect.innerHTML = `<option value="">Carregando particularidades da conta…</option>`;
+
+  const accountId = currentAccount() || '6581';
+  try {
+    // Usa uma obrigação de referência para inspecionar categorias e particularidades
+    const refItem = selectedItems[0];
+    const res = await api('obrigacoes/email-inspect', {
+      accountId,
+      id: refItem.id,
+      coid: refItem.coid
+    });
+
+    // 1. Renderizar Categorias da Conta
+    catContainer.innerHTML = '';
+    const disponiveis = res.categoriasDisponiveis || [];
+    let autoSuggest = [];
+
+    // Tenta casar categoria com o departamento filtrado
+    if (depto) {
+      const norm = str => String(str || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+      const depNorm = norm(depto);
+      const root = depNorm.length >= 6 ? depNorm.slice(0, 6) : depNorm;
+      const matchDepto = disponiveis.find(c => {
+        const catNorm = norm(c.label);
+        return catNorm.includes(depNorm) || depNorm.includes(catNorm) || catNorm.startsWith(root) || depNorm.startsWith(catNorm.slice(0, 6));
+      });
+      if (matchDepto) autoSuggest.push(matchDepto.value);
+    }
+
+    if (disponiveis.length === 0) {
+      catContainer.innerHTML = `<span style="font-size:12px;color:var(--text-muted);">Nenhuma categoria cadastrada na conta.</span>`;
+    } else {
+      disponiveis.forEach(c => {
+        const isChecked = autoSuggest.includes(c.value);
+        const labelEl = document.createElement('label');
+        labelEl.style.cssText = 'display:inline-flex;align-items:center;gap:5px;font-size:12px;background:#eef6f5;padding:4px 8px;border-radius:4px;cursor:pointer;color:#184f59;font-weight:500;';
+        labelEl.innerHTML = `
+          <input type="checkbox" name="batchEmailCat" value="${escapeHtml(c.value)}" ${isChecked ? 'checked' : ''} style="cursor:pointer;">
+          <span>${escapeHtml(c.label)}</span>
+        `;
+        catContainer.appendChild(labelEl);
+      });
+    }
+
+    // 2. Renderizar Particularidades / Clientes
+    partSelect.innerHTML = '';
+    const partOptions = res.particularidadesDisponiveis || [];
+    if (partOptions.length === 0) {
+      partSelect.innerHTML = `<option value="">Nenhuma particularidade encontrada na conta</option>`;
+    } else {
+      let matchedEmail = false;
+      partOptions.forEach(opt => {
+        const optionEl = document.createElement('option');
+        optionEl.value = opt.value;
+        optionEl.innerText = opt.label;
+        const optLower = opt.label.toLowerCase();
+        const isEmail = optLower.includes('e-mail') || optLower.includes('email');
+        if (!matchedEmail && isEmail) {
+          optionEl.selected = true;
+          matchedEmail = true;
+        }
+        partSelect.appendChild(optionEl);
+      });
+    }
+
+    // 3. Padrão do Tipo de Cancelamento
+    if ($('batchEmailCancelamento')) $('batchEmailCancelamento').value = '1';
+
+  } catch (err) {
+    catContainer.innerHTML = `<span style="font-size:12px;color:#d97706;">Aviso: Não foi possível obter categorias ao vivo (${escapeHtml(err.message)}). A gravação usará os parâmetros informados.</span>`;
+  }
+}
+
+async function submitBatchEmail() {
+  const depto = $('obrigDeptoFilter')?.value || '';
+  if (!depto) {
+    alert('Departamento obrigatório no filtro.');
+    return;
+  }
+
+  const selectedItems = obrigacoesList.filter(o => selectedObrigacoesIds.has(o.id));
+  if (selectedItems.length === 0) {
+    alert('Selecione pelo menos uma obrigação.');
+    return;
+  }
+
+  const catCheckboxes = document.querySelectorAll('input[name="batchEmailCat"]:checked');
+  const categorias = Array.from(catCheckboxes).map(c => c.value);
+  if (categorias.length === 0) {
+    if (!confirm('Nenhuma categoria de e-mail foi marcada. Deseja aplicar o lote mesmo assim?')) {
+      return;
+    }
+  }
+
+  const assunto = $('batchEmailAssunto').value.trim();
+  const corpoTexto = $('batchEmailCorpo').value.trim();
+  const automacao = $('batchEmailAutomacao').value;
+  const anexarTodos = $('batchEmailAnexarTodos').checked;
+  const tipoCancelamento = $('batchEmailCancelamento')?.value || '1';
+  const particularidadeCliente = $('batchEmailParticularidade')?.value || null;
+
+  if (!corpoTexto) {
+    alert('Por favor, informe o corpo de e-mail padrão.');
+    $('batchEmailCorpo').focus();
+    return;
+  }
+
+  if (!confirm(`Confirma a configuração em lote para ${selectedItems.length} obrigação(ões) do departamento "${depto}"?`)) {
+    return;
+  }
+
+  setBusy(true);
+  $('btnSubmitBatchEmail').disabled = true;
+  $('batchEmailProgressBox').style.display = 'block';
+  $('batchEmailProgressPerc').textContent = 'Iniciando...';
+  $('batchEmailProgressBar').value = 10;
+  status(`Iniciando configuração de e-mail em massa para ${selectedItems.length} obrigações...`, 'busy');
+
+  const accountId = currentAccount() || '6581';
+  try {
+    const res = await api('obrigacoes/fix-email-batch', {
+      accountId,
+      departamento: depto,
+      items: selectedItems.map(it => ({ id: it.id, coid: it.coid, nome: it.nome, departamento: it.departamento })),
+      categorias,
+      assunto,
+      corpoTexto,
+      automacao,
+      anexarTodos,
+      tipoCancelamento,
+      particularidadeCliente
+    });
+
+    $('batchEmailProgressBar').value = 100;
+    $('batchEmailProgressPerc').textContent = '100%';
+    const okMsg = `Ação em massa concluída: ${res.successCount} de ${res.total} obrigações configuradas com sucesso!`;
+    status(okMsg, 'ok');
+    setObrigStatus(okMsg, 'ok');
+
+    selectedObrigacoesIds.clear();
+    $('modalBatchEmail').style.display = 'none';
+
+    // Recarrega catálogo e renderiza lista
+    await loadObrigacoesSection();
+  } catch (err) {
+    status('Erro na configuração em massa: ' + err.message, 'error');
+    setObrigStatus('Falha na ação em massa: ' + err.message, 'error');
+  } finally {
+    setBusy(false);
+    $('btnSubmitBatchEmail').disabled = false;
+  }
+}
+
+$('btnOpenBatchEmailModal')?.addEventListener('click', openBatchEmailModal);
+$('btnCloseBatchEmail')?.addEventListener('click', () => { if ($('modalBatchEmail')) $('modalBatchEmail').style.display = 'none'; });
+$('btnCancelBatchEmail')?.addEventListener('click', () => { if ($('modalBatchEmail')) $('modalBatchEmail').style.display = 'none'; });
+$('btnSubmitBatchEmail')?.addEventListener('click', submitBatchEmail);
+
+// ==========================================
+// MÓDULO DE CRIAÇÃO DO PASSO DE WHATSAPP
+// ==========================================
+let currentWhatsappObrig = null;
+
+window.insertTagIntoCreateWhatsapp = function(tag) {
+  const el = $('createWhatsappMensagem');
+  if (!el) return;
+  const start = el.selectionStart ?? el.value.length;
+  const end = el.selectionEnd ?? el.value.length;
+  el.value = el.value.substring(0, start) + tag + el.value.substring(end);
+  el.selectionStart = el.selectionEnd = start + tag.length;
+  el.focus();
+};
+
+window.openCreateWhatsappModal = async function(id) {
+  const item = obrigacoesList.find(o => o.id === id);
+  if (!item) {
+    status('Obrigação não encontrada no catálogo local.', 'error');
+    return;
+  }
+
+  if (item.paridade?.canalExclusivoEmail) {
+    alert('Esta obrigação possui canal exclusivo de e-mail e não deve ter passo de WhatsApp.');
+    return;
+  }
+
+  if (item.paridade?.status === 'conforme' && item.paridade?.whatsappCount >= item.paridade?.emailCount) {
+    alert(`Esta obrigação já atingiu paridade 1:1 (${item.paridade.whatsappCount} WhatsApp para ${item.paridade.emailCount} E-mail). Não é permitida a criação de passo extra.`);
+    return;
+  }
+
+  currentWhatsappObrig = item;
+  $('createWhatsappObrigBadge').textContent = `#${item.id}`;
+  $('createWhatsappObrigNome').textContent = item.nome;
+  $('createWhatsappDepto').textContent = item.departamento || 'Geral';
+  $('modalCreateWhatsapp').style.display = 'flex';
+
+  const accountId = currentAccount() || '6019';
+  try {
+    const res = await api('obrigacoes/whatsapp-inspect', {
+      accountId,
+      id: item.id,
+      coid: item.coid
+    });
+
+    // Categorias de Destinatário
+    const catContainer = $('createWhatsappCategoriasContainer');
+    if (catContainer) {
+      catContainer.innerHTML = '';
+      const catOptions = res.categoriasDisponiveis || [];
+      if (catOptions.length === 0) {
+        catContainer.innerHTML = `<span style="font-size:12px;color:var(--text-muted);">Nenhuma categoria de destinatário listada na conta.</span>`;
+      } else {
+        const itemDeptoLower = (item.departamento || '').toLowerCase();
+        catOptions.forEach(cat => {
+          const lbl = document.createElement('label');
+          lbl.style.cssText = 'display:inline-flex;align-items:center;gap:4px;font-size:12px;background:#fff;padding:3px 8px;border:1px solid #c8d9d6;border-radius:4px;cursor:pointer;';
+          const cb = document.createElement('input');
+          cb.type = 'checkbox';
+          cb.name = 'createWhatsappCat';
+          cb.value = cat.value;
+          const catLower = cat.label.toLowerCase();
+          if ((itemDeptoLower && (catLower.includes(itemDeptoLower) || itemDeptoLower.includes(catLower))) || catLower.includes('geral')) {
+            cb.checked = true;
+          }
+          lbl.appendChild(cb);
+          lbl.appendChild(document.createTextNode(cat.label));
+          catContainer.appendChild(lbl);
+        });
+      }
+    }
+
+    // Canais de Envio
+    const canalSelect = $('createWhatsappCanal');
+    if (canalSelect) {
+      canalSelect.innerHTML = '';
+      const canais = res.canaisDisponiveis || [{ value: 'WHATSAPP - Atendimento', label: 'WHATSAPP - Atendimento' }];
+      canais.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c.value;
+        opt.innerText = c.label;
+        if (c.value.toLowerCase().includes('whatsapp') || c.value.toLowerCase().includes('atendimento')) {
+          opt.selected = true;
+        }
+        canalSelect.appendChild(opt);
+      });
+    }
+
+    // Particularidades
+    const partSelect = $('createWhatsappParticularidade');
+    if (partSelect) {
+      partSelect.innerHTML = '';
+      const partOptions = res.particularidadesDisponiveis || [];
+      if (partOptions.length === 0) {
+        partSelect.innerHTML = `<option value="542" selected>542 - Whats (Padrão)</option>`;
+      } else {
+        let matchedWhats = false;
+        partOptions.forEach(opt => {
+          const optionEl = document.createElement('option');
+          optionEl.value = opt.value;
+          optionEl.innerText = opt.label;
+          const optLower = opt.label.toLowerCase();
+          const isWhats = optLower.includes('whats') || optLower.includes('542');
+          if (!matchedWhats && isWhats) {
+            optionEl.selected = true;
+            matchedWhats = true;
+          }
+          partSelect.appendChild(optionEl);
+        });
+      }
+    }
+
+    // Tipos de cancelamento
+    const cancelSelect = $('createWhatsappCancelamento');
+    if (cancelSelect) {
+      cancelSelect.innerHTML = '';
+      const cancelOptions = res.tiposCancelamentoDisponiveis || [
+        { value: '0', label: 'Sem justificativa' },
+        { value: '1', label: 'Com justificativa' },
+        { value: '2', label: 'Sem cancelamento' }
+      ];
+      cancelOptions.forEach(opt => {
+        const optionEl = document.createElement('option');
+        optionEl.value = opt.value;
+        optionEl.innerText = opt.label;
+        if (opt.value === '1') optionEl.selected = true;
+        cancelSelect.appendChild(optionEl);
+      });
+      if (!cancelSelect.value) cancelSelect.value = '1';
+    }
+  } catch (err) {
+    console.warn('Não foi possível inspecionar opções ao vivo:', err);
+  }
+};
+
+async function submitCreateWhatsapp() {
+  if (!currentWhatsappObrig) return;
+  const accountId = currentAccount() || '6019';
+
+  const textoDesejado = $('createWhatsappTexto')?.value.trim() || 'Enviar Cliente';
+  const catCheckboxes = document.querySelectorAll('input[name="createWhatsappCat"]:checked');
+  const categorias = Array.from(catCheckboxes).map(c => c.value);
+  const canal = $('createWhatsappCanal')?.value || 'WHATSAPP - Atendimento';
+  const mensagemTexto = $('createWhatsappMensagem')?.value.trim() || '';
+  const automacao = $('createWhatsappAutomacao')?.value || '1';
+  const anexarTodos = $('createWhatsappAnexarTodos')?.checked !== false;
+  const tipoCancelamento = $('createWhatsappCancelamento')?.value || '1';
+  const particularidadeCliente = $('createWhatsappParticularidade')?.value || '542';
+
+  if (!mensagemTexto) {
+    alert('Por favor, informe o texto da mensagem do WhatsApp.');
+    $('createWhatsappMensagem')?.focus();
+    return;
+  }
+
+  setBusy(true);
+  status(`Criando passo de WhatsApp para obrigação #${currentWhatsappObrig.id} no G-Click...`, 'busy');
+  $('btnSubmitCreateWhatsapp').disabled = true;
+
+  try {
+    const res = await api('obrigacoes/create-whatsapp', {
+      accountId,
+      id: currentWhatsappObrig.id,
+      coid: currentWhatsappObrig.coid,
+      tipoDesejado: 'Atendimento: DIGISAC',
+      textoDesejado,
+      categorias,
+      canal,
+      mensagemTexto,
+      automacao,
+      anexarTodos,
+      tipoCancelamento,
+      particularidadeCliente
+    });
+
+    if (res.skipped) {
+      status(`Ação não executada: ${res.reason}`, 'warn');
+      alert(res.reason);
+    } else {
+      status(`Passo de WhatsApp criado com sucesso na obrigação #${currentWhatsappObrig.id}!`, 'ok');
+      $('modalCreateWhatsapp').style.display = 'none';
+      currentWhatsappObrig = null;
+      await loadObrigacoesSection();
+    }
+  } catch (err) {
+    status('Erro ao criar passo de WhatsApp: ' + err.message, 'error');
+  } finally {
+    setBusy(false);
+    $('btnSubmitCreateWhatsapp').disabled = false;
+  }
+}
+
+$('btnCloseCreateWhatsapp')?.addEventListener('click', () => { if ($('modalCreateWhatsapp')) $('modalCreateWhatsapp').style.display = 'none'; });
+$('btnCancelCreateWhatsapp')?.addEventListener('click', () => { if ($('modalCreateWhatsapp')) $('modalCreateWhatsapp').style.display = 'none'; });
+$('btnSubmitCreateWhatsapp')?.addEventListener('click', submitCreateWhatsapp);
+
+// ==========================================
+// MÓDULO DE CRIAÇÃO DE WHATSAPP EM MASSA
+// ==========================================
+window.insertTagIntoBatchWhatsapp = function(tag) {
+  const el = $('batchWhatsappMensagem');
+  if (!el) return;
+  const start = el.selectionStart ?? el.value.length;
+  const end = el.selectionEnd ?? el.value.length;
+  el.value = el.value.substring(0, start) + tag + el.value.substring(end);
+  el.selectionStart = el.selectionEnd = start + tag.length;
+  el.focus();
+};
+
+async function openBatchWhatsappModal() {
+  const depto = $('obrigDeptoFilter')?.value || '';
+  if (!depto) {
+    alert('Para a ação em massa, o departamento deve estar obrigatoriamente selecionado no filtro.');
+    return;
+  }
+
+  const selectedItems = obrigacoesList.filter(o => selectedObrigacoesIds.has(o.id));
+  if (selectedItems.length === 0) {
+    alert('Selecione pelo menos uma obrigação para configurar em massa.');
+    return;
+  }
+
+  $('batchWhatsappDeptoBadge').textContent = depto;
+  $('batchWhatsappTotalCount').textContent = `${selectedItems.length} obrigação(ões) selecionada(s)`;
+  $('batchWhatsappListPreview').textContent = selectedItems.map(o => `#${o.id} ${o.nome}`).join(', ');
+
+  $('batchWhatsappProgressBox').style.display = 'none';
+  $('batchWhatsappFormContent').style.display = 'block';
+  $('modalBatchWhatsapp').style.display = 'flex';
+
+  const accountId = currentAccount() || '6019';
+  const refItem = selectedItems[0];
+  try {
+    const res = await api('obrigacoes/whatsapp-inspect', {
+      accountId,
+      id: refItem.id,
+      coid: refItem.coid
+    });
+
+    // Categorias de Destinatário no Lote
+    const catContainer = $('batchWhatsappCategoriasContainer');
+    if (catContainer) {
+      catContainer.innerHTML = '';
+      const catOptions = res.categoriasDisponiveis || [];
+      if (catOptions.length === 0) {
+        catContainer.innerHTML = `<span style="font-size:12px;color:var(--text-muted);">Nenhuma categoria encontrada na conta.</span>`;
+      } else {
+        const deptoLower = depto.toLowerCase();
+        catOptions.forEach(cat => {
+          const lbl = document.createElement('label');
+          lbl.style.cssText = 'display:inline-flex;align-items:center;gap:4px;font-size:12px;background:#fff;padding:3px 8px;border:1px solid #c8d9d6;border-radius:4px;cursor:pointer;';
+          const cb = document.createElement('input');
+          cb.type = 'checkbox';
+          cb.name = 'batchWhatsappCat';
+          cb.value = cat.value;
+          const catLower = cat.label.toLowerCase();
+          if (catLower.includes(deptoLower) || deptoLower.includes(catLower) || catLower.includes('geral')) {
+            cb.checked = true;
+          }
+          lbl.appendChild(cb);
+          lbl.appendChild(document.createTextNode(cat.label));
+          catContainer.appendChild(lbl);
+        });
+      }
+    }
+
+    // Canais de Envio no Lote
+    const canalSelect = $('batchWhatsappCanal');
+    if (canalSelect) {
+      canalSelect.innerHTML = '';
+      const canais = res.canaisDisponiveis || [{ value: 'WHATSAPP - Atendimento', label: 'WHATSAPP - Atendimento' }];
+      canais.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c.value;
+        opt.innerText = c.label;
+        if (c.value.toLowerCase().includes('whatsapp') || c.value.toLowerCase().includes('atendimento')) {
+          opt.selected = true;
+        }
+        canalSelect.appendChild(opt);
+      });
+    }
+
+    const partSelect = $('batchWhatsappParticularidade');
+    if (partSelect && res.particularidadesDisponiveis?.length > 0) {
+      partSelect.innerHTML = '';
+      let matchedWhats = false;
+      res.particularidadesDisponiveis.forEach(opt => {
+        const optionEl = document.createElement('option');
+        optionEl.value = opt.value;
+        optionEl.innerText = opt.label;
+        const optLower = opt.label.toLowerCase();
+        const isWhats = optLower.includes('whats') || optLower.includes('542');
+        if (!matchedWhats && isWhats) {
+          optionEl.selected = true;
+          matchedWhats = true;
+        }
+        partSelect.appendChild(optionEl);
+      });
+    }
+
+    // Tipos de Cancelamento no Lote
+    const cancelSelect = $('batchWhatsappCancelamento');
+    if (cancelSelect) {
+      cancelSelect.innerHTML = '';
+      const cancelOptions = res.tiposCancelamentoDisponiveis || [
+        { value: '0', label: 'Sem justificativa' },
+        { value: '1', label: 'Com justificativa' },
+        { value: '2', label: 'Sem cancelamento' }
+      ];
+      cancelOptions.forEach(opt => {
+        const optionEl = document.createElement('option');
+        optionEl.value = opt.value;
+        optionEl.innerText = opt.label;
+        if (opt.value === '1') optionEl.selected = true;
+        cancelSelect.appendChild(optionEl);
+      });
+      if (!cancelSelect.value) cancelSelect.value = '1';
+    }
+  } catch (err) {
+    console.warn('Não foi possível obter dados ao vivo para lote de WhatsApp:', err);
+  }
+}
+
+async function submitBatchWhatsapp() {
+  const depto = $('obrigDeptoFilter')?.value || '';
+  if (!depto) {
+    alert('Departamento obrigatório no filtro.');
+    return;
+  }
+
+  const selectedItems = obrigacoesList.filter(o => selectedObrigacoesIds.has(o.id));
+  if (selectedItems.length === 0) {
+    alert('Selecione pelo menos uma obrigação.');
+    return;
+  }
+
+  const textoDesejado = $('batchWhatsappTexto')?.value.trim() || 'Enviar Cliente';
+  const catCheckboxes = document.querySelectorAll('input[name="batchWhatsappCat"]:checked');
+  const categorias = Array.from(catCheckboxes).map(c => c.value);
+  const canal = $('batchWhatsappCanal')?.value || 'WHATSAPP - Atendimento';
+  const mensagemTexto = $('batchWhatsappMensagem')?.value.trim() || '';
+  const automacao = $('batchWhatsappAutomacao')?.value || '1';
+  const anexarTodos = $('batchWhatsappAnexarTodos')?.checked !== false;
+  const tipoCancelamento = $('batchWhatsappCancelamento')?.value || '1';
+  const particularidadeCliente = $('batchWhatsappParticularidade')?.value || '542';
+
+  if (!mensagemTexto) {
+    alert('Por favor, informe a mensagem do WhatsApp padrão.');
+    $('batchWhatsappMensagem')?.focus();
+    return;
+  }
+
+  if (!confirm(`Confirma a criação do passo de WhatsApp em lote para ${selectedItems.length} obrigação(ões) do departamento "${depto}"?`)) {
+    return;
+  }
+
+  $('batchWhatsappFormContent').style.display = 'none';
+  $('batchWhatsappProgressBox').style.display = 'block';
+  $('btnSubmitBatchWhatsapp').disabled = true;
+  setBusy(true);
+
+  const accountId = currentAccount() || '6019';
+
+  try {
+    const res = await api('obrigacoes/create-whatsapp-batch', {
+      accountId,
+      departamento: depto,
+      items: selectedItems.map(o => ({ id: o.id, coid: o.coid, nome: o.nome })),
+      tipoDesejado: 'Atendimento: DIGISAC',
+      textoDesejado,
+      categorias,
+      canal,
+      mensagemTexto,
+      automacao,
+      anexarTodos,
+      tipoCancelamento,
+      particularidadeCliente
+    });
+
+    const okMsg = `Lote de WhatsApp concluído: ${res.successCount} criadas com sucesso, ${res.failureCount} falhas.`;
+    status(okMsg, 'ok');
+    setObrigStatus(okMsg, 'ok');
+
+    selectedObrigacoesIds.clear();
+    $('modalBatchWhatsapp').style.display = 'none';
+    await loadObrigacoesSection();
+  } catch (err) {
+    status('Erro na criação de WhatsApp em massa: ' + err.message, 'error');
+    setObrigStatus('Falha na ação em massa: ' + err.message, 'error');
+  } finally {
+    setBusy(false);
+    $('btnSubmitBatchWhatsapp').disabled = false;
+  }
+}
+
+$('btnOpenBatchWhatsappModal')?.addEventListener('click', openBatchWhatsappModal);
+$('btnCloseBatchWhatsapp')?.addEventListener('click', () => { if ($('modalBatchWhatsapp')) $('modalBatchWhatsapp').style.display = 'none'; });
+$('btnCancelBatchWhatsapp')?.addEventListener('click', () => { if ($('modalBatchWhatsapp')) $('modalBatchWhatsapp').style.display = 'none'; });
+$('btnSubmitBatchWhatsapp')?.addEventListener('click', submitBatchWhatsapp);
+
+
+function setObrigStatus(message, type = 'info') {
+  const alert = $('obrigStatusAlert');
+  const text = $('obrigStatusText');
+  const icon = $('obrigStatusIcon');
+  if (!alert || !text) return;
+  if (!message) {
+    alert.style.display = 'none';
+    return;
+  }
+  alert.style.display = 'flex';
+  text.textContent = message;
+  if (type === 'ok') {
+    alert.style.background = '#eaf7f2';
+    alert.style.color = '#047857';
+    alert.style.border = '1px solid #a7f3d0';
+    if (icon) icon.textContent = '✓';
+  } else if (type === 'warn' || type === 'error') {
+    alert.style.background = '#fef3c7';
+    alert.style.color = '#92400e';
+    alert.style.border = '1px solid #fde68a';
+    if (icon) icon.textContent = '⚠️';
+  } else {
+    alert.style.background = '#e0f2fe';
+    alert.style.color = '#0369a1';
+    alert.style.border = '1px solid #bae6fd';
+    if (icon) icon.textContent = '⏳';
+  }
+}
+
+$('btnSyncObrigacoes')?.addEventListener('click', async () => {
+  if (working) return;
+  const accountId = currentAccount() || (config.catalog?.accountId) || '6019';
+  const isLive = Boolean(catalogLive || config.loginReady || config.catalogLive);
+  if (!isLive) {
+    const msg = 'A sessão do G-Click não está ativa. Abra o menu "Conexão & Conta G-Click" e clique em "Abrir janela de login" para conectar antes de sincronizar.';
+    setObrigStatus(msg, 'warn');
+    status(msg, 'warn');
+    return;
+  }
+
+  const btn = $('btnSyncObrigacoes');
+  try {
+    setBusy(true);
+    if (btn) btn.disabled = true;
+    const msg = `Sincronizando obrigações da conta ${accountId} no G-Click (filtrando apenas as com passos de E-mail e/ou WhatsApp)…`;
+    setObrigStatus(msg, 'info');
+    status(msg);
+    const res = await api('obrigacoes/sync-catalog', { accountId });
+    if (res.items) {
+      obrigacoesList = res.items;
+      const scannedMsg = res.totalScanned ? ` (de ${res.totalScanned} analisadas no total)` : '';
+      const okMsg = `Catálogo atualizado: ${res.total} obrigação(ões) com envio de E-mail/WhatsApp importadas${scannedMsg}.`;
+      setObrigStatus(okMsg, 'ok');
+      status(okMsg, 'ok');
+      await loadObrigacoesSection();
+    }
+  } catch (err) {
+    const errMsg = 'Erro ao sincronizar obrigações: ' + err.message;
+    setObrigStatus(errMsg, 'error');
+    status(errMsg, 'error');
+  } finally {
+    setBusy(false);
+    if (btn) btn.disabled = false;
   }
 });
 

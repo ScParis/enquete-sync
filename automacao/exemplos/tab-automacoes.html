@@ -1,0 +1,200 @@
+<div id="tabnotautomacoes" class="tab-pane active"> 
+			<div class="panel-body" id="viewaconfigsautomacoes">
+				<div class="row">
+					<div class="col-sm-12">
+						<table class="table table-bordered">
+							<tbody><tr>
+								<th style="background-color: #F8F8FF;">1. Configuração de envio</th>								
+							</tr>
+							<tr>
+								<td>
+									<label class="control-label">Como deseja enviar o e-mail?</label>
+									<select id="automacao" class="form-control" onchange="mudaAutomacao()">
+										<option value="">Envio manual</option>
+										<option value="3">Envio manual com solicitação de documentos</option>
+										<option value="4">Envio programado na data de ação da tarefa</option>
+										<option value="2">Envio programado na data de ação da tarefa com solicitação de documentos</option>
+										<option value="1">Envio automático na conclusão da tarefa</option>							
+									</select>
+								</td>
+							</tr>						
+						</tbody></table>
+					</div>
+				</div>
+			    <div class="row" id="viewautomacao1" style="display: block;">
+					<div class="col-sm-12">
+						<table class="table table-bordered">
+							<tbody><tr>
+								<th style="background-color: #F8F8FF;">2. Seleção de Documentos</th>								
+							</tr>
+							<tr>
+								<td>
+									 <div class="alert alert-info">
+										<div><i class="fa fa-info-circle"></i> O e-mail será disparado assim que todas as atividades da tarefa forem concluídas e o status for alterado.</div>
+										<div>
+											<br><b>Anexos:</b> Por padrão, todos os arquivos das atividades são anexados ao e-mail. Para mudar isso, configure a seção <b>"Anexar arquivo?"</b> abaixo.
+										</div>
+									</div>
+									<div id="viewautomacaoarquivos1">
+
+
+
+
+
+
+<div class="table-responsive" style="max-height: 600px !important;overflow-x: scroll;overflow-y: visible;">
+<table class="table table-bordered" style="background-color: white">
+<tbody><tr id="traconfigsemail">
+	<th width="5%">Ordem</th>
+	<th width="7%">Tipo</th>											
+	<th>Nome da Atividade</th>
+	<th width="15%">Anexar arquivo?</th>
+</tr>
+<tr id="traconfigslembrete" style="display: none;">
+	<th width="5%">Ordem</th>
+	<th width="7%">Tipo</th>											
+	<th>Lista de documentos </th>
+	<th width="15%">Solicitar do Cliente?</th>
+</tr>
+
+	
+		<tr>
+			<td align="center">1</td>
+			<td align="center"> 
+				
+					<div class="circulo" title="ValidaPDF"><i class="fa fa-file-pdf-o"></i></div>
+				
+			</td>											
+			<td>																	
+				
+				CSLL
+			</td>
+			<td align="center">																	
+				
+				<button class="btn btn-default" onclick="emailTextoPadrao('461','1','aconfigemail')" title="Clique aqui pra não anexar">
+					<i class="fa fa-check" style="font-size: medium;color:#18A689;"></i>
+				</button>
+				
+			</td>
+		</tr>
+	
+		<tr>
+			<td align="center">2</td>
+			<td align="center"> 
+				
+					<div class="circulo" title="ValidaPDF"><i class="fa fa-file-pdf-o"></i></div>
+				
+			</td>											
+			<td>																	
+				
+				IRPJ
+			</td>
+			<td align="center">																	
+				
+				<button class="btn btn-default" onclick="emailTextoPadrao('467','1','aconfigemail')" title="Clique aqui pra não anexar">
+					<i class="fa fa-check" style="font-size: medium;color:#18A689;"></i>
+				</button>
+				
+			</td>
+		</tr>
+	
+
+</tbody></table>
+</div>
+</div>
+								</td>
+							</tr>						
+						</tbody></table>
+					</div>
+				</div>
+			    <div class="row" id="viewautomacao2" style="display: none;">
+					<div class="col-sm-12" id="viewautomacao2emailreferencia">
+						<table class="table table-bordered">
+							<tbody><tr>
+								<th style="background-color: #F8F8FF;">2. Defina o e-mail de envio</th>								
+							</tr>
+							<tr>
+								<td>
+									<br>
+									<ul>
+										<li><b><a target="_blank" href="https://ajuda.gclick.com.br/pt-BR/articles/6401462-configurando-o-texto-padrao-de-e-mail-em-obrigacoes#h_29b075165d">Veja como configurar</a></b></li>
+										<li><b> Envio de&nbsp;segunda à sexta a partir das 07h (horário de Brasília)</b></li>
+									</ul>
+									<div class="alert alert-info">
+										<div>
+											<ul>
+												<li>As tarefas <b>devem estar geradas</b> antes do início do disparo. Configurações salvas após o horário só serão consideradas no próximo envio. <b><a href="https://ajuda.gclick.com.br/pt-BR/articles/13612792-obrigacao-configurando-o-e-mail-com-solicitacao-de-documentos#h_2fcd7f8ba2" target="_blank">Saiba +</a></b></li>
+												<li>O envio é feito na data de ação da tarefa e ocorrerá ao longo do dia. </li>
+												<li>O envio programado só pode ser configurado em obrigações mensais e só é possível ter UMA atividade por obrigação.</li>										    	
+										    </ul>
+										</div>
+									</div>
+									<div id="viewlembreteemail">					
+										<label class="control-label">Informe e valide o endereço de e-mail que fará o envio:</label>
+										<div class="input-group">
+											<input type="hidden" id="daelembreteemailvalidacao" value="0">
+											<span class="input-group-btn" style="display: none;"><button id="btndaelembreteok" class="btn btn-primary" title="E-mail validado!"><i class="fa fa-check-circle"></i></button></span>
+											<input type="text" id="daelembreteemail" value="" class="form-control" placeholder="faleconosco@meuescritorio.com.br">
+											<span class="input-group-btn">																
+											<button id="btndaelembreteexcluir" style="display: none;" class="btn btn-danger" onclick="lembreteEmailValidacaoRemover('coaconfigemailvalidacao')" title="Excluir e-mail validado"><i class="fa fa-trash"></i></button>
+											
+											<button id="btndaelembretevalidar" class="btn btn-success" onclick="lembreteEmailValidacao('coaconfigemailvalidacao')"><i class="fa fa-envelope"></i>&nbsp;&nbsp;Validar e-mail</button>
+											<button id="btndaelembreteconfirmarvalidacao" style="display: none;" class="btn btn-warning" onclick="lembreteEmailValidacaoConfirmar('coaconfigemailvalidacao')" title="Confirmar validação"><i class="fa fa-rotate-right"></i>&nbsp;&nbsp;Confirmar validação</button>
+											</span>
+										</div>	
+									</div>
+								</td>
+							</tr>
+						</tbody></table>
+					</div>
+					<div class="col-sm-12" id="viewautomacao2solicitacaodocumentos">
+						<table class="table table-bordered">
+							<tbody><tr>
+								<th style="background-color: #F8F8FF;">3. Solicitação de documentos </th>								
+							</tr>
+							<tr>
+								<td>
+									<div class="alert alert-info" onmouseenter="$('#infoaconfigslembrete').show();$('#seta23').prop('class','fa fa-angle-up');" onmouseleave="$('#infoaconfigslembrete').hide();$('#seta23').prop('class','fa fa-angle-down');">
+										<div class="pull-right"><i id="seta23" class="fa fa-angle-down"></i>&nbsp;&nbsp;</div>
+										<div id="infoaconfigsemail"><i class="fa fa-info-circle"></i> <b>Importante:</b> Marque abaixo os anexos que você deseja solicitar ao seu cliente.</div>
+										<div id="infoaconfigslembrete" style="display:none;">
+											<br><ul>
+												<li>Incluímos a variável&nbsp;<b>[solicitacao-documentos.link]</b>&nbsp;no corpo do e-mail para que seu cliente receba o link de solicitação de documentos. Você pode alterar a posição dela como preferir.</li>
+												<li>O nome do documento solicitado ao seu cliente será o mesmo que o configurado na atividade de anexo.</li>
+											</ul>
+										</div>
+									</div>
+									<div id="viewautomacaoarquivos2"> 
+									</div>
+								</td>
+							</tr>
+						</tbody></table>
+					</div>
+				</div>
+				<div class="row" id="viewautomacao3" style="display: none;">
+					<div class="col-sm-12">
+						<table class="table table-bordered">
+							<tbody><tr>
+								<th style="background-color: #F8F8FF;">2. Solicitação de Documentos</th>								
+							</tr>
+							<tr>
+								<td>
+									<div class="alert alert-info" onmouseenter="$('#msg3').show();$('#seta3').prop('class','fa fa-angle-up');" onmouseleave="$('#msg3').hide();$('#seta3').prop('class','fa fa-angle-down');">
+									<div class="pull-right"><i id="seta3" class="fa fa-angle-down"></i>&nbsp;&nbsp;</div>
+									<div><i class="fa fa-info-circle"></i> <b>Importante:</b> Marque abaixo os anexos que você deseja solicitar ao seu cliente.</div>
+										<div id="msg3" style="display:none;">
+											<br><ul>
+												<li>Incluímos a variável&nbsp;<b>[solicitacao-documentos.link]</b>&nbsp;no corpo do e-mail para que seu cliente receba o link de solicitação de documentos. Você pode alterar a posição dela como preferir.</li>
+												<li>O nome do documento solicitado ao seu cliente será o mesmo que o configurado na atividade de anexo.</li>
+											</ul>
+										</div>
+									</div>
+									<div id="viewautomacaoarquivos3">
+									</div>
+								</td>
+							</tr>
+						</tbody></table>
+					</div>
+				</div>
+			</div>
+		</div>

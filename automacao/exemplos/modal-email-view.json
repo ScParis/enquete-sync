@@ -1,0 +1,879 @@
+{
+  "editorText": "Olá [cliente.apelido], tudo bom?Segue [obrigacao.nome] referente a [tarefa.competencia], com o vencimento: [tarefa.vencimento]Qualquer dúvidas, ficamos à disposição!Atenciosamente,",
+  "docs": [
+    {
+      "text": "Variável Exibição Exemplo",
+      "inputs": []
+    },
+    {
+      "text": "[contato.nome] Nome do contato João da Silva",
+      "inputs": []
+    },
+    {
+      "text": "[cliente.apelido] Apelido do cliente Omie.G-Click",
+      "inputs": []
+    },
+    {
+      "text": "[cliente.nome] Nome do cliente Omiexperience Ltda",
+      "inputs": []
+    },
+    {
+      "text": "[cliente.inscricao] Número da inscrição 18.511.742/0001-47",
+      "inputs": []
+    },
+    {
+      "text": "[cliente.inscricao.tipo] Tipo de inscrição CNPJ",
+      "inputs": []
+    },
+    {
+      "text": "[obrigacao.nome] Nome da obrigação Fechamento Contábil",
+      "inputs": []
+    },
+    {
+      "text": "[tarefa.competencia] Competência da tarefa JAN/2026 ou 2026",
+      "inputs": []
+    },
+    {
+      "text": "[tarefa.vencimento] Vencimento da tarefa 31/01/2026",
+      "inputs": []
+    }
+  ],
+  "docsTableHtml": "<table class=\"table table-bordered\" style=\"background-color: white\">\n\t\t\t\t\t\t\t<tbody><tr>\n\t\t\t\t\t\t\t\t<th>Variável</th>\n\t\t\t\t\t\t\t\t<th>Exibição</th>\n\t\t\t\t\t\t\t\t<th>Exemplo</th>\n\t\t\t\t\t\t\t</tr>\n\t\t\t\t\t\t\t<tr>\n\t\t\t\t\t\t\t\t<td>[contato.nome]</td>\n\t\t\t\t\t\t\t\t<td>Nome do contato</td>\n\t\t\t\t\t\t\t\t<td>João da Silva</td>\n\t\t\t\t\t\t\t</tr>\n\t\t\t\t\t\t\t<tr>\n\t\t\t\t\t\t\t\t<td>[cliente.apelido]</td>\n\t\t\t\t\t\t\t\t<td>Apelido do cliente</td>\n\t\t\t\t\t\t\t\t<td>Omie.G-Click</td>\n\t\t\t\t\t\t\t</tr>\n\t\t\t\t\t\t\t<tr>\n\t\t\t\t\t\t\t\t<td>[cliente.nome]</td>\n\t\t\t\t\t\t\t\t<td>Nome do cliente</td>\n\t\t\t\t\t\t\t\t<td>Omiexperience Ltda</td>\n\t\t\t\t\t\t\t</tr>\n\t\t\t\t\t\t\t<tr>\n\t\t\t\t\t\t\t\t<td>[cliente.inscricao]</td>\n\t\t\t\t\t\t\t\t<td>Número da inscrição</td>\n\t\t\t\t\t\t\t\t<td>18.511.742/0001-47</td>\n\t\t\t\t\t\t\t</tr>\n\t\t\t\t\t\t\t<tr>\n\t\t\t\t\t\t\t\t<td>[cliente.inscricao.tipo]</td>\n\t\t\t\t\t\t\t\t<td>Tipo de inscrição</td>\n\t\t\t\t\t\t\t\t<td>CNPJ</td>\n\t\t\t\t\t\t\t</tr>\n\t\t\t\t\t\t\t<tr>\n\t\t\t\t\t\t\t\t<td>[obrigacao.nome]</td>\n\t\t\t\t\t\t\t\t<td>Nome da obrigação</td>\n\t\t\t\t\t\t\t\t<td>Fechamento Contábil</td>\n\t\t\t\t\t\t\t</tr>\n\t\t\t\t\t\t\t<tr>\n\t\t\t\t\t\t\t\t<td>[tarefa.competencia]</td>\n\t\t\t\t\t\t\t\t<td>Competência da tarefa</td>\n\t\t\t\t\t\t\t\t<td>JAN/2026 ou 2026</td>\n\t\t\t\t\t\t\t</tr>\n\t\t\t\t\t\t\t<tr>\n\t\t\t\t\t\t\t\t<td>[tarefa.vencimento]</td>\n\t\t\t\t\t\t\t\t<td>Vencimento da tarefa</td>\n\t\t\t\t\t\t\t\t<td>31/01/2026</td>\n\t\t\t\t\t\t\t</tr>\t\t\t\t\t\t\t\n\t\t\t\t\t\t</tbody></table>",
+  "modalVisible": true,
+  "tabs": [
+    {
+      "text": "Texto Padrão",
+      "href": "#tabnotemailf2"
+    },
+    {
+      "text": "Formas de Envio",
+      "href": "#tabnotautomacoes"
+    }
+  ],
+  "selects": [
+    {
+      "id": "daecategorias",
+      "name": "",
+      "options": [
+        {
+          "value": "3",
+          "text": "Contábil",
+          "selected": false
+        },
+        {
+          "value": "1",
+          "text": "Departamento Pessoal",
+          "selected": false
+        },
+        {
+          "value": "6",
+          "text": "Diretoria",
+          "selected": false
+        },
+        {
+          "value": "7",
+          "text": "Financeiro",
+          "selected": false
+        },
+        {
+          "value": "2",
+          "text": "Fiscal",
+          "selected": false
+        },
+        {
+          "value": "10",
+          "text": "Geral",
+          "selected": false
+        },
+        {
+          "value": "9",
+          "text": "Gerência",
+          "selected": false
+        },
+        {
+          "value": "4",
+          "text": "Legalização",
+          "selected": false
+        },
+        {
+          "value": "8",
+          "text": "RH",
+          "selected": false
+        },
+        {
+          "value": "5",
+          "text": "Sócios",
+          "selected": false
+        }
+      ]
+    },
+    {
+      "id": "daeassuntovariavel",
+      "name": "",
+      "options": [
+        {
+          "value": "",
+          "text": "Escolha uma variável",
+          "selected": true
+        },
+        {
+          "value": "[empresa.apelido]",
+          "text": "[empresa.apelido]",
+          "selected": false
+        },
+        {
+          "value": "[cliente.apelido]",
+          "text": "[cliente.apelido]",
+          "selected": false
+        },
+        {
+          "value": "[cliente.nome]",
+          "text": "[cliente.nome]",
+          "selected": false
+        },
+        {
+          "value": "[obrigacao.nome]",
+          "text": "[obrigacao.nome]",
+          "selected": false
+        },
+        {
+          "value": "[tarefa.competencia]",
+          "text": "[tarefa.competencia]",
+          "selected": false
+        },
+        {
+          "value": "[tarefa.vencimento]",
+          "text": "[tarefa.vencimento]",
+          "selected": false
+        }
+      ]
+    },
+    {
+      "id": "",
+      "name": "",
+      "options": [
+        {
+          "value": "1",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "2",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "3",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "4",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "5",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "6",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "",
+          "text": "",
+          "selected": false
+        }
+      ]
+    },
+    {
+      "id": "",
+      "name": "",
+      "options": [
+        {
+          "value": "",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#e60000",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#ff9900",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#ffff00",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#008a00",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#0066cc",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#9933ff",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#ffffff",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#facccc",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#ffebcc",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#ffffcc",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#cce8cc",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#cce0f5",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#ebd6ff",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#bbbbbb",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#f06666",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#ffc266",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#ffff66",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#66b966",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#66a3e0",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#c285ff",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#888888",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#a10000",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#b26b00",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#b2b200",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#006100",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#0047b2",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#6b24b2",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#444444",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#5c0000",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#663d00",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#666600",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#003700",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#002966",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#3d1466",
+          "text": "",
+          "selected": false
+        }
+      ]
+    },
+    {
+      "id": "",
+      "name": "",
+      "options": [
+        {
+          "value": "#000000",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#e60000",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#ff9900",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#ffff00",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#008a00",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#0066cc",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#9933ff",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#facccc",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#ffebcc",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#ffffcc",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#cce8cc",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#cce0f5",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#ebd6ff",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#bbbbbb",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#f06666",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#ffc266",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#ffff66",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#66b966",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#66a3e0",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#c285ff",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#888888",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#a10000",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#b26b00",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#b2b200",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#006100",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#0047b2",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#6b24b2",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#444444",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#5c0000",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#663d00",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#666600",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#003700",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#002966",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "#3d1466",
+          "text": "",
+          "selected": false
+        }
+      ]
+    },
+    {
+      "id": "",
+      "name": "",
+      "options": [
+        {
+          "value": "",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "serif",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "monospace",
+          "text": "",
+          "selected": false
+        }
+      ]
+    },
+    {
+      "id": "",
+      "name": "",
+      "options": [
+        {
+          "value": "",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "center",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "right",
+          "text": "",
+          "selected": false
+        },
+        {
+          "value": "justify",
+          "text": "",
+          "selected": false
+        }
+      ]
+    },
+    {
+      "id": "daevariavel",
+      "name": "",
+      "options": [
+        {
+          "value": "[contato.nome]",
+          "text": "Nome do contato",
+          "selected": true
+        },
+        {
+          "value": "[cliente.apelido]",
+          "text": "Apelido do cliente",
+          "selected": false
+        },
+        {
+          "value": "[cliente.nome]",
+          "text": "Nome do cliente",
+          "selected": false
+        },
+        {
+          "value": "[cliente.inscricao]",
+          "text": "Inscrição do cliente",
+          "selected": false
+        },
+        {
+          "value": "[cliente.inscricao.tipo]",
+          "text": "Tipo da inscrição do cliente",
+          "selected": false
+        },
+        {
+          "value": "[obrigacao.nome]",
+          "text": "Nome da obrigação",
+          "selected": false
+        },
+        {
+          "value": "[tarefa.vencimento]",
+          "text": "Vencimento da Tarefa",
+          "selected": false
+        },
+        {
+          "value": "[tarefa.competencia]",
+          "text": "Competência da tarefa",
+          "selected": false
+        }
+      ]
+    },
+    {
+      "id": "daevariavelatividades",
+      "name": "",
+      "options": [
+        {
+          "value": "[contato.nome]",
+          "text": "Nome do contato",
+          "selected": true
+        },
+        {
+          "value": "[cliente.apelido]",
+          "text": "Apelido do cliente",
+          "selected": false
+        },
+        {
+          "value": "[cliente.nome]",
+          "text": "Nome do cliente",
+          "selected": false
+        },
+        {
+          "value": "[cliente.inscricao]",
+          "text": "Inscrição do cliente",
+          "selected": false
+        },
+        {
+          "value": "[cliente.inscricao.tipo]",
+          "text": "Tipo da inscrição do cliente",
+          "selected": false
+        },
+        {
+          "value": "[obrigacao.nome]",
+          "text": "Nome da obrigação",
+          "selected": false
+        },
+        {
+          "value": "[tarefa.vencimento]",
+          "text": "Vencimento da Tarefa",
+          "selected": false
+        },
+        {
+          "value": "[tarefa.competencia]",
+          "text": "Competência da tarefa",
+          "selected": false
+        },
+        {
+          "value": "[solicitacao-documentos.link]",
+          "text": "Solicitação de Documentos",
+          "selected": false
+        }
+      ]
+    },
+    {
+      "id": "automacao",
+      "name": "",
+      "options": [
+        {
+          "value": "",
+          "text": "Envio manual",
+          "selected": false
+        },
+        {
+          "value": "3",
+          "text": "Envio manual com solicitação de documentos",
+          "selected": false
+        },
+        {
+          "value": "4",
+          "text": "Envio programado na data de ação da tarefa",
+          "selected": false
+        },
+        {
+          "value": "2",
+          "text": "Envio programado na data de ação da tarefa com solicitação de documentos",
+          "selected": false
+        },
+        {
+          "value": "1",
+          "text": "Envio automático na conclusão da tarefa",
+          "selected": true
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "id": "daeaconfignovidadeemailprogramadof2",
+      "name": "",
+      "type": "hidden",
+      "value": "true",
+      "checked": false
+    },
+    {
+      "id": "daeaconfig",
+      "name": "",
+      "type": "hidden",
+      "value": "42",
+      "checked": false
+    },
+    {
+      "id": "empresaId",
+      "name": "empresaId",
+      "type": "hidden",
+      "value": "6019",
+      "checked": false
+    },
+    {
+      "id": "coaconfigemailOid",
+      "name": "coaconfigemailOid",
+      "type": "hidden",
+      "value": "",
+      "checked": false
+    },
+    {
+      "id": "coaconfigemailAconfig",
+      "name": "coaconfigemailAconfig",
+      "type": "hidden",
+      "value": "",
+      "checked": false
+    },
+    {
+      "id": "coaconfigemailCategorias",
+      "name": "coaconfigemailCategorias",
+      "type": "hidden",
+      "value": "",
+      "checked": false
+    },
+    {
+      "id": "coaconfigemailTextoid",
+      "name": "coaconfigemailTextoid",
+      "type": "hidden",
+      "value": "",
+      "checked": false
+    },
+    {
+      "id": "coaconfigemailTexto",
+      "name": "coaconfigemailTexto",
+      "type": "hidden",
+      "value": "",
+      "checked": false
+    },
+    {
+      "id": "coaconfigemailAssunto",
+      "name": "coaconfigemailAssunto",
+      "type": "hidden",
+      "value": "",
+      "checked": false
+    },
+    {
+      "id": "coaconfigemailEmail",
+      "name": "coaconfigemailEmail",
+      "type": "hidden",
+      "value": "",
+      "checked": false
+    },
+    {
+      "id": "coaconfigemailMensagem",
+      "name": "coaconfigemailMensagem",
+      "type": "hidden",
+      "value": "",
+      "checked": false
+    },
+    {
+      "id": "coaconfigemailLembrete",
+      "name": "coaconfigemailLembrete",
+      "type": "hidden",
+      "value": "",
+      "checked": false
+    },
+    {
+      "id": "coaconfigemailLembreteupload",
+      "name": "coaconfigemailLembreteupload",
+      "type": "hidden",
+      "value": "",
+      "checked": false
+    },
+    {
+      "id": "coaconfigemailLembreteemail",
+      "name": "coaconfigemailLembreteemail",
+      "type": "hidden",
+      "value": "",
+      "checked": false
+    },
+    {
+      "id": "coaconfigemailOrdem",
+      "name": "coaconfigemailOrdem",
+      "type": "hidden",
+      "value": "",
+      "checked": false
+    },
+    {
+      "id": "",
+      "name": "",
+      "type": "text",
+      "value": "Selecione a categoria de e-mail para seleção dos contatos...",
+      "checked": false
+    },
+    {
+      "id": "daeassunto",
+      "name": "",
+      "type": "text",
+      "value": "[obrigacao.nome] [tarefa.competencia]",
+      "checked": false
+    },
+    {
+      "id": "daetextoid",
+      "name": "",
+      "type": "hidden",
+      "value": "378",
+      "checked": false
+    },
+    {
+      "id": "",
+      "name": "",
+      "type": "text",
+      "value": "",
+      "checked": false
+    },
+    {
+      "id": "daelembreteemailvalidacao",
+      "name": "",
+      "type": "hidden",
+      "value": "0",
+      "checked": false
+    },
+    {
+      "id": "daelembreteemail",
+      "name": "",
+      "type": "text",
+      "value": "",
+      "checked": false
+    }
+  ]
+}

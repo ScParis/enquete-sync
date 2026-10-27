@@ -45,8 +45,17 @@ test('conta e planilha iniciam conferência de leitura e mostram perguntas, resp
     await page.waitForFunction(() => document.querySelector('#auditStatus').textContent.includes('Concluído:'), null, { timeout: 10000 });
     assert.equal(calls.length, 1);
     assert.equal(calls[0].autoAudit, true);
+    assert.equal(calls[0].headless, true);
     assert.equal(calls[0].accountId, '6581');
     assert.equal(calls[0].downloadFile, 'enquete.csv');
+
+    // Desmarca a opção headless para testar auditoria acompanhada em tela
+    await page.locator('#headlessAuditToggle').uncheck();
+    await page.locator('#runAudit').click();
+    await page.waitForFunction(() => document.querySelectorAll('#results tr').length > 0, null, { timeout: 10000 });
+    assert.equal(calls.length, 2);
+    assert.equal(calls[1].headless, false);
+
     assert.match(await page.locator('#catalogOverviewStatus').innerText(), /1 perguntas e 2 respostas capturadas agora/);
     assert.match(await page.locator('#catalogOverviewList').innerText(), /02\.02.*Obrigações Estaduais/);
     await page.locator('#catalogOverviewList details').first().click();

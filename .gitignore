@@ -20,3 +20,4 @@ Relatório.xlsx
 *.db-journal
 .env
 .env.local
+*.txt
