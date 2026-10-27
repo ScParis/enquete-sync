@@ -137,7 +137,7 @@
             <button type="button" class="nav-btn nav-sub-item" data-section="obrigacoes" id="navObrigacoes">
               <span class="nav-icon">📌</span>
               <span class="nav-text">Módulo de Obrigações</span>
-              <span class="nav-badge badge-new" id="navBadgeObrigacoes">Em breve</span>
+              <span class="nav-badge" id="navBadgeObrigacoes">Obrigações</span>
             </button>
           </div>
         </div>
@@ -488,6 +488,17 @@
           </div>
         </div>
 
+        <section class="card" id="applyAuditNeeded" style="border-left:4px solid #1c8b82;" hidden>
+          <p class="eyebrow" style="color:#1c8b82;">ETAPA PRÉVIA NECESSÁRIA</p>
+          <h2 style="font-size:16px;margin:4px 0 8px;">Conferência na Enquete Necessária</h2>
+          <p style="font-size:13px;color:#4a6560;line-height:1.45;margin-bottom:14px;">
+            Existem tarefas mapeadas que ainda não foram verificadas no G-Click. O robô precisa consultar a Enquete primeiro para identificar quais clientes já possuem a resposta marcada e quais estão realmente pendentes de gravação.
+          </p>
+          <button id="runAuditFromApply" type="button" class="primary btn-demand" style="padding:10px 18px;font-size:13px;">
+            <span class="btn-icon">🔍</span> Conferir na Enquete Agora para Liberar Gravação
+          </button>
+        </section>
+
         <section class="card apply-card" id="applyCard" hidden>
           <p class="eyebrow">GRAVAÇÃO</p>
           <h2>Marcar no G-Click</h2>
@@ -521,12 +532,24 @@
               <strong style="font-size:14px;color:#184f59">Conferência dos CNPJs na Enquete</strong>
               <p class="sub-hint" style="margin:2px 0 0">Verifica se as respostas já estão marcadas ou pendentes no G-Click</p>
             </div>
-            <label class="auto-audit-toggle" title="Executar conferência automática ao conectar planilha e catálogo">
-              <input type="checkbox" id="autoAuditToggle" checked> <small>Conferência automática</small>
-            </label>
+            <div class="audit-header-toggles" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+              <label class="auto-audit-toggle" title="Executar conferência em segundo plano (janela oculta) ou acompanhar no navegador">
+                <input type="checkbox" id="headlessAuditToggle" checked> <small>Segundo plano (Headless)</small>
+              </label>
+              <label class="auto-audit-toggle" title="Executar conferência automática ao conectar planilha e catálogo">
+                <input type="checkbox" id="autoAuditToggle" checked> <small>Conferência automática</small>
+              </label>
+            </div>
           </div>
 
           <p id="auditStatus">Aguardando a planilha e a Enquete da conta.</p>
+
+          <div id="auditLoginNotice" style="display:none;margin:10px 0;padding:10px 14px;background:#fff8e6;border:1px solid #ffd591;border-radius:6px;align-items:center;justify-content:space-between;gap:12px;">
+            <span style="font-size:12.5px;color:#873800;">⚠️ <strong>Sessão do G-Click não conectada.</strong> Abra o navegador da automação para que o robô possa ler a Enquete.</span>
+            <button id="btnOpenLoginFromAudit" type="button" class="primary" style="padding:6px 14px;font-size:12px;white-space:nowrap;">
+              🔑 Conectar Sessão G-Click
+            </button>
+          </div>
 
           <div class="audit-controls">
             <div class="audit-scope-row">
@@ -625,57 +648,719 @@
         </section>
       </div>
 
-      <!-- SEÇÃO 8: OBRIGAÇÕES (NOVO MÓDULO) -->
-      <div id="section-obrigacoes" class="app-section">
+      <!-- SEÇÃO 8: OBRIGAÇÕES (MÓDULO DE OBRIGAÇÕES & PARIDADE) -->
+      <div id="section-obrigacoes" class="app-section" hidden>
         <div class="section-banner">
           <nav class="breadcrumbs">
             <span>Obrigações</span>
             <span class="sep">›</span>
-            <strong>Visão Geral do Módulo</strong>
+            <strong>Catálogo & Paridade de Atividades</strong>
           </nav>
           <div class="section-title-wrap">
             <span class="step">📁</span>
             <div>
               <h2>Módulo de Obrigações</h2>
-              <p>Módulo para gestão, parametrização e conciliação de obrigações tributárias e fiscais da carteira.</p>
+              <p>Gestão do catálogo de obrigações da conta, auditoria de paridade E-mail × WhatsApp e configuração de modelos dinâmicos de mensagem.</p>
             </div>
           </div>
         </div>
 
-        <section class="card module-intro-card">
-          <div class="module-hero">
-            <div class="module-icon-box">📁</div>
-            <div class="module-hero-content">
-              <div class="module-tag-row">
-                <span class="badge-new-pill">Novo Módulo</span>
-                <span class="badge-status-pill">Em Construção</span>
-              </div>
-              <h3>Gestão e Conciliação de Obrigações</h3>
-              <p>Esta seção foi estruturada e está preparada para receber as ferramentas de controle e automação de obrigações fiscais, acessórias e municipais/estaduais/federais integradas à sua carteira.</p>
+        <!-- CARDS DE ESTATÍSTICAS E MÉTRICAS -->
+        <div class="obrig-metrics-grid" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:16px;margin-bottom:20px;">
+          <div class="card" style="padding:16px 20px;border-left:4px solid #1c8b82;">
+            <p class="eyebrow" style="margin:0 0 4px;font-size:11px;color:var(--text-muted);">TOTAL NO CATÁLOGO</p>
+            <h3 id="obrigMetricTotal" style="margin:0;font-size:26px;color:#184f59;">--</h3>
+            <span class="sub-hint" id="obrigMetricSource">Carregando catálogo...</span>
+          </div>
+          <div class="card" style="padding:16px 20px;border-left:4px solid #10b981;">
+            <p class="eyebrow" style="margin:0 0 4px;font-size:11px;color:var(--text-muted);">EM CONFORMIDADE</p>
+            <h3 id="obrigMetricConforme" style="margin:0;font-size:26px;color:#047857;">--</h3>
+            <span class="sub-hint">E-mail e WhatsApp alinhados</span>
+          </div>
+          <div class="card" style="padding:16px 20px;border-left:4px solid #f59e0b;">
+            <p class="eyebrow" style="margin:0 0 4px;font-size:11px;color:var(--text-muted);">PENDENTE WHATSAPP</p>
+            <h3 id="obrigMetricPendente" style="margin:0;font-size:26px;color:#b45309;">--</h3>
+            <span class="sub-hint">Tem E-mail, falta WhatsApp</span>
+          </div>
+          <div class="card" style="padding:16px 20px;border-left:4px solid #6366f1;">
+            <p class="eyebrow" style="margin:0 0 4px;font-size:11px;color:var(--text-muted);">DEPARTAMENTOS</p>
+            <h3 id="obrigMetricDeptos" style="margin:0;font-size:26px;color:#4338ca;">--</h3>
+            <span class="sub-hint">Áreas ativas na conta</span>
+          </div>
+        </div>
+
+        <!-- BARRA DE CONTROLE, FILTROS E BUSCA -->
+        <section class="card" style="margin-bottom:20px;padding:18px 24px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px;margin-bottom:16px;">
+            <div>
+              <h3 style="margin:0 0 4px;font-size:16px;color:#184f59;">Catálogo de Obrigações</h3>
+              <p class="sub-hint" style="margin:0;">Filtre e visualize as obrigações cadastradas e seus canais de disparo automático.</p>
+            </div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;">
+              <button id="btnOpenObrigTemplates" type="button" class="ghost" style="padding:8px 14px;font-size:13px;display:flex;align-items:center;gap:6px;">
+                <span>⚙️</span> Modelos Flexíveis de Mensagem
+              </button>
+              <button id="btnSyncObrigacoes" type="button" class="primary" style="padding:8px 16px;font-size:13px;display:flex;align-items:center;gap:6px;">
+                <span>🔄</span> Sincronizar com G-Click
+              </button>
             </div>
           </div>
 
-          <div class="module-grid-preview">
-            <div class="preview-feature-card">
-              <span class="feature-icon">📅</span>
-              <h4>Calendário & Vencimentos</h4>
-              <p>Controle unificado de prazos e datas de entrega por regime tributário e competência fiscal.</p>
-              <span class="feature-status">Em breve</span>
+          <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:12px;align-items:center;">
+            <div>
+              <input id="obrigSearchInput" type="text" placeholder="Buscar por nome da obrigação, ID, órgão ou frequência..." style="width:100%;padding:9px 12px;font-size:13px;">
             </div>
-            <div class="preview-feature-card">
-              <span class="feature-icon">⚙️</span>
-              <h4>Parametrização por Empresa</h4>
-              <p>Vínculo inteligente entre o cadastro do cliente e as obrigações acessórias obrigatórias.</p>
-              <span class="feature-status">Em breve</span>
+            <div>
+              <select id="obrigDeptoFilter" style="width:100%;padding:9px 12px;font-size:13px;">
+                <option value="">Todos os Departamentos</option>
+              </select>
             </div>
-            <div class="preview-feature-card">
-              <span class="feature-icon">📊</span>
-              <h4>Conciliação & Protocolos</h4>
-              <p>Auditoria de guias entregues, conferência automática e emissão de alertas de inconsistências.</p>
-              <span class="feature-status">Em breve</span>
+            <div>
+              <select id="obrigParidadeFilter" style="width:100%;padding:9px 12px;font-size:13px;">
+                <option value="">Todas as Situações</option>
+                <option value="conforme">Em Conformidade (Alinhados / Canal E-mail)</option>
+                <option value="pendente_whatsapp">Pendente WhatsApp</option>
+                <option value="sem_disparo">Sem Disparo Configurado</option>
+              </select>
+            </div>
+          </div>
+          <!-- STATUS VISUAL DEDICADO DO MÓDULO DE OBRIGAÇÕES -->
+          <div id="obrigStatusAlert" style="display:none;margin-top:14px;padding:10px 14px;border-radius:6px;font-size:13px;align-items:center;gap:8px;">
+            <span id="obrigStatusIcon">ℹ️</span>
+            <span id="obrigStatusText"></span>
+          </div>
+        </section>
+
+        <!-- BARRA DE AÇÃO EM MASSA -->
+        <div id="obrigBatchBar" style="background:#f0f7f6;border:1px solid #c2e0db;border-radius:8px;padding:12px 18px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span style="font-size:13px;font-weight:700;color:#184f59;" id="obrigBatchCountText">0 obrigações selecionadas</span>
+            <span id="obrigBatchDeptoWarning" class="sub-hint" style="color:#d97706;font-weight:600;display:inline-flex;align-items:center;gap:4px;">
+              ⚠️ Selecione um departamento no filtro acima para liberar a configuração em massa.
+            </span>
+          </div>
+          <div style="display:flex;gap:10px;align-items:center;">
+            <button id="btnClearBatchSelection" type="button" class="ghost" style="padding:6px 12px;font-size:12px;" disabled>Limpar Seleção</button>
+            <button id="btnOpenBatchEmailModal" type="button" class="ghost" style="padding:7px 16px;font-size:12.5px;display:inline-flex;align-items:center;gap:6px;border:1px solid #184f59;color:#184f59;" disabled>
+              <span>✉️</span> Configurar E-mail em Massa
+            </button>
+            <button id="btnOpenBatchWhatsappModal" type="button" class="primary" style="padding:7px 16px;font-size:12.5px;display:inline-flex;align-items:center;gap:6px;" disabled>
+              <span>💬</span> Criar WhatsApp em Massa
+            </button>
+          </div>
+        </div>
+
+        <!-- TABELA DE OBRIGAÇÕES -->
+        <section class="card" style="padding:0;overflow:hidden;">
+          <div class="table-wrap" style="max-height:600px;overflow-y:auto;">
+            <table style="width:100%;border-collapse:collapse;">
+              <thead>
+                <tr style="background:#f4f8f7;border-bottom:1px solid #dbe6e4;text-align:left;font-size:12px;color:#4a6560;">
+                  <th style="padding:12px 12px;width:36px;text-align:center;">
+                    <input type="checkbox" id="obrigSelectAll" title="Selecionar todas as obrigações filtradas" style="cursor:pointer;">
+                  </th>
+                  <th style="padding:12px 14px;width:60px;">ID</th>
+                  <th style="padding:12px 16px;">Obrigação</th>
+                  <th style="padding:12px 16px;">Departamento</th>
+                  <th style="padding:12px 16px;">Frequência</th>
+                  <th style="padding:12px 16px;">Vencimento</th>
+                  <th style="padding:12px 16px;">Fato Gerador</th>
+                  <th style="padding:12px 16px;">Órgão</th>
+                  <th style="padding:12px 16px;text-align:center;">Paridade Canais</th>
+                  <th style="padding:12px 16px;text-align:center;">Status</th>
+                  <th style="padding:12px 16px;text-align:right;">Ações</th>
+                </tr>
+              </thead>
+              <tbody id="obrigacoesTableBody">
+                <tr>
+                  <td colspan="11" style="text-align:center;padding:30px;color:var(--text-muted);">Carregando obrigações...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 20px;border-top:1px solid #edf3f2;background:#fafcfb;">
+            <span id="obrigPaginationInfo" style="font-size:12.5px;color:var(--text-muted);">Exibindo 0 de 0</span>
+            <div style="display:flex;gap:8px;">
+              <button id="obrigPrevPage" type="button" class="ghost" style="padding:5px 12px;font-size:12px;" disabled>Anterior</button>
+              <button id="obrigNextPage" type="button" class="ghost" style="padding:5px 12px;font-size:12px;" disabled>Próxima</button>
             </div>
           </div>
         </section>
+
+        <!-- MODAL DE MODELOS FLEXÍVEIS DE MENSAGEM -->
+        <div id="modalObrigTemplates" style="display:none;position:fixed;inset:0;background:rgba(8,26,30,0.6);z-index:9999;align-items:center;justify-content:center;padding:20px;">
+          <div class="card" style="max-width:760px;width:100%;max-height:90vh;overflow-y:auto;padding:24px 28px;border-radius:10px;box-shadow:0 10px 40px rgba(0,0,0,0.3);">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;border-bottom:1px solid #edf3f2;padding-bottom:12px;">
+              <div>
+                <h3 style="margin:0 0 4px;font-size:18px;color:#184f59;">⚙️ Modelos Flexíveis de Mensagem</h3>
+                <p class="sub-hint" style="margin:0;">Personalize os templates dinâmicos de WhatsApp e E-mail sem textos fixos no código.</p>
+              </div>
+              <button id="btnCloseObrigTemplates" type="button" class="ghost" style="font-size:20px;line-height:1;padding:4px 8px;cursor:pointer;">&times;</button>
+            </div>
+
+            <!-- CHIPS DE VARIÁVEIS DISPONÍVEIS -->
+            <div style="background:#f0f8f6;border:1px solid #c2e2dc;border-radius:8px;padding:12px 16px;margin-bottom:20px;">
+              <span style="font-size:12px;font-weight:700;color:#184f59;display:block;margin-bottom:8px;">Variáveis Dinâmicas do G-Click (clique para inserir no texto):</span>
+              <div style="display:flex;flex-wrap:wrap;gap:6px;" id="obrigTemplateChips">
+                <button type="button" class="tag-chip" data-tag="[cliente.apelido]" style="background:#fff;border:1px solid #1c8b82;color:#1c8b82;padding:3px 8px;border-radius:4px;font-size:11.5px;cursor:pointer;">[cliente.apelido]</button>
+                <button type="button" class="tag-chip" data-tag="[cliente.nome]" style="background:#fff;border:1px solid #1c8b82;color:#1c8b82;padding:3px 8px;border-radius:4px;font-size:11.5px;cursor:pointer;">[cliente.nome]</button>
+                <button type="button" class="tag-chip" data-tag="[obrigacao.nome]" style="background:#fff;border:1px solid #1c8b82;color:#1c8b82;padding:3px 8px;border-radius:4px;font-size:11.5px;cursor:pointer;">[obrigacao.nome]</button>
+                <button type="button" class="tag-chip" data-tag="[tarefa.competencia]" style="background:#fff;border:1px solid #1c8b82;color:#1c8b82;padding:3px 8px;border-radius:4px;font-size:11.5px;cursor:pointer;">[tarefa.competencia]</button>
+                <button type="button" class="tag-chip" data-tag="[tarefa.vencimento]" style="background:#fff;border:1px solid #1c8b82;color:#1c8b82;padding:3px 8px;border-radius:4px;font-size:11.5px;cursor:pointer;">[tarefa.vencimento]</button>
+                <button type="button" class="tag-chip" data-tag="[contato.nome]" style="background:#fff;border:1px solid #1c8b82;color:#1c8b82;padding:3px 8px;border-radius:4px;font-size:11.5px;cursor:pointer;">[contato.nome]</button>
+                <button type="button" class="tag-chip" data-tag="[empresa.apelido]" style="background:#fff;border:1px solid #1c8b82;color:#1c8b82;padding:3px 8px;border-radius:4px;font-size:11.5px;cursor:pointer;">[empresa.apelido]</button>
+              </div>
+            </div>
+
+            <!-- SEÇÃO WHATSAPP -->
+            <div style="margin-bottom:20px;">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                <label style="font-weight:700;font-size:14px;color:#184f59;">💬 Template WhatsApp / DIGISAC (Tipo 16)</label>
+                <label style="font-size:12px;color:var(--text-muted);display:flex;align-items:center;gap:6px;">
+                  <input type="checkbox" id="tmplWhatsappHabilitado" checked> Habilitar envio
+                </label>
+              </div>
+              <textarea id="tmplWhatsappTexto" rows="4" style="width:100%;padding:10px 12px;font-size:13px;line-height:1.45;border:1px solid #c8d9d6;border-radius:6px;"></textarea>
+              <div style="display:flex;align-items:center;gap:12px;margin-top:8px;">
+                <label style="font-size:12px;color:#4a6560;">Particularidade Obrigatória:</label>
+                <input id="tmplWhatsappParticularidade" type="text" value="539" placeholder="Ex.: 539" style="width:100px;padding:5px 8px;font-size:12px;">
+                <span class="sub-hint">Dispara somente para clientes com esta particularidade ativa no G-Click.</span>
+              </div>
+            </div>
+
+            <!-- SEÇÃO E-MAIL -->
+            <div style="margin-bottom:20px;">
+              <label style="font-weight:700;font-size:14px;color:#184f59;display:block;margin-bottom:8px;">✉️ Template E-mail (Tipo E)</label>
+              <div style="margin-bottom:8px;">
+                <label style="font-size:12px;color:#4a6560;display:block;margin-bottom:4px;">Assunto do E-mail:</label>
+                <input id="tmplEmailAssunto" type="text" style="width:100%;padding:8px 12px;font-size:13px;">
+              </div>
+              <div>
+                <label style="font-size:12px;color:#4a6560;display:block;margin-bottom:4px;">Corpo do E-mail:</label>
+                <textarea id="tmplEmailTexto" rows="4" style="width:100%;padding:10px 12px;font-size:13px;line-height:1.45;border:1px solid #c8d9d6;border-radius:6px;"></textarea>
+              </div>
+            </div>
+
+            <!-- PRÉ-VISUALIZAÇÃO EM TEMPO REAL -->
+            <div style="background:#fbfdfc;border:1px solid #e1ece9;border-radius:8px;padding:12px 16px;margin-bottom:20px;">
+              <span style="font-size:12px;font-weight:700;color:#184f59;display:block;margin-bottom:6px;">👁️ Pré-visualização Simulada da Mensagem (WhatsApp):</span>
+              <p id="obrigPreviewWhatsapp" style="font-size:12.5px;color:#2c5b53;background:#e9f5f2;padding:10px 14px;border-radius:6px;margin:0;white-space:pre-wrap;"></p>
+            </div>
+
+            <div style="display:flex;justify-content:flex-end;gap:10px;">
+              <button id="btnCancelObrigTemplates" type="button" class="ghost" style="padding:8px 16px;font-size:13px;">Cancelar</button>
+              <button id="btnSaveObrigTemplates" type="button" class="primary" style="padding:8px 18px;font-size:13px;">Salvar Modelos</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- MODAL DE AJUSTE / CORREÇÃO DO PASSO DE E-MAIL -->
+        <div id="modalFixEmail" style="display:none;position:fixed;inset:0;background:rgba(8,26,30,0.6);z-index:9999;align-items:center;justify-content:center;padding:20px;">
+          <div class="card" style="max-width:780px;width:100%;max-height:92vh;overflow-y:auto;padding:24px 28px;border-radius:10px;box-shadow:0 10px 40px rgba(0,0,0,0.3);">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;border-bottom:1px solid #edf3f2;padding-bottom:12px;">
+              <div>
+                <h3 style="margin:0 0 4px;font-size:18px;color:#184f59;">✉️ Ajustar Passo de Envio de E-mail</h3>
+                <p id="fixEmailSubhint" class="sub-hint" style="margin:0;">Configurando o envio de e-mail da obrigação no G-Click.</p>
+              </div>
+              <button id="btnCloseFixEmail" type="button" class="ghost" style="font-size:20px;line-height:1;padding:4px 8px;cursor:pointer;">&times;</button>
+            </div>
+
+            <!-- LOADING SPINNER INTERNO -->
+            <div id="fixEmailLoading" style="display:none;text-align:center;padding:40px 20px;">
+              <span style="font-size:32px;display:block;margin-bottom:10px;">⏳</span>
+              <p style="margin:0;font-size:14px;color:#184f59;font-weight:600;">Lendo dados do G-Click da conta logada…</p>
+              <span class="sub-hint">Acessando modal de envio de e-mail no navegador.</span>
+            </div>
+
+            <!-- CONTEÚDO DO FORMULÁRIO -->
+            <div id="fixEmailFormContent">
+              <!-- DETALHES DA OBRIGAÇÃO -->
+              <div style="background:#f4f8f7;border:1px solid #dbe6e4;border-radius:8px;padding:12px 16px;margin-bottom:18px;display:flex;justify-content:space-between;align-items:center;">
+                <div>
+                  <span id="fixEmailObrigBadge" style="font-size:11px;background:#184f59;color:#fff;padding:2px 6px;border-radius:4px;font-weight:700;">#0</span>
+                  <strong id="fixEmailObrigNome" style="margin-left:8px;font-size:14px;color:#184f59;">Nome da Obrigação</strong>
+                </div>
+                <span id="fixEmailDepto" style="font-size:12px;color:#4a6560;">Departamento</span>
+              </div>
+
+              <!-- 1. CATEGORIAS DE E-MAIL -->
+              <div style="margin-bottom:18px;">
+                <label style="font-weight:700;font-size:13.5px;color:#184f59;display:block;margin-bottom:4px;">1. Categorias de E-mail da Conta (Destinatários):</label>
+                <p class="sub-hint" style="margin:0 0 8px;">Selecione as categorias que receberão o comunicado da obrigação:</p>
+                <div id="fixEmailCategoriasContainer" style="display:flex;flex-wrap:wrap;gap:8px;padding:10px;background:#fbfdfc;border:1px solid #c8d9d6;border-radius:6px;max-height:120px;overflow-y:auto;">
+                  <span style="font-size:12px;color:var(--text-muted);">Carregando categorias…</span>
+                </div>
+              </div>
+
+              <!-- 2. ASSUNTO DO E-MAIL -->
+              <div style="margin-bottom:16px;">
+                <label style="font-weight:700;font-size:13.5px;color:#184f59;display:block;margin-bottom:4px;">2. Assunto do E-mail:</label>
+                <input id="fixEmailAssunto" type="text" placeholder="Ex.: [obrigacao.nome] - [tarefa.competencia]" style="width:100%;padding:9px 12px;font-size:13px;border:1px solid #c8d9d6;border-radius:6px;">
+              </div>
+
+              <!-- 3. CORPO DO E-MAIL -->
+              <div style="margin-bottom:18px;">
+                <label style="font-weight:700;font-size:13.5px;color:#184f59;display:block;margin-bottom:4px;">3. Corpo do E-mail:</label>
+                <textarea id="fixEmailCorpo" rows="5" style="width:100%;padding:10px 12px;font-size:13px;line-height:1.45;border:1px solid #c8d9d6;border-radius:6px;"></textarea>
+                <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;">
+                  <button type="button" class="ghost tag-btn" style="font-size:11px;padding:2px 6px;" onclick="insertTagIntoFixEmail('[cliente.apelido]')">+ [cliente.apelido]</button>
+                  <button type="button" class="ghost tag-btn" style="font-size:11px;padding:2px 6px;" onclick="insertTagIntoFixEmail('[obrigacao.nome]')">+ [obrigacao.nome]</button>
+                  <button type="button" class="ghost tag-btn" style="font-size:11px;padding:2px 6px;" onclick="insertTagIntoFixEmail('[tarefa.competencia]')">+ [tarefa.competencia]</button>
+                  <button type="button" class="ghost tag-btn" style="font-size:11px;padding:2px 6px;" onclick="insertTagIntoFixEmail('[tarefa.vencimento]')">+ [tarefa.vencimento]</button>
+                </div>
+              </div>
+
+              <!-- 4. FORMAS DE ENVIO & ANEXOS -->
+              <div style="background:#eef7f5;border:1px solid #cfe5e0;border-radius:8px;padding:14px 16px;margin-bottom:20px;">
+                <label style="font-weight:700;font-size:13.5px;color:#184f59;display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+                  <span>⚙️</span> Forma de Envio e Anexos Automáticos
+                </label>
+                <div style="display:grid;grid-template-columns:1fr auto;gap:16px;align-items:center;">
+                  <div>
+                    <label style="font-size:12px;color:#4a6560;display:block;margin-bottom:4px;">Gatilho de Envio:</label>
+                    <select id="fixEmailAutomacao" style="width:100%;padding:7px 10px;font-size:12.5px;">
+                      <option value="1" selected>Envio automático na conclusão da tarefa (Recomendado)</option>
+                      <option value="">Envio manual</option>
+                      <option value="4">Envio programado na data de ação da tarefa</option>
+                    </select>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:8px;padding-top:16px;">
+                    <input id="fixEmailAnexarTodos" type="checkbox" checked style="cursor:pointer;">
+                    <label for="fixEmailAnexarTodos" style="font-size:12.5px;font-weight:600;color:#184f59;cursor:pointer;">Marcar todos os arquivos como Anexos</label>
+                  </div>
+                </div>
+
+                <!-- LISTA DE ANEXOS IDENTIFICADOS -->
+                <div id="fixEmailDocsList" style="margin-top:12px;border-top:1px dashed #b8d9d2;padding-top:10px;">
+                  <span style="font-size:11.5px;color:#4a6560;font-weight:600;">Atividades anteriores que geram arquivos anexos:</span>
+                  <ul id="fixEmailDocsUl" style="margin:6px 0 0;padding-left:18px;font-size:12px;color:#2c5b53;">
+                    <li>Nenhuma atividade com arquivo detectada.</li>
+                  </ul>
+                </div>
+              </div>
+
+              <!-- 5. CONFIGURAÇÃO DA ATIVIDADE NA TABELA (CANCELAMENTO & CLIENTES) -->
+              <div style="background:#f9fbfb;border:1px solid #dbe6e4;border-radius:8px;padding:14px 16px;margin-bottom:20px;">
+                <label style="font-weight:700;font-size:13.5px;color:#184f59;display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+                  <span>📋</span> Configuração da Linha da Atividade (Tabela de Atividades)
+                </label>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+                  <div>
+                    <label for="fixEmailCancelamento" style="font-size:12px;font-weight:600;color:#184f59;display:block;margin-bottom:4px;">Tipo de Cancelamento:</label>
+                    <select id="fixEmailCancelamento" style="width:100%;padding:7px 10px;font-size:12.5px;border:1px solid #c8d9d6;border-radius:6px;">
+                      <option value="1" selected>Com justificativa (Padrão)</option>
+                      <option value="0">Sem justificativa</option>
+                      <option value="2">Sem cancelamento</option>
+                    </select>
+                    <span class="sub-hint" style="font-size:11px;margin-top:2px;display:block;">Coluna "Tipo de cancelamento" na linha de envio de e-mail.</span>
+                  </div>
+                  <div>
+                    <label for="fixEmailParticularidade" style="font-size:12px;font-weight:600;color:#184f59;display:block;margin-bottom:4px;">Clientes (Particularidade):</label>
+                    <select id="fixEmailParticularidade" style="width:100%;padding:7px 10px;font-size:12.5px;border:1px solid #c8d9d6;border-radius:6px;">
+                      <option value="">Carregando particularidades da conta…</option>
+                    </select>
+                    <span class="sub-hint" style="font-size:11px;margin-top:2px;display:block;">Coluna "Clientes" (vínculo via modal de particularidade).</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- BOTÕES DO MODAL -->
+              <div style="display:flex;justify-content:flex-end;gap:10px;">
+                <button id="btnCancelFixEmail" type="button" class="ghost" style="padding:8px 16px;font-size:13px;">Cancelar</button>
+                <button id="btnSubmitFixEmail" type="button" class="primary" style="padding:8px 20px;font-size:13px;display:flex;align-items:center;gap:6px;">
+                  <span>💾</span> Gravar Configuração no G-Click
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- MODAL DE CONFIGURAÇÃO DE E-MAIL EM MASSA (LOTE) -->
+        <div id="modalBatchEmail" style="display:none;position:fixed;inset:0;background:rgba(8,26,30,0.6);z-index:9999;align-items:center;justify-content:center;padding:20px;">
+          <div class="card" style="max-width:800px;width:100%;max-height:92vh;overflow-y:auto;padding:24px 28px;border-radius:10px;box-shadow:0 10px 40px rgba(0,0,0,0.3);">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;border-bottom:1px solid #edf3f2;padding-bottom:12px;">
+              <div>
+                <h3 style="margin:0 0 4px;font-size:18px;color:#184f59;">✉️ Configuração de E-mail em Massa</h3>
+                <p id="batchEmailSubhint" class="sub-hint" style="margin:0;">Aplicando configuração padrão às obrigações selecionadas do departamento.</p>
+              </div>
+              <button id="btnCloseBatchEmail" type="button" class="ghost" style="font-size:20px;line-height:1;padding:4px 8px;cursor:pointer;">&times;</button>
+            </div>
+
+            <!-- RESUMO DO LOTE -->
+            <div style="background:#f0f8f6;border:1px solid #c2e2dc;border-radius:8px;padding:12px 16px;margin-bottom:18px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+              <div>
+                <span id="batchEmailDeptoBadge" style="font-size:12px;background:#184f59;color:#fff;padding:3px 8px;border-radius:4px;font-weight:700;">Departamento</span>
+                <strong id="batchEmailTotalCount" style="margin-left:8px;font-size:13.5px;color:#184f59;">0 obrigações selecionadas</strong>
+              </div>
+              <span id="batchEmailListPreview" style="font-size:11.5px;color:#2c5b53;max-width:380px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></span>
+            </div>
+
+            <!-- PROCESSO / BARRA DE PROGRESSO -->
+            <div id="batchEmailProgressBox" style="display:none;margin-bottom:18px;padding:12px;background:#eef7f5;border:1px solid #b8d9d2;border-radius:6px;">
+              <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:600;color:#184f59;margin-bottom:6px;">
+                <span id="batchEmailProgressText">Processando obrigações no G-Click...</span>
+                <span id="batchEmailProgressPerc">0%</span>
+              </div>
+              <progress id="batchEmailProgressBar" max="100" value="0" style="width:100%;height:10px;"></progress>
+            </div>
+
+            <div id="batchEmailFormContent">
+              <!-- 1. CATEGORIAS DE E-MAIL -->
+              <div style="margin-bottom:18px;">
+                <label style="font-weight:700;font-size:13.5px;color:#184f59;display:block;margin-bottom:4px;">1. Categorias de E-mail da Conta (Destinatários):</label>
+                <p class="sub-hint" style="margin:0 0 8px;">Selecione as categorias que receberão o comunicado das obrigações deste departamento:</p>
+                <div id="batchEmailCategoriasContainer" style="display:flex;flex-wrap:wrap;gap:8px;padding:10px;background:#fbfdfc;border:1px solid #c8d9d6;border-radius:6px;max-height:120px;overflow-y:auto;">
+                  <span style="font-size:12px;color:var(--text-muted);">Carregando categorias…</span>
+                </div>
+              </div>
+
+              <!-- 2. ASSUNTO DO E-MAIL -->
+              <div style="margin-bottom:16px;">
+                <label style="font-weight:700;font-size:13.5px;color:#184f59;display:block;margin-bottom:4px;">2. Assunto Padrão do E-mail:</label>
+                <input id="batchEmailAssunto" type="text" value="[obrigacao.nome] - [tarefa.competencia]" placeholder="Ex.: [obrigacao.nome] - [tarefa.competencia]" style="width:100%;padding:9px 12px;font-size:13px;border:1px solid #c8d9d6;border-radius:6px;">
+              </div>
+
+              <!-- 3. CORPO DO E-MAIL -->
+              <div style="margin-bottom:18px;">
+                <label style="font-weight:700;font-size:13.5px;color:#184f59;display:block;margin-bottom:4px;">3. Corpo Padrão do E-mail:</label>
+                <textarea id="batchEmailCorpo" rows="5" style="width:100%;padding:10px 12px;font-size:13px;line-height:1.45;border:1px solid #c8d9d6;border-radius:6px;">Olá [cliente.apelido],
+
+Segue [obrigacao.nome] referente a [tarefa.competencia], com o vencimento: [tarefa.vencimento].
+
+Qualquer dúvida, ficamos à disposição!
+
+Atenciosamente,</textarea>
+                <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;">
+                  <button type="button" class="ghost tag-btn" style="font-size:11px;padding:2px 6px;" onclick="insertTagIntoBatchEmail('[cliente.apelido]')">+ [cliente.apelido]</button>
+                  <button type="button" class="ghost tag-btn" style="font-size:11px;padding:2px 6px;" onclick="insertTagIntoBatchEmail('[obrigacao.nome]')">+ [obrigacao.nome]</button>
+                  <button type="button" class="ghost tag-btn" style="font-size:11px;padding:2px 6px;" onclick="insertTagIntoBatchEmail('[tarefa.competencia]')">+ [tarefa.competencia]</button>
+                  <button type="button" class="ghost tag-btn" style="font-size:11px;padding:2px 6px;" onclick="insertTagIntoBatchEmail('[tarefa.vencimento]')">+ [tarefa.vencimento]</button>
+                </div>
+              </div>
+
+              <!-- 4. FORMAS DE ENVIO & ANEXOS -->
+              <div style="background:#eef7f5;border:1px solid #cfe5e0;border-radius:8px;padding:14px 16px;margin-bottom:20px;">
+                <label style="font-weight:700;font-size:13.5px;color:#184f59;display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+                  <span>⚙️</span> Forma de Envio e Anexos Automáticos
+                </label>
+                <div style="display:grid;grid-template-columns:1fr auto;gap:16px;align-items:center;">
+                  <div>
+                    <label style="font-size:12px;color:#4a6560;display:block;margin-bottom:4px;">Gatilho de Envio:</label>
+                    <select id="batchEmailAutomacao" style="width:100%;padding:7px 10px;font-size:12.5px;">
+                      <option value="1" selected>Envio automático na conclusão da tarefa (Recomendado)</option>
+                      <option value="">Envio manual</option>
+                      <option value="4">Envio programado na data de ação da tarefa</option>
+                    </select>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:8px;padding-top:16px;">
+                    <input id="batchEmailAnexarTodos" type="checkbox" checked style="cursor:pointer;">
+                    <label for="batchEmailAnexarTodos" style="font-size:12.5px;font-weight:600;color:#184f59;cursor:pointer;">Marcar todos os arquivos como Anexos</label>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 5. CONFIGURAÇÃO DA ATIVIDADE NA TABELA (CANCELAMENTO & CLIENTES) -->
+              <div style="background:#f9fbfb;border:1px solid #dbe6e4;border-radius:8px;padding:14px 16px;margin-bottom:20px;">
+                <label style="font-weight:700;font-size:13.5px;color:#184f59;display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+                  <span>📋</span> Configuração da Linha da Atividade (Tabela de Atividades)
+                </label>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+                  <div>
+                    <label for="batchEmailCancelamento" style="font-size:12px;font-weight:600;color:#184f59;display:block;margin-bottom:4px;">Tipo de Cancelamento:</label>
+                    <select id="batchEmailCancelamento" style="width:100%;padding:7px 10px;font-size:12.5px;border:1px solid #c8d9d6;border-radius:6px;">
+                      <option value="1" selected>Com justificativa (Padrão)</option>
+                      <option value="0">Sem justificativa</option>
+                      <option value="2">Sem cancelamento</option>
+                    </select>
+                    <span class="sub-hint" style="font-size:11px;margin-top:2px;display:block;">Coluna "Tipo de cancelamento" na linha de envio de e-mail.</span>
+                  </div>
+                  <div>
+                    <label for="batchEmailParticularidade" style="font-size:12px;font-weight:600;color:#184f59;display:block;margin-bottom:4px;">Clientes (Particularidade):</label>
+                    <select id="batchEmailParticularidade" style="width:100%;padding:7px 10px;font-size:12.5px;border:1px solid #c8d9d6;border-radius:6px;">
+                      <option value="">Carregando particularidades da conta…</option>
+                    </select>
+                    <span class="sub-hint" style="font-size:11px;margin-top:2px;display:block;">Coluna "Clientes" (vínculo via modal de particularidade).</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- BOTÕES DO MODAL EM MASSA -->
+              <div style="display:flex;justify-content:flex-end;gap:10px;">
+                <button id="btnCancelBatchEmail" type="button" class="ghost" style="padding:8px 16px;font-size:13px;">Cancelar</button>
+                <button id="btnSubmitBatchEmail" type="button" class="primary" style="padding:8px 20px;font-size:13px;display:flex;align-items:center;gap:6px;">
+                  <span>🚀</span> Iniciar Configuração em Massa
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- MODAL DE CRIAÇÃO INDIVIDUAL DO PASSO DE WHATSAPP -->
+        <div id="modalCreateWhatsapp" style="display:none;position:fixed;inset:0;background:rgba(8,26,30,0.6);z-index:9999;align-items:center;justify-content:center;padding:20px;">
+          <div class="card" style="max-width:760px;width:100%;max-height:92vh;overflow-y:auto;padding:24px 28px;border-radius:10px;box-shadow:0 10px 40px rgba(0,0,0,0.3);">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;border-bottom:1px solid #edf3f2;padding-bottom:12px;">
+              <div>
+                <h3 style="margin:0 0 4px;font-size:18px;color:#184f59;">💬 Criar Passo de Envio de WhatsApp (DIGISAC)</h3>
+                <p id="createWhatsappSubhint" class="sub-hint" style="margin:0;">Adiciona o passo de envio de mensagem na aba Atividades mantendo a paridade 1:1.</p>
+              </div>
+              <button id="btnCloseCreateWhatsapp" type="button" class="ghost" style="font-size:20px;line-height:1;padding:4px 8px;cursor:pointer;">&times;</button>
+            </div>
+
+            <!-- DETALHES DA OBRIGAÇÃO -->
+            <div style="background:#f4f8f7;border:1px solid #dbe6e4;border-radius:8px;padding:12px 16px;margin-bottom:18px;display:flex;justify-content:space-between;align-items:center;">
+              <div>
+                <span id="createWhatsappObrigBadge" style="font-size:11px;background:#184f59;color:#fff;padding:2px 6px;border-radius:4px;font-weight:700;">#0</span>
+                <strong id="createWhatsappObrigNome" style="margin-left:8px;font-size:14px;color:#184f59;">Nome da Obrigação</strong>
+              </div>
+              <span id="createWhatsappDepto" style="font-size:12px;color:#4a6560;">Departamento</span>
+            </div>
+
+            <div id="createWhatsappFormContent">
+              <!-- 1. IDENTIFICAÇÃO DA ATIVIDADE -->
+              <div style="background:#f9fbfb;border:1px solid #dbe6e4;border-radius:8px;padding:14px 16px;margin-bottom:18px;">
+                <label style="font-weight:700;font-size:13.5px;color:#184f59;display:flex;align-items:center;gap:6px;margin-bottom:8px;">
+                  <span>➕</span> Nova Atividade no G-Click
+                </label>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+                  <div>
+                    <label style="font-size:12px;font-weight:600;color:#184f59;display:block;margin-bottom:4px;">Tipo da Atividade:</label>
+                    <input id="createWhatsappTipo" type="text" value="Atendimento: DIGISAC" readonly style="width:100%;padding:7px 10px;font-size:12.5px;background:#f0f4f3;border:1px solid #c8d9d6;border-radius:6px;color:#184f59;font-weight:600;">
+                  </div>
+                  <div>
+                    <label style="font-size:12px;font-weight:600;color:#184f59;display:block;margin-bottom:4px;">Texto para ser Adicionado:</label>
+                    <input id="createWhatsappTexto" type="text" value="Enviar Cliente" style="width:100%;padding:7px 10px;font-size:12.5px;border:1px solid #c8d9d6;border-radius:6px;">
+                  </div>
+                </div>
+              </div>
+
+              <!-- 2. DESTINATÁRIO (CATEGORIAS DO TELEFONE) -->
+              <div style="margin-bottom:18px;">
+                <label style="font-weight:700;font-size:13.5px;color:#184f59;display:block;margin-bottom:4px;">2. Destinatário (Categorias do telefone para seleção dos contatos):</label>
+                <p class="sub-hint" style="margin:0 0 8px;">Selecione as categorias que receberão o comunicado de WhatsApp:</p>
+                <div id="createWhatsappCategoriasContainer" style="display:flex;flex-wrap:wrap;gap:8px;padding:10px;background:#fbfdfc;border:1px solid #c8d9d6;border-radius:6px;max-height:120px;overflow-y:auto;">
+                  <span style="font-size:12px;color:var(--text-muted);">Carregando categorias…</span>
+                </div>
+              </div>
+
+              <!-- 3. CANAL DE WHATSAPP -->
+              <div style="margin-bottom:18px;">
+                <label for="createWhatsappCanal" style="font-weight:700;font-size:13.5px;color:#184f59;display:block;margin-bottom:4px;">3. Canal de Envio:</label>
+                <select id="createWhatsappCanal" style="width:100%;padding:8px 12px;font-size:13px;border:1px solid #c8d9d6;border-radius:6px;">
+                  <option value="">WHATSAPP - Atendimento (ou canal ativo)</option>
+                </select>
+                <span class="sub-hint" style="font-size:11px;margin-top:2px;display:block;">Canal configurado no Digisac / G-Click.</span>
+              </div>
+
+              <!-- 4. CORPO DA MENSAGEM WHATSAPP -->
+              <div style="margin-bottom:18px;">
+                <label style="font-weight:700;font-size:13.5px;color:#184f59;display:block;margin-bottom:4px;">4. Mensagem do WhatsApp:</label>
+                <textarea id="createWhatsappMensagem" rows="4" style="width:100%;padding:10px 12px;font-size:13px;line-height:1.45;border:1px solid #c8d9d6;border-radius:6px;">Olá [cliente.apelido],
+
+Segue [obrigacao.nome] referente a [tarefa.competencia], com o vencimento: [tarefa.vencimento].
+
+Qualquer dúvida, ficamos à disposição!
+
+Atenciosamente,</textarea>
+                <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;">
+                  <button type="button" class="ghost tag-btn" style="font-size:11px;padding:2px 6px;" onclick="insertTagIntoCreateWhatsapp('[cliente.apelido]')">+ [cliente.apelido]</button>
+                  <button type="button" class="ghost tag-btn" style="font-size:11px;padding:2px 6px;" onclick="insertTagIntoCreateWhatsapp('[obrigacao.nome]')">+ [obrigacao.nome]</button>
+                  <button type="button" class="ghost tag-btn" style="font-size:11px;padding:2px 6px;" onclick="insertTagIntoCreateWhatsapp('[tarefa.competencia]')">+ [tarefa.competencia]</button>
+                  <button type="button" class="ghost tag-btn" style="font-size:11px;padding:2px 6px;" onclick="insertTagIntoCreateWhatsapp('[tarefa.vencimento]')">+ [tarefa.vencimento]</button>
+                </div>
+              </div>
+
+              <!-- 5. GATILHO & ANEXOS -->
+              <div style="background:#eef7f5;border:1px solid #cfe5e0;border-radius:8px;padding:14px 16px;margin-bottom:18px;">
+                <label style="font-weight:700;font-size:13.5px;color:#184f59;display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+                  <span>⚙️</span> Forma de Envio e Anexos Automáticos
+                </label>
+                <div style="display:grid;grid-template-columns:1fr auto;gap:16px;align-items:center;">
+                  <div>
+                    <label style="font-size:12px;color:#4a6560;display:block;margin-bottom:4px;">Gatilho de Envio:</label>
+                    <select id="createWhatsappAutomacao" style="width:100%;padding:7px 10px;font-size:12.5px;">
+                      <option value="1" selected>Enviar mensagem automaticamente na conclusão da tarefa</option>
+                      <option value="">Envio manual</option>
+                    </select>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:8px;padding-top:16px;">
+                    <input id="createWhatsappAnexarTodos" type="checkbox" checked style="cursor:pointer;">
+                    <label for="createWhatsappAnexarTodos" style="font-size:12.5px;font-weight:600;color:#184f59;cursor:pointer;">Marcar arquivos como Anexos</label>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 6. CANCELAMENTO E PARTICULARIDADE (CLIENTES) -->
+              <div style="background:#f9fbfb;border:1px solid #dbe6e4;border-radius:8px;padding:14px 16px;margin-bottom:20px;">
+                <label style="font-weight:700;font-size:13.5px;color:#184f59;display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+                  <span>📋</span> Configuração da Linha (Tabela de Atividades)
+                </label>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+                  <div>
+                    <label for="createWhatsappCancelamento" style="font-size:12px;font-weight:600;color:#184f59;display:block;margin-bottom:4px;">Tipo de Cancelamento:</label>
+                    <select id="createWhatsappCancelamento" style="width:100%;padding:7px 10px;font-size:12.5px;border:1px solid #c8d9d6;border-radius:6px;">
+                      <option value="1" selected>Com justificativa (Padrão)</option>
+                      <option value="0">Sem justificativa</option>
+                      <option value="2">Sem cancelamento</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label for="createWhatsappParticularidade" style="font-size:12px;font-weight:600;color:#184f59;display:block;margin-bottom:4px;">Clientes (Particularidade):</label>
+                    <select id="createWhatsappParticularidade" style="width:100%;padding:7px 10px;font-size:12.5px;border:1px solid #c8d9d6;border-radius:6px;">
+                      <option value="542" selected>542 - Whats (ou equivalente)</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <!-- BOTÕES DO MODAL -->
+              <div style="display:flex;justify-content:flex-end;gap:10px;">
+                <button id="btnCancelCreateWhatsapp" type="button" class="ghost" style="padding:8px 16px;font-size:13px;">Cancelar</button>
+                <button id="btnSubmitCreateWhatsapp" type="button" class="primary" style="padding:8px 20px;font-size:13px;display:flex;align-items:center;gap:6px;">
+                  <span>💾</span> Criar e Gravar WhatsApp no G-Click
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- MODAL DE CRIAÇÃO DE WHATSAPP EM MASSA (LOTE) -->
+        <div id="modalBatchWhatsapp" style="display:none;position:fixed;inset:0;background:rgba(8,26,30,0.6);z-index:9999;align-items:center;justify-content:center;padding:20px;">
+          <div class="card" style="max-width:800px;width:100%;max-height:92vh;overflow-y:auto;padding:24px 28px;border-radius:10px;box-shadow:0 10px 40px rgba(0,0,0,0.3);">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;border-bottom:1px solid #edf3f2;padding-bottom:12px;">
+              <div>
+                <h3 style="margin:0 0 4px;font-size:18px;color:#184f59;">💬 Criar Passo de WhatsApp em Massa</h3>
+                <p id="batchWhatsappSubhint" class="sub-hint" style="margin:0;">Adicionando o passo de WhatsApp nas obrigações selecionadas do departamento com regra 1:1.</p>
+              </div>
+              <button id="btnCloseBatchWhatsapp" type="button" class="ghost" style="font-size:20px;line-height:1;padding:4px 8px;cursor:pointer;">&times;</button>
+            </div>
+
+            <!-- RESUMO DO LOTE -->
+            <div style="background:#f0f8f6;border:1px solid #c2e2dc;border-radius:8px;padding:12px 16px;margin-bottom:18px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+              <div>
+                <span id="batchWhatsappDeptoBadge" style="font-size:12px;background:#184f59;color:#fff;padding:3px 8px;border-radius:4px;font-weight:700;">Departamento</span>
+                <strong id="batchWhatsappTotalCount" style="margin-left:8px;font-size:13.5px;color:#184f59;">0 obrigações selecionadas</strong>
+              </div>
+              <span id="batchWhatsappListPreview" style="font-size:11.5px;color:#2c5b53;max-width:380px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></span>
+            </div>
+
+            <!-- PROCESSO / BARRA DE PROGRESSO -->
+            <div id="batchWhatsappProgressBox" style="display:none;margin-bottom:18px;padding:12px;background:#eef7f5;border:1px solid #b8d9d2;border-radius:6px;">
+              <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:600;color:#184f59;margin-bottom:6px;">
+                <span id="batchWhatsappProgressText">Criando passos de WhatsApp no G-Click...</span>
+                <span id="batchWhatsappProgressPerc">0%</span>
+              </div>
+              <progress id="batchWhatsappProgressBar" max="100" value="0" style="width:100%;height:10px;"></progress>
+            </div>
+
+            <div id="batchWhatsappFormContent">
+              <!-- 1. IDENTIFICAÇÃO DA ATIVIDADE -->
+              <div style="background:#f9fbfb;border:1px solid #dbe6e4;border-radius:8px;padding:14px 16px;margin-bottom:18px;">
+                <label style="font-weight:700;font-size:13.5px;color:#184f59;display:flex;align-items:center;gap:6px;margin-bottom:8px;">
+                  <span>➕</span> Parâmetros da Nova Atividade
+                </label>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+                  <div>
+                    <label style="font-size:12px;font-weight:600;color:#184f59;display:block;margin-bottom:4px;">Tipo da Atividade:</label>
+                    <input id="batchWhatsappTipo" type="text" value="Atendimento: DIGISAC" readonly style="width:100%;padding:7px 10px;font-size:12.5px;background:#f0f4f3;border:1px solid #c8d9d6;border-radius:6px;color:#184f59;font-weight:600;">
+                  </div>
+                  <div>
+                    <label style="font-size:12px;font-weight:600;color:#184f59;display:block;margin-bottom:4px;">Texto para ser Adicionado:</label>
+                    <input id="batchWhatsappTexto" type="text" value="Enviar Cliente" style="width:100%;padding:7px 10px;font-size:12.5px;border:1px solid #c8d9d6;border-radius:6px;">
+                  </div>
+                </div>
+              </div>
+
+              <!-- 2. DESTINATÁRIO (CATEGORIAS DO TELEFONE) -->
+              <div style="margin-bottom:18px;">
+                <label style="font-weight:700;font-size:13.5px;color:#184f59;display:block;margin-bottom:4px;">2. Destinatário (Categorias do telefone para seleção dos contatos):</label>
+                <p class="sub-hint" style="margin:0 0 8px;">Selecione as categorias que receberão o comunicado de WhatsApp para este departamento:</p>
+                <div id="batchWhatsappCategoriasContainer" style="display:flex;flex-wrap:wrap;gap:8px;padding:10px;background:#fbfdfc;border:1px solid #c8d9d6;border-radius:6px;max-height:120px;overflow-y:auto;">
+                  <span style="font-size:12px;color:var(--text-muted);">Carregando categorias…</span>
+                </div>
+              </div>
+
+              <!-- 3. CANAL DE WHATSAPP -->
+              <div style="margin-bottom:18px;">
+                <label for="batchWhatsappCanal" style="font-weight:700;font-size:13.5px;color:#184f59;display:block;margin-bottom:4px;">3. Canal de Envio:</label>
+                <select id="batchWhatsappCanal" style="width:100%;padding:8px 12px;font-size:13px;border:1px solid #c8d9d6;border-radius:6px;">
+                  <option value="">WHATSAPP - Atendimento (ou canal ativo)</option>
+                </select>
+                <span class="sub-hint" style="font-size:11px;margin-top:2px;display:block;">Canal configurado no Digisac / G-Click.</span>
+              </div>
+
+              <!-- 4. CORPO DA MENSAGEM WHATSAPP -->
+              <div style="margin-bottom:18px;">
+                <label style="font-weight:700;font-size:13.5px;color:#184f59;display:block;margin-bottom:4px;">4. Mensagem Padrão do WhatsApp:</label>
+                <textarea id="batchWhatsappMensagem" rows="4" style="width:100%;padding:10px 12px;font-size:13px;line-height:1.45;border:1px solid #c8d9d6;border-radius:6px;">Olá [cliente.apelido],
+
+Segue [obrigacao.nome] referente a [tarefa.competencia], com o vencimento: [tarefa.vencimento].
+
+Qualquer dúvida, ficamos à disposição!
+
+Atenciosamente,</textarea>
+                <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;">
+                  <button type="button" class="ghost tag-btn" style="font-size:11px;padding:2px 6px;" onclick="insertTagIntoBatchWhatsapp('[cliente.apelido]')">+ [cliente.apelido]</button>
+                  <button type="button" class="ghost tag-btn" style="font-size:11px;padding:2px 6px;" onclick="insertTagIntoBatchWhatsapp('[obrigacao.nome]')">+ [obrigacao.nome]</button>
+                  <button type="button" class="ghost tag-btn" style="font-size:11px;padding:2px 6px;" onclick="insertTagIntoBatchWhatsapp('[tarefa.competencia]')">+ [tarefa.competencia]</button>
+                  <button type="button" class="ghost tag-btn" style="font-size:11px;padding:2px 6px;" onclick="insertTagIntoBatchWhatsapp('[tarefa.vencimento]')">+ [tarefa.vencimento]</button>
+                </div>
+              </div>
+
+              <!-- 5. GATILHO & ANEXOS -->
+              <div style="background:#eef7f5;border:1px solid #cfe5e0;border-radius:8px;padding:14px 16px;margin-bottom:18px;">
+                <label style="font-weight:700;font-size:13.5px;color:#184f59;display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+                  <span>⚙️</span> Forma de Envio e Anexos Automáticos
+                </label>
+                <div style="display:grid;grid-template-columns:1fr auto;gap:16px;align-items:center;">
+                  <div>
+                    <label style="font-size:12px;color:#4a6560;display:block;margin-bottom:4px;">Gatilho de Envio:</label>
+                    <select id="batchWhatsappAutomacao" style="width:100%;padding:7px 10px;font-size:12.5px;">
+                      <option value="1" selected>Enviar mensagem automaticamente na conclusão da tarefa</option>
+                      <option value="">Envio manual</option>
+                    </select>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:8px;padding-top:16px;">
+                    <input id="batchWhatsappAnexarTodos" type="checkbox" checked style="cursor:pointer;">
+                    <label for="batchWhatsappAnexarTodos" style="font-size:12.5px;font-weight:600;color:#184f59;cursor:pointer;">Marcar arquivos como Anexos</label>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 6. CANCELAMENTO E PARTICULARIDADE (CLIENTES) -->
+              <div style="background:#f9fbfb;border:1px solid #dbe6e4;border-radius:8px;padding:14px 16px;margin-bottom:20px;">
+                <label style="font-weight:700;font-size:13.5px;color:#184f59;display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+                  <span>📋</span> Configuração da Linha (Tabela de Atividades)
+                </label>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+                  <div>
+                    <label for="batchWhatsappCancelamento" style="font-size:12px;font-weight:600;color:#184f59;display:block;margin-bottom:4px;">Tipo de Cancelamento:</label>
+                    <select id="batchWhatsappCancelamento" style="width:100%;padding:7px 10px;font-size:12.5px;border:1px solid #c8d9d6;border-radius:6px;">
+                      <option value="1" selected>Com justificativa (Padrão)</option>
+                      <option value="0">Sem justificativa</option>
+                      <option value="2">Sem cancelamento</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label for="batchWhatsappParticularidade" style="font-size:12px;font-weight:600;color:#184f59;display:block;margin-bottom:4px;">Clientes (Particularidade):</label>
+                    <select id="batchWhatsappParticularidade" style="width:100%;padding:7px 10px;font-size:12.5px;border:1px solid #c8d9d6;border-radius:6px;">
+                      <option value="542" selected>542 - Whats (ou equivalente)</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <!-- BOTÕES DO MODAL EM MASSA -->
+              <div style="display:flex;justify-content:flex-end;gap:10px;">
+                <button id="btnCancelBatchWhatsapp" type="button" class="ghost" style="padding:8px 16px;font-size:13px;">Cancelar</button>
+                <button id="btnSubmitBatchWhatsapp" type="button" class="primary" style="padding:8px 20px;font-size:13px;display:flex;align-items:center;gap:6px;">
+                  <span>🚀</span> Iniciar Criação de WhatsApp em Massa
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- SEÇÃO 7: ADMINISTRAÇÃO & USUÁRIOS (RBAC) -->
       <div id="section-users" class="app-section" hidden>
         <div class="section-banner">

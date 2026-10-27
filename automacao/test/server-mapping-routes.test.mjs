@@ -55,10 +55,17 @@ test('server-mapping-flow: perfil com Cod. (empId) e tarefa é válido para enqu
 });
 
 test('server-mapping-flow: auto-matching associa respostas por código interno e nome exato', async () => {
-  const fs = await import('node:fs/promises');
-  const path = await import('node:path');
-  const catalogPath = path.resolve('catalogos/2420.json');
-  const catalog = JSON.parse(await fs.readFile(catalogPath, 'utf8'));
+  const catalog = {
+    questions: [
+      {
+        ref: '04.06',
+        answers: [
+          { ref: '04.06.01', label: 'COM X SINCOMERCIO', display: 'COM X SINCOMERCIO', value: '580' },
+          { ref: '04.06.13', label: 'COMERCIÁRIOS X SINCOPEÇAS', display: 'COMERCIÁRIOS X SINCOPEÇAS', value: '590' }
+        ]
+      }
+    ]
+  };
 
   // Simula findAutoMatch
   const normTask = value => String(value ?? '').trim().replace(/\s+/g, ' ').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('pt-BR');

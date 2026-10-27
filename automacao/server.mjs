@@ -12,7 +12,21 @@ import { LOGIN_URL, hasGclickSession, openBrowser, openQuestion, questionStillOp
 import { readPublicGoogleCsv, readWithServiceAccount, parseSheetUrl } from './lib/google-service.mjs';
 import { appsScriptSource, validScriptUrl, testSheetWriter, writeMarks, writeAuditLog } from './lib/sheet-writer.mjs';
 import { listCsvDownloads, readCsvDownload } from './lib/downloads.mjs';
-import { inspectObrigacoesPage } from './lib/obrigacoes.mjs';
+import {
+  inspectObrigacoesPage,
+  extractObrigacoesList,
+  syncObrigacoesComCanais,
+  auditObrigacoesList,
+  classifyObrigacaoParidade,
+  inspectEmailConfig,
+  configureEmailActivity,
+  configureBatchEmailActivities,
+  applyWhatsappActivity,
+  mapWhatsappFlow,
+  inspectWhatsappConfig,
+  createAndConfigureWhatsappActivity,
+  configureBatchWhatsappActivities
+} from './lib/obrigacoes.mjs';
 import { buildAuditLogRows, auditLogCsv } from './lib/audit-logger.mjs';
 import { AuthService } from './lib/auth-service.mjs';
 
@@ -49,6 +63,29 @@ let accountSettings = {};
 try { accountSettings = JSON.parse(await fs.readFile(accountsFile, 'utf8')); }
 catch (error) { if (error.code !== 'ENOENT') throw error; }
 if (!accountSettings || typeof accountSettings !== 'object' || Array.isArray(accountSettings)) throw new Error('contas.json inválido');
+const obrigacoesTemplatesFile = path.join(root, 'obrigacoes-templates.json');
+let savedObrigacoesTemplates = {};
+try { savedObrigacoesTemplates = JSON.parse(await fs.readFile(obrigacoesTemplatesFile, 'utf8')); }
+catch (error) { if (error.code !== 'ENOENT') console.warn('Erro ao ler templates de obrigações:', error); }
+function getDefaultTemplates() {
+  return {
+    whatsapp: {
+      habilitado: true,
+      particularidadeId: '539',
+      textoAtividade: 'Atendimento: DIGISAC / WhatsApp',
+      texto: 'Olá, tudo bem?\n\nInformamos que a obrigação [obrigacao.nome] referente ao período [tarefa.competencia] está disponível para download e conferência.\n\nVencimento: [tarefa.vencimento].\n\nQualquer dúvida, estamos à disposição!'
+    },
+    email: {
+      assunto: '[obrigacao.nome] - [tarefa.competencia]',
+      texto: '<p>Olá [cliente.apelido],</p><p>Segue [obrigacao.nome] referente a [tarefa.competencia], com o vencimento: [tarefa.vencimento].</p><p>Qualquer dúvida, ficamos à disposição!</p><p>Atenciosamente,</p>'
+    }
+  };
+}
+async function saveObrigacoesTemplates() {
+  const temp = `${obrigacoesTemplatesFile}.tmp-${process.pid}-${crypto.randomBytes(3).toString('hex')}`;
+  await fs.writeFile(temp, JSON.stringify(savedObrigacoesTemplates, null, 2) + '\n', { mode: 0o600 });
+  await fs.rename(temp, obrigacoesTemplatesFile);
+}
 let busy = false, loginContext = null, loginLock = null, loginReady = false, catalogState = null, lastReport = null, previewState = null;
 let auditProgress = { running: false, completed: 0, total: 0, task: '', error: null };
 let autoAttemptedAccountId = null;
@@ -419,7 +456,7 @@ async function route(req, res) {
     token, savedMappings, savedProfiles, targetModels: TARGET_MODELS, availableFields: AVAILABLE_FIELDS,
     accounts: await listStoredAccounts(), loginOpen: Boolean(loginContext), loginReady, sessionLostAt,
     catalog: loginReady ? catalogState : null, catalogLive: Boolean(catalogState && loginReady), busy,
-    user: currentUser ?? null
+    user: currentUser ?? null, headless: process.env.GCLICK_HEADLESS === 'true'
   });
 
   if (req.method === 'GET' && url.pathname === '/api/users') {
@@ -580,6 +617,365 @@ async function route(req, res) {
         }
       } finally {
         if (shouldClose) await context.close();
+      }
+    }, true));
+  }
+  if (url.pathname === '/api/obrigacoes/catalog') {
+    const accountId = payload.accountId ? String(payload.accountId).trim() : '6581';
+    const catalogPath = path.join(catalogsDir, `obrigacoes-${accountId}.json`);
+    let items = [];
+    let source = 'none';
+    try {
+      items = JSON.parse(await fs.readFile(catalogPath, 'utf8'));
+      source = 'file';
+    } catch (e) {
+      if (e.code !== 'ENOENT') console.error('Erro ao ler catálogo de obrigações:', e);
+    }
+    const isLive = Boolean(loginContext && loginReady && catalogState?.accountId === accountId);
+    return send(res, 200, {
+      accountId,
+      items,
+      total: items.length,
+      source,
+      live: isLive
+    });
+  }
+  if (url.pathname === '/api/obrigacoes/sync-catalog') {
+    const accountId = requireAccount(payload.accountId ?? '6581');
+    if (!loginContext || !loginReady) {
+      return send(res, 400, {
+        error: 'Sessão do G-Click não conectada. Conecte sua conta no menu "Conexão & Conta G-Click" antes de sincronizar as obrigações.'
+      });
+    }
+    return send(res, 200, await exclusive(async () => {
+      console.log(`[OBRIGACOES] Iniciando sincronização filtrada para a conta ${accountId}…`);
+      const page = await loginContext.newPage();
+      try {
+        const result = await syncObrigacoesComCanais(page, {
+          accountId,
+          onProgress: (p) => {
+            if (p.status === 'inspecting_item') {
+              console.log(`[OBRIGACOES] Analisando ${p.current}/${p.total}: ${p.nome} (encontradas com canais: ${p.matched})`);
+            }
+          }
+        });
+        const catalogPath = path.join(catalogsDir, `obrigacoes-${accountId}.json`);
+        await fs.writeFile(catalogPath, JSON.stringify(result.items, null, 2), 'utf8');
+        console.log(`[OBRIGACOES] Sincronização concluída: ${result.totalImported} de ${result.totalScanned} importadas.`);
+        return {
+          success: true,
+          accountId,
+          items: result.items,
+          total: result.totalImported,
+          totalScanned: result.totalScanned,
+          source: 'live'
+        };
+      } finally {
+        await page.close().catch(() => {});
+      }
+    }, true));
+  }
+  if (url.pathname === '/api/obrigacoes/templates') {
+    const accountId = payload.accountId ? String(payload.accountId).trim() : '6581';
+    const templates = savedObrigacoesTemplates[accountId] || getDefaultTemplates();
+    return send(res, 200, { accountId, templates });
+  }
+  if (url.pathname === '/api/obrigacoes/templates/save') {
+    const accountId = requireAccount(payload.accountId ?? '6581');
+    if (!payload.templates || typeof payload.templates !== 'object') {
+      throw new Error('Templates inválidos');
+    }
+    savedObrigacoesTemplates[accountId] = payload.templates;
+    await saveObrigacoesTemplates();
+    return send(res, 200, { success: true, accountId, templates: savedObrigacoesTemplates[accountId] });
+  }
+  if (url.pathname === '/api/obrigacoes/audit') {
+    const accountId = payload.accountId ? String(payload.accountId).trim() : '6581';
+    let items = payload.items;
+    if (!Array.isArray(items) || items.length === 0) {
+      const catalogPath = path.join(catalogsDir, `obrigacoes-${accountId}.json`);
+      try {
+        items = JSON.parse(await fs.readFile(catalogPath, 'utf8'));
+      } catch {
+        items = [];
+      }
+    }
+    const auditResult = auditObrigacoesList(items);
+    return send(res, 200, { accountId, ...auditResult });
+  }
+  if (url.pathname === '/api/obrigacoes/email-inspect') {
+    const accountId = requireAccount(payload.accountId ?? '6581');
+    const id = payload.id;
+    const coid = payload.coid;
+    if (!id || !coid) throw new Error('Parâmetros id e coid são obrigatórios');
+    if (!loginContext || !loginReady) {
+      return send(res, 400, {
+        error: 'Sessão do G-Click não conectada. Conecte sua conta no menu "Conexão & Conta G-Click" antes de inspecionar a obrigação.'
+      });
+    }
+    return send(res, 200, await exclusive(async () => {
+      const page = await loginContext.newPage();
+      try {
+        const config = await inspectEmailConfig(page, {
+          id,
+          coid,
+          empId: accountId
+        });
+        return {
+          success: true,
+          accountId,
+          id,
+          coid,
+          ...config
+        };
+      } finally {
+        await page.close().catch(() => {});
+      }
+    }, true));
+  }
+  if (url.pathname === '/api/obrigacoes/fix-email') {
+    const accountId = requireAccount(payload.accountId ?? '6581');
+    const id = payload.id;
+    const coid = payload.coid;
+    if (!id || !coid) throw new Error('Parâmetros id e coid são obrigatórios');
+    if (!loginContext || !loginReady) {
+      return send(res, 400, {
+        error: 'Sessão do G-Click não conectada. Conecte sua conta no menu "Conexão & Conta G-Click" antes de ajustar a obrigação.'
+      });
+    }
+    return send(res, 200, await exclusive(async () => {
+      const page = await loginContext.newPage();
+      try {
+        const resConfig = await configureEmailActivity(page, {
+          id,
+          coid,
+          empId: accountId,
+          categorias: payload.categorias ?? [],
+          assunto: payload.assunto ?? '',
+          corpoTexto: payload.corpoTexto ?? '',
+          automacao: payload.automacao ?? '1',
+          anexarTodos: payload.anexarTodos !== false,
+          tipoCancelamento: payload.tipoCancelamento ?? '1',
+          particularidadeCliente: payload.particularidadeCliente ?? null
+        });
+        return {
+          success: true,
+          accountId,
+          ...resConfig
+        };
+      } finally {
+        await page.close().catch(() => {});
+      }
+    }, true));
+  }
+  if (url.pathname === '/api/obrigacoes/fix-email-batch') {
+    const accountId = requireAccount(payload.accountId ?? '6581');
+    const items = Array.isArray(payload.items) ? payload.items : [];
+    if (items.length === 0) throw new Error('Selecione pelo menos uma obrigação para configurar em lote.');
+    const departamento = String(payload.departamento ?? '').trim();
+    if (!departamento) throw new Error('Para a ação em massa, o departamento deve estar obrigatoriamente selecionado no filtro.');
+    if (!loginContext || !loginReady) {
+      return send(res, 400, {
+        error: 'Sessão do G-Click não conectada. Conecte sua conta no menu "Conexão & Conta G-Click" antes de ajustar as obrigações em lote.'
+      });
+    }
+    return send(res, 200, await exclusive(async () => {
+      const page = await loginContext.newPage();
+      try {
+        const batchRes = await configureBatchEmailActivities(page, {
+          items,
+          empId: accountId,
+          config: {
+            categorias: payload.categorias ?? [],
+            assunto: payload.assunto ?? '',
+            corpoTexto: payload.corpoTexto ?? '',
+            automacao: payload.automacao ?? '1',
+            anexarTodos: payload.anexarTodos !== false,
+            tipoCancelamento: payload.tipoCancelamento ?? '1',
+            particularidadeCliente: payload.particularidadeCliente ?? null
+          }
+        });
+        return {
+          success: true,
+          accountId,
+          departamento,
+          ...batchRes
+        };
+      } finally {
+        await page.close().catch(() => {});
+      }
+    }, true));
+  }
+  if (url.pathname === '/api/obrigacoes/whatsapp-inspect') {
+    const accountId = requireAccount(payload.accountId ?? '6019');
+    const id = payload.id;
+    const coid = payload.coid;
+    if (!id || !coid) throw new Error('Parâmetros id e coid são obrigatórios');
+    if (!loginContext || !loginReady) {
+      return send(res, 400, {
+        error: 'Sessão do G-Click não conectada. Conecte sua conta no menu "Conexão & Conta G-Click" antes de inspecionar o WhatsApp.'
+      });
+    }
+    return send(res, 200, await exclusive(async () => {
+      const page = await loginContext.newPage();
+      try {
+        const inspectRes = await inspectWhatsappConfig(page, {
+          id,
+          coid,
+          empId: accountId
+        });
+        return {
+          accountId,
+          ...inspectRes
+        };
+      } finally {
+        await page.close().catch(() => {});
+      }
+    }, true));
+  }
+  if (url.pathname === '/api/obrigacoes/create-whatsapp') {
+    const accountId = requireAccount(payload.accountId ?? '6019');
+    const id = payload.id;
+    const coid = payload.coid;
+    if (!id || !coid) throw new Error('Parâmetros id e coid são obrigatórios');
+    if (!loginContext || !loginReady) {
+      return send(res, 400, {
+        error: 'Sessão do G-Click não conectada. Conecte sua conta no menu "Conexão & Conta G-Click" antes de criar o passo de WhatsApp.'
+      });
+    }
+    return send(res, 200, await exclusive(async () => {
+      const page = await loginContext.newPage();
+      try {
+        const resConfig = await createAndConfigureWhatsappActivity(page, {
+          id,
+          coid,
+          empId: accountId,
+          tipoDesejado: payload.tipoDesejado ?? 'Atendimento: DIGISAC',
+          textoDesejado: payload.textoDesejado ?? 'Enviar Cliente',
+          categorias: Array.isArray(payload.categorias) ? payload.categorias : [],
+          canal: payload.canal ?? 'WHATSAPP - Atendimento',
+          mensagemTexto: payload.mensagemTexto ?? '',
+          automacao: payload.automacao ?? '1',
+          anexarTodos: payload.anexarTodos !== false,
+          tipoCancelamento: payload.tipoCancelamento ?? '1',
+          particularidadeCliente: payload.particularidadeCliente ?? '542'
+        });
+
+        // Atualiza a obrigação no catálogo local salvo se existir
+        const catalogPath = path.join(catalogsDir, `obrigacoes-${accountId}.json`);
+        try {
+          const raw = await fs.readFile(catalogPath, 'utf8');
+          const list = JSON.parse(raw);
+          const item = list.find(o => String(o.id) === String(id));
+          if (item && !resConfig.skipped && Array.isArray(resConfig.atividadesFinais)) {
+            item.atividades = resConfig.atividadesFinais;
+            item.paridade = classifyObrigacaoParidade(item.atividades, item);
+            await fs.writeFile(catalogPath, JSON.stringify(list, null, 2), 'utf8');
+          }
+        } catch (e) {
+          console.warn('Catálogo local não pôde ser atualizado após criação de WhatsApp:', e.message);
+        }
+
+        return {
+          accountId,
+          ...resConfig
+        };
+      } finally {
+        await page.close().catch(() => {});
+      }
+    }, true));
+  }
+  if (url.pathname === '/api/obrigacoes/create-whatsapp-batch') {
+    const accountId = requireAccount(payload.accountId ?? '6019');
+    const items = Array.isArray(payload.items) ? payload.items : [];
+    if (items.length === 0) throw new Error('Selecione pelo menos uma obrigação para configurar WhatsApp em lote.');
+    const departamento = String(payload.departamento ?? '').trim();
+    if (!departamento) throw new Error('Para a ação em massa, o departamento deve estar obrigatoriamente selecionado no filtro.');
+    if (!loginContext || !loginReady) {
+      return send(res, 400, {
+        error: 'Sessão do G-Click não conectada. Conecte sua conta no menu "Conexão & Conta G-Click" antes de ajustar as obrigações em lote.'
+      });
+    }
+    return send(res, 200, await exclusive(async () => {
+      const page = await loginContext.newPage();
+      try {
+        const batchRes = await configureBatchWhatsappActivities(page, {
+          items,
+          empId: accountId,
+          config: {
+            tipoDesejado: payload.tipoDesejado ?? 'Atendimento: DIGISAC',
+            textoDesejado: payload.textoDesejado ?? 'Enviar Cliente',
+            categorias: Array.isArray(payload.categorias) ? payload.categorias : [],
+            canal: payload.canal ?? 'WHATSAPP - Atendimento',
+            mensagemTexto: payload.mensagemTexto ?? '',
+            automacao: payload.automacao ?? '1',
+            anexarTodos: payload.anexarTodos !== false,
+            tipoCancelamento: payload.tipoCancelamento ?? '1',
+            particularidadeCliente: payload.particularidadeCliente ?? '542'
+          }
+        });
+
+        // Atualiza o catálogo local
+        const catalogPath = path.join(catalogsDir, `obrigacoes-${accountId}.json`);
+        try {
+          const raw = await fs.readFile(catalogPath, 'utf8');
+          const list = JSON.parse(raw);
+          const finaisPorId = new Map(
+            batchRes.results
+              .filter(r => r.success && !r.skipped && Array.isArray(r.details?.atividadesFinais))
+              .map(r => [String(r.id), r.details.atividadesFinais])
+          );
+          for (const item of list) {
+            const finais = finaisPorId.get(String(item.id));
+            if (finais) {
+              item.atividades = finais;
+              item.paridade = classifyObrigacaoParidade(item.atividades, item);
+            }
+          }
+          await fs.writeFile(catalogPath, JSON.stringify(list, null, 2), 'utf8');
+        } catch (e) {
+          console.warn('Catálogo local não pôde ser atualizado após criação em lote de WhatsApp:', e.message);
+        }
+
+        return {
+          success: true,
+          accountId,
+          departamento,
+          ...batchRes
+        };
+      } finally {
+        await page.close().catch(() => {});
+      }
+    }, true));
+  }
+  if (url.pathname === '/api/obrigacoes/whatsapp-map') {
+    const accountId = requireAccount(payload.accountId ?? '6019');
+    const id = payload.id ?? 9;
+    const coid = payload.coid ?? 4;
+    const tipoDesejado = payload.tipoDesejado ?? 'Atendimento: DIGISAC';
+    const textoDesejado = payload.textoDesejado ?? 'Enviar Cliente';
+    if (!loginContext || !loginReady) {
+      return send(res, 400, {
+        error: 'Sessão do G-Click não conectada. Conecte sua conta no menu "Conexão & Conta G-Click" antes de mapear o WhatsApp.'
+      });
+    }
+    return send(res, 200, await exclusive(async () => {
+      const page = await loginContext.newPage();
+      try {
+        const mapResult = await mapWhatsappFlow(page, {
+          id,
+          coid,
+          empId: accountId,
+          tipoDesejado,
+          textoDesejado
+        });
+        return {
+          success: true,
+          accountId,
+          ...mapResult
+        };
+      } finally {
+        await page.close().catch(() => {});
       }
     }, true));
   }
