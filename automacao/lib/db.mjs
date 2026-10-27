@@ -10,12 +10,16 @@ let instance = null;
 export function getDatabase(customPath = null) {
   if (customPath) {
     const db = new DatabaseSync(customPath);
+    db.exec('PRAGMA busy_timeout = 5000;');
+    db.exec('PRAGMA journal_mode = WAL;');
     db.exec('PRAGMA foreign_keys = ON;');
     initSchema(db);
     return db;
   }
   if (!instance) {
     instance = new DatabaseSync(defaultDbPath);
+    instance.exec('PRAGMA busy_timeout = 5000;');
+    instance.exec('PRAGMA journal_mode = WAL;');
     instance.exec('PRAGMA foreign_keys = ON;');
     initSchema(instance);
   }

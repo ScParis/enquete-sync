@@ -9,7 +9,14 @@ const RESULTS_PAGE_SIZE = 50;
 const labels = { vazio: 'Sem resposta', ja_correto: 'Já correto', divergente: 'Divergente', nao_encontrado: 'Não localizado', bloqueado: 'Bloqueado', sem_mapeamento: 'Sem mapeamento', sem_tarefa: 'Sem obrigação na planilha', nao_verificado: 'Não verificado', a_conferir: 'A conferir', pronto: 'Elegível' };
 let focusTask = null, auditRunning = false, auditMessage = '';
 const ACCOUNT_KEY = 'gclick.lastAccount';
-const currentAccount = () => $('accountId').value.trim();
+const currentAccount = () => {
+  const val = $('accountId')?.value?.trim();
+  if (val && /^\d+$/.test(val)) return val;
+  if (lastKnownAccountId && /^\d+$/.test(lastKnownAccountId)) return lastKnownAccountId;
+  const topText = $('topAccountId')?.textContent?.trim();
+  if (topText && topText !== '—' && /^\d+$/.test(topText)) return topText;
+  return val || '';
+};
 function status(message, kind = '') { $('status').textContent = message; $('status').className = `status ${kind}`; }
 function sourceStatus(message, kind = '') { $('sourceStatus').textContent = message; $('sourceStatus').className = `source-status ${kind}`; }
 function clearImportedTable() { importedTable = null; importedPage = 0; $('sourcePreview').hidden = true; $('sourceTable').replaceChildren(); }
@@ -243,12 +250,20 @@ let currentSessionStatus = null;
 let lastKnownAccountId = null;
 
 function updateTopAccountDisplay(accountId, empresaNome = undefined, sessionStatus = undefined) {
+  const previousId = lastKnownAccountId;
   if (accountId && accountId !== lastKnownAccountId) {
     lastKnownAccountId = accountId;
     if (empresaNome === undefined) currentEmpresaNome = null;
   }
   if (empresaNome !== undefined) currentEmpresaNome = empresaNome;
   if (sessionStatus !== undefined) currentSessionStatus = sessionStatus;
+
+  if (accountId && /^\d+$/.test(accountId)) {
+    if ($('accountId') && $('accountId').value !== accountId) {
+      $('accountId').value = accountId;
+    }
+    try { localStorage.setItem(ACCOUNT_KEY, accountId); } catch {}
+  }
 
   if ($('topAccountId')) $('topAccountId').textContent = accountId || '—';
   if ($('topAccountNome')) $('topAccountNome').textContent = currentEmpresaNome ? `· ${currentEmpresaNome}` : '';
@@ -268,27 +283,40 @@ function updateTopAccountDisplay(accountId, empresaNome = undefined, sessionStat
       badge.style.display = 'none';
     }
   }
+
+  // Se a conta mudou e a seção atual for obrigações, recarrega o catálogo da conta ativa
+  if (accountId && previousId && accountId !== previousId) {
+    try {
+      const activeSection = localStorage.getItem(SECTION_STORAGE_KEY);
+      if (activeSection === 'obrigacoes') {
+        loadObrigacoesSection();
+      }
+    } catch {}
+  }
 }
 
 function startLoginPoll() {
   if (loginPoll) return;
   loginPoll = setInterval(async () => {
-    if (working || loginPollBusy || !/^\d+$/.test(currentAccount())) return;
+    if (working || loginPollBusy) return;
     loginPollBusy = true;
     try {
       // 1. Endpoint observacional passivo /api/gclick/session
-      const res = await fetch(`/api/gclick/session?accountId=${encodeURIComponent(currentAccount())}`);
+      const currentAcc = currentAccount();
+      const queryParam = currentAcc ? `?accountId=${encodeURIComponent(currentAcc)}` : '';
+      const res = await fetch(`/api/gclick/session${queryParam}`);
       if (res.ok) {
         const result = await res.json().catch(() => null);
         if (result && result.browserStatus) {
-          updateTopAccountDisplay(currentAccount(), result.activeEmpresaNome, result.gclickAuthStatus);
+          const detectedAccount = result.currentEmpresaId || result.activeAccountId || currentAcc;
+          updateTopAccountDisplay(detectedAccount, result.activeEmpresaNome, result.gclickAuthStatus);
 
           if (result.gclickAuthStatus === 'login_detected') {
-            status(`Login detectado no G-Click pela URL da aba. Conta: ${currentAccount()}${result.activeEmpresaNome ? ` (${result.activeEmpresaNome})` : ''}. Para ler perguntas e respostas da Enquete, abra Enquete -> Mapeamento e clique em Buscar Perguntas e Respostas (Sob Demanda).`, 'ok');
+            status(`Login detectado no G-Click pela URL da aba. Conta: ${detectedAccount}${result.activeEmpresaNome ? ` (${result.activeEmpresaNome})` : ''}. Para ler perguntas e respostas da Enquete, abra Enquete -> Mapeamento e clique em Buscar Perguntas e Respostas (Sob Demanda).`, 'ok');
             stopLoginPoll();
             return;
           } else if (result.onEmpresas) {
-            status(`Login realizado. Selecione a empresa no G-Click (conta ${currentAccount()}) para continuar.`);
+            status(`Login realizado. Selecione a empresa no G-Click (conta ${detectedAccount}) para continuar.`);
             return;
           } else if (result.message) {
             status(result.message);
@@ -905,8 +933,8 @@ async function login(endpoint) {
       liveCatalog = null; catalogLive = false; renderCatalogOverview(); renderQueue();
       startLoginPoll();
     }
-    if (result.empresaNome) {
-      updateTopAccountDisplay(currentAccount(), result.empresaNome, result.stage === 'login_detected' ? 'login_detected' : 'logged_in');
+    if (result.accountId || result.empresaNome) {
+      updateTopAccountDisplay(result.accountId || currentAccount(), result.empresaNome, result.stage === 'login_detected' ? 'login_detected' : 'logged_in');
     }
     status(endpoint === 'login/open'
       ? 'Entre no G-Click na janela que abriu. Quando o login for detectado, abra Enquete -> Mapeamento e clique em Buscar Perguntas e Respostas (Sob Demanda).'
@@ -1468,8 +1496,14 @@ async function initApp() {
   if (config.user) renderUserSidebar(config.user);
 
   renderAccountList();
-  if (config.catalogLive && config.catalog?.accountId) $('accountId').value = config.catalog.accountId;
-  else { try { const last = localStorage.getItem(ACCOUNT_KEY); if (last) $('accountId').value = last; } catch { /* sem preferência local */ } }
+  if (config.catalogLive && config.catalog?.accountId) {
+    $('accountId').value = config.catalog.accountId;
+  } else {
+    try {
+      const last = localStorage.getItem(ACCOUNT_KEY);
+      if (last) $('accountId').value = last;
+    } catch { /* sem preferência local */ }
+  }
   updateTopAccountDisplay(currentAccount());
   if (config.catalog && config.catalogLive) useCatalog(config.catalog, true);
   else if (currentAccount()) await loadAccountCatalog();
@@ -1713,7 +1747,7 @@ function updateBatchBarState(filteredItems = []) {
 }
 
 async function loadObrigacoesSection() {
-  const accountId = currentAccount() || '6581';
+  const accountId = currentAccount() || (config.accounts && config.accounts[0] ? (typeof config.accounts[0] === 'string' ? config.accounts[0] : config.accounts[0].accountId) : '') || '6581';
   try {
     if ($('obrigMetricSource')) $('obrigMetricSource').textContent = 'Carregando catálogo da conta ' + accountId + '…';
     const res = await api('obrigacoes/catalog', { accountId });
@@ -1742,7 +1776,21 @@ async function loadObrigacoesSection() {
       }
     }
 
-    await runObrigacoesAudit();
+    const freqs = Array.from(new Set(obrigacoesList.map(o => o.frequencia).filter(Boolean))).sort();
+    const freqSelect = $('obrigFreqFilter');
+    if (freqSelect) {
+      const currentFreq = freqSelect.value;
+      freqSelect.innerHTML = '<option value="">Todas as Frequências</option>';
+      for (const f of freqs) {
+        const opt = document.createElement('option');
+        opt.value = f;
+        opt.textContent = f;
+        if (f === currentFreq) opt.selected = true;
+        freqSelect.appendChild(opt);
+      }
+    }
+
+    await runObrigacoesAudit(accountId);
     obrigacoesPage = 0;
     renderObrigacoesTable();
     updateSidebarBadges();
@@ -1752,8 +1800,8 @@ async function loadObrigacoesSection() {
   }
 }
 
-async function runObrigacoesAudit() {
-  const accountId = currentAccount() || '6581';
+async function runObrigacoesAudit(accountIdParam = null) {
+  const accountId = accountIdParam || currentAccount() || (config.accounts && config.accounts[0] ? (typeof config.accounts[0] === 'string' ? config.accounts[0] : config.accounts[0].accountId) : '') || '6581';
   try {
     const auditRes = await api('obrigacoes/audit', { accountId, items: obrigacoesList });
     obrigacoesAudit = auditRes;
@@ -1777,17 +1825,20 @@ function renderObrigacoesTable() {
 
   const search = ($('obrigSearchInput')?.value || '').trim().toLowerCase();
   const depto = $('obrigDeptoFilter')?.value || '';
+  const freq = $('obrigFreqFilter')?.value || '';
   const paridade = $('obrigParidadeFilter')?.value || '';
 
   const filtered = obrigacoesList.filter(item => {
     if (depto && item.departamento !== depto) return false;
+    if (freq && item.frequencia !== freq) return false;
     if (paridade && item.paridade?.status !== paridade) return false;
     if (search) {
       const matchName = (item.nome || '').toLowerCase().includes(search);
       const matchId = String(item.id || '').includes(search);
       const matchDepto = (item.departamento || '').toLowerCase().includes(search);
+      const matchFreq = (item.frequencia || '').toLowerCase().includes(search);
       const matchOrgao = (item.orgao || '').toLowerCase().includes(search);
-      if (!matchName && !matchId && !matchDepto && !matchOrgao) return false;
+      if (!matchName && !matchId && !matchDepto && !matchFreq && !matchOrgao) return false;
     }
     return true;
   });
@@ -1811,7 +1862,7 @@ function renderObrigacoesTable() {
   if ($('obrigNextPage')) $('obrigNextPage').disabled = end >= total;
 
   if (pageItems.length === 0) {
-    const acc = currentAccount() || '6581';
+    const acc = currentAccount() || 'ativa';
     if (obrigacoesList.length === 0) {
       tbody.innerHTML = `
         <tr>
@@ -1875,22 +1926,27 @@ function renderObrigacoesTable() {
         <td style="padding:10px 16px;">${orgaoBadge}</td>
         <td style="padding:10px 16px;text-align:center;">${paridadeBadge}</td>
         <td style="padding:10px 16px;text-align:center;">
-          <span style="font-size:11.5px;color:#047857;font-weight:600;">${item.status === 'Ativo' ? '● Ativo' : item.status || 'Ativo'}</span>
+          ${(() => {
+            const kanbanRaw = (item.quadroKanban || (item.status && item.status !== 'Ativo' ? item.status : '') || '').replace(/\n+/g, ' · ').trim();
+            return kanbanRaw
+              ? `<span style="font-size:11px;background:#eef6f5;color:#184f59;padding:2px 8px;border-radius:4px;font-weight:500;display:inline-block;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(kanbanRaw)}">${escapeHtml(kanbanRaw)}</span>`
+              : `<span style="font-size:11.5px;color:#94a3b8;">—</span>`;
+          })()}
         </td>
         <td style="padding:10px 16px;text-align:right;white-space:nowrap;">
           <div style="display:inline-flex;gap:6px;align-items:center;">
             <button type="button" class="ghost" style="padding:4px 9px;font-size:11.5px;display:inline-flex;align-items:center;gap:4px;border:1px solid #184f59;color:#184f59;" onclick="openFixEmailModal(${item.id})">
               <span>✉️</span> Ajustar E-mail
             </button>
-            ${item.paridade?.status === 'pendente_whatsapp' ? `
+            ${item.paridade?.hasWhatsapp ? `
+              <button type="button" class="ghost" style="padding:4px 9px;font-size:11.5px;display:inline-flex;align-items:center;gap:4px;border:1px solid #047857;color:#047857;" title="Confere e atualiza a configuração nos passos de WhatsApp (tipo de cancelamento, automação de envio e anexos)" onclick="openCreateWhatsappModal(${item.id})">
+                <span>💬</span> Ajustar WhatsApp
+              </button>
+            ` : (!item.paridade?.canalExclusivoEmail ? `
               <button type="button" class="primary" style="padding:4px 9px;font-size:11.5px;display:inline-flex;align-items:center;gap:4px;" onclick="openCreateWhatsappModal(${item.id})">
                 <span>💬</span> Criar WhatsApp
               </button>
-            ` : (item.paridade?.hasWhatsapp && item.paridade?.hasEmail && !item.paridade?.canalExclusivoEmail) ? `
-              <button type="button" class="ghost" style="padding:4px 9px;font-size:11.5px;display:inline-flex;align-items:center;gap:4px;border:1px solid #047857;color:#047857;" title="Confere e aplica a configuração padrão do robô nos passos de WhatsApp e reordena (WhatsApp antes do E-mail)" onclick="openCreateWhatsappModal(${item.id})">
-                <span>💬</span> Ajustar WhatsApp
-              </button>
-            ` : ''}
+            ` : '')}
           </div>
         </td>
       </tr>
@@ -1912,7 +1968,7 @@ function renderObrigacoesTable() {
 }
 
 async function openObrigTemplatesModal() {
-  const accountId = currentAccount() || '6581';
+  const accountId = currentAccount() || (config.accounts && config.accounts[0] ? (typeof config.accounts[0] === 'string' ? config.accounts[0] : config.accounts[0].accountId) : '') || '6581';
   try {
     const res = await api('obrigacoes/templates', { accountId });
     const tmpl = res.templates || {};
@@ -1953,7 +2009,7 @@ function updateObrigPreview() {
 }
 
 async function saveObrigTemplates() {
-  const accountId = currentAccount() || '6581';
+  const accountId = currentAccount() || (config.accounts && config.accounts[0] ? (typeof config.accounts[0] === 'string' ? config.accounts[0] : config.accounts[0].accountId) : '') || '6581';
   const templates = {
     whatsapp: {
       habilitado: $('tmplWhatsappHabilitado')?.checked ?? true,
@@ -1980,6 +2036,7 @@ async function saveObrigTemplates() {
 
 $('obrigSearchInput')?.addEventListener('input', () => { obrigacoesPage = 0; renderObrigacoesTable(); });
 $('obrigDeptoFilter')?.addEventListener('change', () => { obrigacoesPage = 0; renderObrigacoesTable(); });
+$('obrigFreqFilter')?.addEventListener('change', () => { obrigacoesPage = 0; renderObrigacoesTable(); });
 $('obrigParidadeFilter')?.addEventListener('change', () => { obrigacoesPage = 0; renderObrigacoesTable(); });
 $('obrigPrevPage')?.addEventListener('click', () => { if (obrigacoesPage > 0) { obrigacoesPage--; renderObrigacoesTable(); } });
 $('obrigNextPage')?.addEventListener('click', () => { obrigacoesPage++; renderObrigacoesTable(); });
@@ -2045,7 +2102,11 @@ window.openFixEmailModal = async function(obrigId) {
   $('fixEmailDepto').innerText = item.departamento || 'Geral';
   $('fixEmailSubhint').innerText = `Lendo configurações da obrigação #${item.id} no G-Click...`;
 
-  const accountId = currentAccount() || '6581';
+  const accountId = currentAccount();
+  if (!accountId) {
+    status('Selecione ou informe uma conta G-Click ativa.', 'warn');
+    return;
+  }
   try {
     const res = await api('obrigacoes/email-inspect', {
       accountId,
@@ -2171,7 +2232,11 @@ window.openFixEmailModal = async function(obrigId) {
 
 async function submitFixEmail() {
   if (!currentEditingObrig) return;
-  const accountId = currentAccount() || '6581';
+  const accountId = currentAccount();
+  if (!accountId) {
+    status('Selecione ou informe uma conta G-Click ativa.', 'warn');
+    return;
+  }
 
   const catCheckboxes = document.querySelectorAll('input[name="fixEmailCat"]:checked');
   const categorias = Array.from(catCheckboxes).map(c => c.value);
@@ -2195,7 +2260,10 @@ async function submitFixEmail() {
   }
 
   setBusy(true);
-  status(`Gravando configurações de e-mail da obrigação #${currentEditingObrig.id} no G-Click...`, 'busy');
+  const fixEmailMsg = `Gravando configurações de e-mail da obrigação #${currentEditingObrig.id} no G-Click...`;
+  status(fixEmailMsg, 'busy');
+  setObrigStatus(fixEmailMsg, 'info', { percent: 20, current: 1, total: 1 });
+  startObrigProgressPoll({ type: 'single_email' });
   $('btnSubmitFixEmail').disabled = true;
 
   try {
@@ -2212,7 +2280,9 @@ async function submitFixEmail() {
       particularidadeCliente
     });
 
-    status(`Obrigação #${currentEditingObrig.id} configurada com sucesso no G-Click!`, 'ok');
+    const okMsg = `Obrigação #${currentEditingObrig.id} configurada com sucesso no G-Click!`;
+    status(okMsg, 'ok');
+    setObrigStatus(okMsg, 'ok');
     $('modalFixEmail').style.display = 'none';
     currentEditingObrig = null;
 
@@ -2220,7 +2290,9 @@ async function submitFixEmail() {
     await loadObrigacoesSection();
   } catch (err) {
     status('Erro ao gravar configuração de e-mail: ' + err.message, 'error');
+    setObrigStatus('Erro ao gravar configuração de e-mail: ' + err.message, 'error');
   } finally {
+    stopObrigProgressPoll();
     setBusy(false);
     $('btnSubmitFixEmail').disabled = false;
   }
@@ -2246,18 +2318,21 @@ window.insertTagIntoBatchEmail = function(tag) {
 
 $('obrigSelectAll')?.addEventListener('change', (e) => {
   const depto = $('obrigDeptoFilter')?.value || '';
+  const freq = $('obrigFreqFilter')?.value || '';
   const search = ($('obrigSearchInput')?.value || '').trim().toLowerCase();
   const paridade = $('obrigParidadeFilter')?.value || '';
 
   const filtered = obrigacoesList.filter(item => {
     if (depto && item.departamento !== depto) return false;
+    if (freq && item.frequencia !== freq) return false;
     if (paridade && item.paridade?.status !== paridade) return false;
     if (search) {
       const matchName = (item.nome || '').toLowerCase().includes(search);
       const matchId = String(item.id || '').includes(search);
       const matchDepto = (item.departamento || '').toLowerCase().includes(search);
+      const matchFreq = (item.frequencia || '').toLowerCase().includes(search);
       const matchOrgao = (item.orgao || '').toLowerCase().includes(search);
-      if (!matchName && !matchId && !matchDepto && !matchOrgao) return false;
+      if (!matchName && !matchId && !matchDepto && !matchFreq && !matchOrgao) return false;
     }
     return true;
   });
@@ -2277,6 +2352,12 @@ $('btnClearBatchSelection')?.addEventListener('click', () => {
 
 $('obrigDeptoFilter')?.addEventListener('change', () => {
   // Limpa seleções de outros departamentos para manter consistência
+  selectedObrigacoesIds.clear();
+  obrigacoesPage = 0;
+  renderObrigacoesTable();
+});
+
+$('obrigFreqFilter')?.addEventListener('change', () => {
   selectedObrigacoesIds.clear();
   obrigacoesPage = 0;
   renderObrigacoesTable();
@@ -2321,7 +2402,11 @@ async function openBatchEmailModal() {
   catContainer.innerHTML = `<span style="font-size:12px;color:var(--text-muted);">Consultando conta no G-Click...</span>`;
   partSelect.innerHTML = `<option value="">Carregando particularidades da conta…</option>`;
 
-  const accountId = currentAccount() || '6581';
+  const accountId = currentAccount();
+  if (!accountId) {
+    status('Selecione ou informe uma conta G-Click ativa.', 'warn');
+    return;
+  }
   try {
     // Usa uma obrigação de referência para inspecionar categorias e particularidades
     const refItem = selectedItems[0];
@@ -2433,11 +2518,21 @@ async function submitBatchEmail() {
   setBusy(true);
   $('btnSubmitBatchEmail').disabled = true;
   $('batchEmailProgressBox').style.display = 'block';
-  $('batchEmailProgressPerc').textContent = 'Iniciando...';
-  $('batchEmailProgressBar').value = 10;
-  status(`Iniciando configuração de e-mail em massa para ${selectedItems.length} obrigações...`, 'busy');
+  $('batchEmailProgressPerc').textContent = '5%';
+  $('batchEmailProgressBar').value = 5;
+  const batchEmailMsg = `Iniciando configuração de e-mail em massa para ${selectedItems.length} obrigações...`;
+  status(batchEmailMsg, 'busy');
+  setObrigStatus(batchEmailMsg, 'info', { percent: 5, current: 0, total: selectedItems.length });
+  startObrigProgressPoll({ type: 'batch_email' });
 
-  const accountId = currentAccount() || '6581';
+  const accountId = currentAccount();
+  if (!accountId) {
+    status('Selecione ou informe uma conta G-Click ativa.', 'warn');
+    stopObrigProgressPoll();
+    setBusy(false);
+    $('btnSubmitBatchEmail').disabled = false;
+    return;
+  }
   try {
     const res = await api('obrigacoes/fix-email-batch', {
       accountId,
@@ -2467,6 +2562,7 @@ async function submitBatchEmail() {
     status('Erro na configuração em massa: ' + err.message, 'error');
     setObrigStatus('Falha na ação em massa: ' + err.message, 'error');
   } finally {
+    stopObrigProgressPoll();
     setBusy(false);
     $('btnSubmitBatchEmail').disabled = false;
   }
@@ -2504,18 +2600,22 @@ window.openCreateWhatsappModal = async function(id) {
     return;
   }
 
-  if (item.paridade?.status === 'conforme' && item.paridade?.whatsappCount >= item.paridade?.emailCount) {
-    alert(`Esta obrigação já atingiu paridade 1:1 (${item.paridade.whatsappCount} WhatsApp para ${item.paridade.emailCount} E-mail). Não é permitida a criação de passo extra.`);
-    return;
-  }
-
+  const isAjuste = Boolean(item.paridade?.hasWhatsapp);
   currentWhatsappObrig = item;
   $('createWhatsappObrigBadge').textContent = `#${item.id}`;
   $('createWhatsappObrigNome').textContent = item.nome;
   $('createWhatsappDepto').textContent = item.departamento || 'Geral';
+  const modalTitle = $('createWhatsappModalTitle') || $('modalCreateWhatsapp')?.querySelector('h3');
+  if (modalTitle) modalTitle.textContent = isAjuste ? 'Ajustar Configuração de WhatsApp' : 'Criar e Configurar Passo de WhatsApp';
+  const submitBtn = $('btnSubmitCreateWhatsapp');
+  if (submitBtn) submitBtn.innerHTML = isAjuste ? '<span>💾</span> Gravar Configuração no G-Click' : '<span>💬</span> Criar e Configurar no G-Click';
   $('modalCreateWhatsapp').style.display = 'flex';
 
-  const accountId = currentAccount() || '6019';
+  const accountId = currentAccount();
+  if (!accountId) {
+    status('Selecione ou informe uma conta G-Click ativa.', 'warn');
+    return;
+  }
   try {
     const res = await api('obrigacoes/whatsapp-inspect', {
       accountId,
@@ -2615,7 +2715,11 @@ window.openCreateWhatsappModal = async function(id) {
 
 async function submitCreateWhatsapp() {
   if (!currentWhatsappObrig) return;
-  const accountId = currentAccount() || '6019';
+  const accountId = currentAccount();
+  if (!accountId) {
+    status('Selecione ou informe uma conta G-Click ativa.', 'warn');
+    return;
+  }
 
   const textoDesejado = $('createWhatsappTexto')?.value.trim() || 'Enviar Cliente';
   const catCheckboxes = document.querySelectorAll('input[name="createWhatsappCat"]:checked');
@@ -2633,8 +2737,14 @@ async function submitCreateWhatsapp() {
     return;
   }
 
+  const isAjuste = Boolean(currentWhatsappObrig.paridade?.hasWhatsapp);
   setBusy(true);
-  status(`Criando passo de WhatsApp para obrigação #${currentWhatsappObrig.id} no G-Click...`, 'busy');
+  const loadingMsg = isAjuste
+    ? `Atualizando configurações de WhatsApp da obrigação #${currentWhatsappObrig.id} no G-Click...`
+    : `Criando passo de WhatsApp para obrigação #${currentWhatsappObrig.id} no G-Click...`;
+  status(loadingMsg, 'busy');
+  setObrigStatus(loadingMsg, 'info', { percent: 15, current: 1, total: 1 });
+  startObrigProgressPoll({ type: 'single_whatsapp' });
   $('btnSubmitCreateWhatsapp').disabled = true;
 
   try {
@@ -2655,16 +2765,23 @@ async function submitCreateWhatsapp() {
 
     if (res.skipped) {
       status(`Ação não executada: ${res.reason}`, 'warn');
+      setObrigStatus(`Ação não executada: ${res.reason}`, 'warn');
       alert(res.reason);
     } else {
-      status(`Passo de WhatsApp criado com sucesso na obrigação #${currentWhatsappObrig.id}!`, 'ok');
+      const okMsg = isAjuste
+        ? `Configuração de WhatsApp atualizada com sucesso na obrigação #${currentWhatsappObrig.id}!`
+        : `Passo de WhatsApp criado com sucesso na obrigação #${currentWhatsappObrig.id}!`;
+      status(okMsg, 'ok');
+      setObrigStatus(okMsg, 'ok');
       $('modalCreateWhatsapp').style.display = 'none';
       currentWhatsappObrig = null;
       await loadObrigacoesSection();
     }
   } catch (err) {
     status('Erro ao criar passo de WhatsApp: ' + err.message, 'error');
+    setObrigStatus('Erro ao criar passo de WhatsApp: ' + err.message, 'error');
   } finally {
+    stopObrigProgressPoll();
     setBusy(false);
     $('btnSubmitCreateWhatsapp').disabled = false;
   }
@@ -2708,7 +2825,11 @@ async function openBatchWhatsappModal() {
   $('batchWhatsappFormContent').style.display = 'block';
   $('modalBatchWhatsapp').style.display = 'flex';
 
-  const accountId = currentAccount() || '6019';
+  const accountId = currentAccount();
+  if (!accountId) {
+    status('Selecione ou informe uma conta G-Click ativa.', 'warn');
+    return;
+  }
   const refItem = selectedItems[0];
   try {
     const res = await api('obrigacoes/whatsapp-inspect', {
@@ -2836,10 +2957,23 @@ async function submitBatchWhatsapp() {
 
   $('batchWhatsappFormContent').style.display = 'none';
   $('batchWhatsappProgressBox').style.display = 'block';
+  if ($('batchWhatsappProgressBar')) $('batchWhatsappProgressBar').value = 5;
+  if ($('batchWhatsappProgressPerc')) $('batchWhatsappProgressPerc').textContent = '5%';
   $('btnSubmitBatchWhatsapp').disabled = true;
   setBusy(true);
 
-  const accountId = currentAccount() || '6019';
+  const accountId = currentAccount();
+  if (!accountId) {
+    status('Selecione ou informe uma conta G-Click ativa.', 'warn');
+    setBusy(false);
+    $('btnSubmitBatchWhatsapp').disabled = false;
+    return;
+  }
+
+  const batchMsg = `Iniciando criação de WhatsApp em massa para ${selectedItems.length} obrigações...`;
+  status(batchMsg, 'busy');
+  setObrigStatus(batchMsg, 'info', { percent: 5, current: 0, total: selectedItems.length });
+  startObrigProgressPoll({ type: 'batch_whatsapp' });
 
   try {
     const res = await api('obrigacoes/create-whatsapp-batch', {
@@ -2868,6 +3002,7 @@ async function submitBatchWhatsapp() {
     status('Erro na criação de WhatsApp em massa: ' + err.message, 'error');
     setObrigStatus('Falha na ação em massa: ' + err.message, 'error');
   } finally {
+    stopObrigProgressPoll();
     setBusy(false);
     $('btnSubmitBatchWhatsapp').disabled = false;
   }
@@ -2879,17 +3014,43 @@ $('btnCancelBatchWhatsapp')?.addEventListener('click', () => { if ($('modalBatch
 $('btnSubmitBatchWhatsapp')?.addEventListener('click', submitBatchWhatsapp);
 
 
-function setObrigStatus(message, type = 'info') {
+let obrigProgressInterval = null;
+
+function setObrigStatus(message, type = 'info', progress = null) {
   const alert = $('obrigStatusAlert');
   const text = $('obrigStatusText');
   const icon = $('obrigStatusIcon');
+  const barContainer = $('obrigProgressBarContainer');
+  const bar = $('obrigProgressBar');
+  const badge = $('obrigProgressBadge');
+
   if (!alert || !text) return;
   if (!message) {
     alert.style.display = 'none';
+    if (barContainer) barContainer.style.display = 'none';
+    if (badge) badge.style.display = 'none';
     return;
   }
   alert.style.display = 'flex';
   text.textContent = message;
+
+  if (progress && typeof progress.percent === 'number') {
+    const pct = Math.min(100, Math.max(0, Math.round(progress.percent)));
+    if (barContainer && bar) {
+      barContainer.style.display = 'block';
+      bar.style.width = `${pct}%`;
+      bar.style.background = type === 'ok' ? '#10b981' : (type === 'warn' || type === 'error') ? '#f59e0b' : '#0284c7';
+    }
+    if (badge) {
+      badge.style.display = 'inline-block';
+      badge.textContent = progress.total > 0 ? `${progress.current}/${progress.total} (${pct}%)` : `${pct}%`;
+      badge.style.color = type === 'ok' ? '#047857' : (type === 'warn' || type === 'error') ? '#92400e' : '#0369a1';
+    }
+  } else {
+    if (barContainer) barContainer.style.display = 'none';
+    if (badge) badge.style.display = 'none';
+  }
+
   if (type === 'ok') {
     alert.style.background = '#eaf7f2';
     alert.style.color = '#047857';
@@ -2908,10 +3069,76 @@ function setObrigStatus(message, type = 'info') {
   }
 }
 
+function startObrigProgressPoll(options = {}) {
+  stopObrigProgressPoll();
+  obrigProgressInterval = setInterval(async () => {
+    try {
+      const p = await api('obrigacoes/progress', {});
+      if (!p || !p.running) return;
+
+      const percent = Math.min(100, Math.max(0, p.percent || 0));
+      const current = p.current || 0;
+      const total = p.total || 0;
+      const label = p.stage || (p.nome ? `Processando ${current}/${total}: ${p.nome}` : 'Processando no G-Click...');
+
+      setObrigStatus(label, 'info', { percent, current, total });
+
+      if ($('batchWhatsappProgressBox') && $('modalBatchWhatsapp')?.style.display !== 'none') {
+        $('batchWhatsappProgressBox').style.display = 'block';
+        if ($('batchWhatsappProgressText')) $('batchWhatsappProgressText').textContent = label;
+        if ($('batchWhatsappProgressPerc')) $('batchWhatsappProgressPerc').textContent = `${percent}%`;
+        if ($('batchWhatsappProgressBar')) $('batchWhatsappProgressBar').value = percent;
+      }
+
+      if ($('batchEmailProgressBox') && $('modalBatchEmail')?.style.display !== 'none') {
+        $('batchEmailProgressBox').style.display = 'block';
+        if ($('batchEmailProgressText')) $('batchEmailProgressText').textContent = label;
+        if ($('batchEmailProgressPerc')) $('batchEmailProgressPerc').textContent = `${percent}%`;
+        if ($('batchEmailProgressBar')) $('batchEmailProgressBar').value = percent;
+      }
+    } catch {
+      // Ignora falha de polling
+    }
+  }, 600);
+}
+
+function stopObrigProgressPoll() {
+  if (obrigProgressInterval) {
+    clearInterval(obrigProgressInterval);
+    obrigProgressInterval = null;
+  }
+  if ($('batchWhatsappProgressBox')) $('batchWhatsappProgressBox').style.display = 'none';
+  if ($('batchEmailProgressBox')) $('batchEmailProgressBox').style.display = 'none';
+}
+
 $('btnSyncObrigacoes')?.addEventListener('click', async () => {
   if (working) return;
-  const accountId = currentAccount() || (config.catalog?.accountId) || '6019';
-  const isLive = Boolean(catalogLive || config.loginReady || config.catalogLive);
+  const accountId = currentAccount() || (config.catalog?.accountId) || '';
+  if (!accountId) {
+    const msg = 'Informe o código da conta G-Click ou conecte sua sessão antes de sincronizar.';
+    setObrigStatus(msg, 'warn');
+    status(msg, 'warn');
+    return;
+  }
+  let isLive = Boolean(
+    currentSessionStatus === 'login_detected' ||
+    config.loginOpen ||
+    config.loginReady ||
+    catalogLive
+  );
+  if (!isLive) {
+    try {
+      const sessRes = await fetch(`/api/gclick/session?accountId=${encodeURIComponent(accountId)}`);
+      if (sessRes.ok) {
+        const sessData = await sessRes.json();
+        if (sessData?.gclickAuthStatus === 'login_detected' || sessData?.browserStatus === 'open') {
+          isLive = true;
+          const detectedAccount = sessData.currentEmpresaId || sessData.activeAccountId || accountId;
+          updateTopAccountDisplay(detectedAccount, sessData.activeEmpresaNome, sessData.gclickAuthStatus);
+        }
+      }
+    } catch {}
+  }
   if (!isLive) {
     const msg = 'A sessão do G-Click não está ativa. Abra o menu "Conexão & Conta G-Click" e clique em "Abrir janela de login" para conectar antes de sincronizar.';
     setObrigStatus(msg, 'warn');
@@ -2923,14 +3150,15 @@ $('btnSyncObrigacoes')?.addEventListener('click', async () => {
   try {
     setBusy(true);
     if (btn) btn.disabled = true;
-    const msg = `Sincronizando obrigações da conta ${accountId} no G-Click (filtrando apenas as com passos de E-mail e/ou WhatsApp)…`;
-    setObrigStatus(msg, 'info');
+    const msg = `Sincronizando todas as obrigações da conta ${accountId} no G-Click…`;
+    setObrigStatus(msg, 'info', { percent: 0, current: 0, total: 0 });
     status(msg);
+    startObrigProgressPoll({ type: 'sync' });
     const res = await api('obrigacoes/sync-catalog', { accountId });
     if (res.items) {
       obrigacoesList = res.items;
-      const scannedMsg = res.totalScanned ? ` (de ${res.totalScanned} analisadas no total)` : '';
-      const okMsg = `Catálogo atualizado: ${res.total} obrigação(ões) com envio de E-mail/WhatsApp importadas${scannedMsg}.`;
+      const scannedMsg = res.totalScanned ? ` (total escaneado: ${res.totalScanned})` : '';
+      const okMsg = `Catálogo atualizado: ${res.total} obrigação(ões) carregadas${scannedMsg}.`;
       setObrigStatus(okMsg, 'ok');
       status(okMsg, 'ok');
       await loadObrigacoesSection();
@@ -2940,6 +3168,7 @@ $('btnSyncObrigacoes')?.addEventListener('click', async () => {
     setObrigStatus(errMsg, 'error');
     status(errMsg, 'error');
   } finally {
+    stopObrigProgressPoll();
     setBusy(false);
     if (btn) btn.disabled = false;
   }

@@ -706,7 +706,7 @@
             </div>
           </div>
 
-          <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:12px;align-items:center;">
+          <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:12px;align-items:center;">
             <div>
               <input id="obrigSearchInput" type="text" placeholder="Buscar por nome da obrigação, ID, órgão ou frequência..." style="width:100%;padding:9px 12px;font-size:13px;">
             </div>
@@ -716,18 +716,32 @@
               </select>
             </div>
             <div>
+              <select id="obrigFreqFilter" style="width:100%;padding:9px 12px;font-size:13px;">
+                <option value="">Todas as Frequências</option>
+              </select>
+            </div>
+            <div>
               <select id="obrigParidadeFilter" style="width:100%;padding:9px 12px;font-size:13px;">
                 <option value="">Todas as Situações</option>
                 <option value="conforme">Em Conformidade (Alinhados / Canal E-mail)</option>
                 <option value="pendente_whatsapp">Pendente WhatsApp</option>
+                <option value="pendente_email">💬 Sem E-mail (Apenas WhatsApp)</option>
                 <option value="sem_disparo">Sem Disparo Configurado</option>
               </select>
             </div>
           </div>
-          <!-- STATUS VISUAL DEDICADO DO MÓDULO DE OBRIGAÇÕES -->
-          <div id="obrigStatusAlert" style="display:none;margin-top:14px;padding:10px 14px;border-radius:6px;font-size:13px;align-items:center;gap:8px;">
-            <span id="obrigStatusIcon">ℹ️</span>
-            <span id="obrigStatusText"></span>
+          <!-- STATUS VISUAL DEDICADO DO MÓDULO DE OBRIGAÇÕES COM BARRA DE PROGRESSO -->
+          <div id="obrigStatusAlert" style="display:none;margin-top:14px;padding:12px 16px;border-radius:8px;font-size:13px;flex-direction:column;gap:8px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;width:100%;">
+              <div style="display:flex;align-items:center;gap:8px;">
+                <span id="obrigStatusIcon" style="font-size:16px;">ℹ️</span>
+                <span id="obrigStatusText" style="font-weight:600;"></span>
+              </div>
+              <span id="obrigProgressBadge" style="display:none;font-weight:700;font-size:12px;padding:2px 8px;border-radius:10px;background:rgba(0,0,0,0.06);">0%</span>
+            </div>
+            <div id="obrigProgressBarContainer" style="display:none;width:100%;background:rgba(0,0,0,0.08);height:8px;border-radius:4px;overflow:hidden;margin-top:2px;">
+              <div id="obrigProgressBar" style="width:0%;height:100%;background:#0284c7;border-radius:4px;transition:width 0.3s ease;"></div>
+            </div>
           </div>
         </section>
 
@@ -767,7 +781,7 @@
                   <th style="padding:12px 16px;">Fato Gerador</th>
                   <th style="padding:12px 16px;">Órgão</th>
                   <th style="padding:12px 16px;text-align:center;">Paridade Canais</th>
-                  <th style="padding:12px 16px;text-align:center;">Status</th>
+                  <th style="padding:12px 16px;text-align:center;" title="Quadro Kanban vinculado no G-Click">Quadro Kanban</th>
                   <th style="padding:12px 16px;text-align:right;">Ações</th>
                 </tr>
               </thead>
