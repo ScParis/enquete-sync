@@ -194,7 +194,7 @@ async function saveMapping(answerRef, excluded = false) {
     $('mappingEditor').hidden = true; editingTask = null; renderQueue();
     status(excluded ? 'Tarefa marcada como excluída para esta conta.' : answerRef ? (result.unchanged ? 'Mapeamento já estava salvo.' : 'Mapeamento salvo.') : 'Associação removida.', 'ok');
     if (answerRef) await showTaskOutput(task);
-    maybeAutoAudit();
+    if (isAutoAuditEnabled()) maybeAutoAudit();
   } catch (error) { $('editorHint').textContent = error.message; }
 }
 // Depois de mapear, a saída mostra na hora os CNPJs da tarefa e a resposta que será gravada; a conferência completa o estado.
@@ -224,7 +224,6 @@ function useCatalog(catalog, verified = false) {
   if ($('queueFilter').value === 'attention' && !$('queueSearch').value && taskCatalog.some(task => ['ready', 'candidate'].includes(mappingFor(task).state)))
     $('queueFilter').value = 'ready';
   renderQueue();
-  maybeAutoAudit();
 }
 // A janela do Chrome pode ser fechada a qualquer momento; sem ela não há catálogo nem conferência válidos.
 setInterval(async () => {
@@ -239,24 +238,67 @@ setInterval(async () => {
   } catch { /* servidor indisponível: a próxima ação mostrará o erro */ }
 }, 8000);
 function stopLoginPoll() { if (loginPoll) clearInterval(loginPoll); loginPoll = null; }
+let currentEmpresaNome = null;
+let currentSessionStatus = null;
+let lastKnownAccountId = null;
+
+function updateTopAccountDisplay(accountId, empresaNome = undefined, sessionStatus = undefined) {
+  if (accountId && accountId !== lastKnownAccountId) {
+    lastKnownAccountId = accountId;
+    if (empresaNome === undefined) currentEmpresaNome = null;
+  }
+  if (empresaNome !== undefined) currentEmpresaNome = empresaNome;
+  if (sessionStatus !== undefined) currentSessionStatus = sessionStatus;
+
+  if ($('topAccountId')) $('topAccountId').textContent = accountId || '—';
+  if ($('topAccountNome')) $('topAccountNome').textContent = currentEmpresaNome ? `· ${currentEmpresaNome}` : '';
+  const badge = $('topSessionBadge');
+  if (badge) {
+    if (currentSessionStatus === 'login_detected') {
+      badge.style.display = 'inline-block';
+      badge.textContent = 'Login detectado';
+      badge.style.background = '#065f46';
+      badge.style.color = '#a7f3d0';
+    } else if (currentSessionStatus === 'awaiting_login') {
+      badge.style.display = 'inline-block';
+      badge.textContent = 'Aguardando login';
+      badge.style.background = '#854d0e';
+      badge.style.color = '#fef08a';
+    } else {
+      badge.style.display = 'none';
+    }
+  }
+}
+
 function startLoginPoll() {
   if (loginPoll) return;
   loginPoll = setInterval(async () => {
-    if (working || loginPollBusy || catalogLive || !/^\d+$/.test(currentAccount())) return;
+    if (working || loginPollBusy || !/^\d+$/.test(currentAccount())) return;
     loginPollBusy = true;
     try {
-      const result = await api('login/close', { accountId: currentAccount(), auto: true });
-      if (result.catalog) {
-        useCatalog(result.catalog, true);
-        stopLoginPoll();
-        status(`Enquete da conta ${result.catalog.accountId} aberta automaticamente. Catálogo com ${result.catalog.questionCount} perguntas carregado.`, 'ok');
-      } else if (result.message) {
-        status(result.message, result.stage === 'no_access' ? 'error' : '');
-        if (result.stage === 'no_access') stopLoginPoll();
+      // 1. Endpoint observacional passivo /api/gclick/session
+      const res = await fetch(`/api/gclick/session?accountId=${encodeURIComponent(currentAccount())}`);
+      if (res.ok) {
+        const result = await res.json().catch(() => null);
+        if (result && result.browserStatus) {
+          updateTopAccountDisplay(currentAccount(), result.activeEmpresaNome, result.gclickAuthStatus);
+
+          if (result.gclickAuthStatus === 'login_detected') {
+            status(`Login detectado no G-Click pela URL da aba. Conta: ${currentAccount()}${result.activeEmpresaNome ? ` (${result.activeEmpresaNome})` : ''}. Para ler perguntas e respostas da Enquete, abra Enquete -> Mapeamento e clique em Buscar Perguntas e Respostas (Sob Demanda).`, 'ok');
+            stopLoginPoll();
+            return;
+          } else if (result.onEmpresas) {
+            status(`Login realizado. Selecione a empresa no G-Click (conta ${currentAccount()}) para continuar.`);
+            return;
+          } else if (result.message) {
+            status(result.message);
+            return;
+          }
+        }
       }
     } catch { /* O login ou a escolha da conta ainda está em andamento. */ }
     finally { loginPollBusy = false; }
-  }, 5000);
+  }, 2000);
 }
 let lastSourceKey = '';
 let currentStructure = null;
@@ -546,24 +588,23 @@ async function payload(mode) {
   return out;
 }
 async function api(endpoint, data) {
-  for (let attempt = 0; attempt < 2; attempt++) {
-    let response;
-    try {
-      response = await fetch(`/api/${endpoint}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-GClick-Token': authToken }, body: JSON.stringify(data ?? {}) });
-    } catch (networkError) {
-      throw new Error(`Falha de comunicação com o servidor local: ${networkError.message}. Verifique se o servidor está ativo ou recarregue a página.`);
-    }
-    const body = await response.json().catch(() => ({}));
-    if (response.status === 403 && body.code === 'invalid_session' && attempt === 0) {
-      try {
-        const config = await fetch('/api/config', { cache: 'no-store' }).then(r => r.json());
-        authToken = config.token;
-        continue;
-      } catch {}
-    }
-    if (!response.ok) throw new Error(body.error || 'Falha na operação');
-    return body;
+  let response;
+  try {
+    response = await fetch(`/api/${endpoint}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data ?? {})
+    });
+  } catch (networkError) {
+    throw new Error(`Falha de comunicação com o servidor local: ${networkError.message}. Verifique se o servidor está ativo ou recarregue a página.`);
   }
+  const body = await response.json().catch(() => ({}));
+  if (response.status === 401 && body.code === 'unauthenticated') {
+    $('loginScreen').hidden = false;
+    throw new Error('Sessão expirada. Faça login novamente.');
+  }
+  if (!response.ok) throw new Error(body.error || 'Falha na operação');
+  return body;
 }
 function setBusy(value) { working = value; for (const id of ['openLogin','closeLogin']) $(id).disabled = value; updateApply(); }
 function metric(label, value, kind = '') { const d = document.createElement('div'); d.className = `metric ${kind}`; const strong = document.createElement('strong'); strong.textContent = value; const span = document.createElement('span'); span.textContent = label; d.append(strong, span); return d; }
@@ -783,7 +824,7 @@ async function apply() {
     refreshWriterStatus();
     status(lastApplySummary, 'ok');
   } catch (e) { applyRunning = false; status(`${e.message} Confira o relatório e a Enquete antes de repetir.`, 'error'); previewId = null; }
-  finally { clearInterval(poll); applyRunning = false; setBusy(false); lastAuditKey = ''; setTimeout(maybeAutoAudit, 500); }
+  finally { clearInterval(poll); applyRunning = false; setBusy(false); lastAuditKey = ''; }
 }
 let awaitingSheetDownload = false, sheetDownloadRequestedAt = 0;
 function showDownloadSelection() {
@@ -851,7 +892,7 @@ async function refreshDownloads() {
 async function login(endpoint) {
   try {
     setBusy(true); clearPreview(); stopLoginPoll();
-    status(endpoint === 'login/open' ? 'Abrindo o Chrome na página de autenticação do G-Click…' : 'Capturando perguntas e respostas da Enquete…');
+    status(endpoint === 'login/open' ? 'Abrindo o Chrome na página de autenticação do G-Click…' : 'Verificando login no G-Click…');
     if (!/^\d+$/.test(currentAccount())) throw new Error('Informe o código da conta G-Click (empId do escritório) antes de conectar.');
     const result = await api(endpoint, { accountId: currentAccount() });
     if (result.catalog) useCatalog(result.catalog, true);
@@ -859,9 +900,14 @@ async function login(endpoint) {
       liveCatalog = null; catalogLive = false; renderCatalogOverview(); renderQueue();
       startLoginPoll();
     }
-    status(endpoint === 'login/open' ? 'Entre no G-Click na janela que abriu e mantenha-a aberta. Depois do login, o robô abre sozinho a Enquete desta conta e lê as perguntas.' : `Catálogo atual conferido: ${result.catalog.questionCount} perguntas.`, 'ok');
+    if (result.empresaNome) {
+      updateTopAccountDisplay(currentAccount(), result.empresaNome, result.stage === 'login_detected' ? 'login_detected' : 'logged_in');
+    }
+    status(endpoint === 'login/open'
+      ? 'Entre no G-Click na janela que abriu. Quando o login for detectado, abra Enquete -> Mapeamento e clique em Buscar Perguntas e Respostas (Sob Demanda).'
+      : (result.catalog ? `Catálogo atual conferido: ${result.catalog.questionCount} perguntas.` : (result.message || 'Login verificado no G-Click.')), 'ok');
   } catch (error) { status(error.message, 'error'); if (endpoint === 'login/close') startLoginPoll(); }
-  finally { setBusy(false); maybeAutoAudit(); }
+  finally { setBusy(false); }
 }
 for (const input of document.querySelectorAll('input[name="sourceType"]')) input.addEventListener('change', () => { $('fileBox').hidden = sourceType() !== 'file'; $('urlBox').hidden = sourceType() !== 'url'; $('recentBox').hidden = sourceType() !== 'recent'; taskCatalog = []; selectedTasks.clear(); clearImportedTable(); renderQueue(); $('taskStatus').textContent = 'Leia as tarefas da fonte selecionada.'; sourceStatus(sourceType() === 'url' ? 'Links privados exigem JSON de conta de serviço. Para usar seu login do Google, baixe a aba como CSV e importe em Arquivo.' : sourceType() === 'file' ? 'Escolha o CSV ou XLSX e clique em Importar arquivo selecionado.' : 'Baixe o CSV da aba e selecione o arquivo recebido.'); clearPreview(); if (sourceType() === 'recent') refreshDownloads(); });
 for (const id of ['accountId','file','sheetName','sourceUrl','recentSheetUrl','serviceKey']) $(id).addEventListener('input', () => { previewId = null; updateApply(); if (id === 'accountId') updateSidebarBadges(); });
@@ -963,9 +1009,11 @@ async function loadAccountCatalog() {
       if (result.catalog && currentAccount() === accountId) useCatalog(result.catalog, true);
     } catch { /* sem catálogo salvo para esta conta */ }
   }
-  selectedTasks.clear(); renderQueue(); maybeAutoAudit();
+  selectedTasks.clear(); renderQueue();
+  updateTopAccountDisplay(accountId);
 }
 $('accountId').addEventListener('change', loadAccountCatalog);
+$('accountId').addEventListener('input', () => updateTopAccountDisplay($('accountId').value.trim()));
 $('clearFocus').addEventListener('click', () => { focusTask = null; resultsPage = 0; if ($('resultsTaskFilter')) $('resultsTaskFilter').value = ''; if (lastReport) renderResultRows(lastReport); });
 async function refreshWriterStatus() {
   const accountId = currentAccount();
@@ -1092,7 +1140,7 @@ async function loadUsersTable() {
   if (!tbody) return;
   tbody.innerHTML = '<tr><td colspan="6" class="empty">Carregando usuários…</td></tr>';
   try {
-    const res = await fetch('/api/users', { headers: { 'X-GClick-Token': authToken } });
+    const res = await fetch('/api/users');
     if (!res.ok) throw new Error('Não autorizado a listar usuários');
     const data = await res.json();
     cachedRoles = data.roles || [];
@@ -1251,7 +1299,7 @@ async function openOverridesModal(user) {
     try {
       const res = await fetch('/api/users/override', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-GClick-Token': authToken },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId, permissionSlug, allowed })
       });
       const data = await res.json();
@@ -1271,7 +1319,7 @@ async function deleteUser(user) {
   try {
     const res = await fetch('/api/users/delete', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-GClick-Token': authToken },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: user.id })
     });
     const data = await res.json();
@@ -1309,7 +1357,7 @@ $('formUser')?.addEventListener('submit', async (e) => {
 
     const res = await fetch(endpoint, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-GClick-Token': authToken },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
     const data = await res.json();
@@ -1345,7 +1393,6 @@ $('formLogin')?.addEventListener('submit', async (e) => {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Credenciais inválidas');
-    authToken = data.token;
     $('loginScreen').hidden = true;
     renderUserSidebar(data.user);
     initApp();
@@ -1362,20 +1409,17 @@ $('formLogin')?.addEventListener('submit', async (e) => {
 async function checkAuthAndInit() {
   try {
     const meRes = await fetch('/api/auth/me');
-    if (!meRes.ok) {
-      // Servidor mock de teste ou servidor legado sem auth: segue fluxo normal
+    const text = await meRes.text().catch(() => '');
+    let meData = null;
+    try { meData = JSON.parse(text); } catch {}
+
+    // Servidores mock de testes simples (que retornam CSS, HTML ou 404):
+    if (!meData) {
       $('loginScreen').hidden = true;
       return initApp();
     }
-    let meData;
-    try {
-      meData = await meRes.json();
-    } catch {
-      $('loginScreen').hidden = true;
-      return initApp();
-    }
+
     if (meData?.authenticated && meData?.user) {
-      authToken = meData.token;
       $('loginScreen').hidden = true;
       renderUserSidebar(meData.user);
       initApp();
@@ -1383,15 +1427,20 @@ async function checkAuthAndInit() {
       $('loginScreen').hidden = false;
     }
   } catch (err) {
+    // Falha de rede para servidor mock simples
     $('loginScreen').hidden = true;
     initApp().catch(() => {});
   }
 }
 
 async function initApp() {
-  const loaded = await fetch('/api/config').then(r => r.json());
+  const res = await fetch('/api/config');
+  if (res.status === 401) {
+    $('loginScreen').hidden = false;
+    return;
+  }
+  const loaded = await res.json();
   Object.assign(config, loaded);
-  authToken = config.token;
   savedMappings = config.savedMappings ?? [];
   savedProfiles = config.savedProfiles ?? [];
   targetModels = config.targetModels ?? {};
@@ -1401,13 +1450,18 @@ async function initApp() {
   renderAccountList();
   if (config.catalogLive && config.catalog?.accountId) $('accountId').value = config.catalog.accountId;
   else { try { const last = localStorage.getItem(ACCOUNT_KEY); if (last) $('accountId').value = last; } catch { /* sem preferência local */ } }
+  updateTopAccountDisplay(currentAccount());
   if (config.catalog && config.catalogLive) useCatalog(config.catalog, true);
   else if (currentAccount()) await loadAccountCatalog();
   loadedAccount = currentAccount() || null;
   if (currentAccount() && !$('recentSheetUrl').value) setSheetUrl((config.accounts ?? []).find(a => a.accountId === currentAccount())?.sheetUrl ?? '');
-  if (config.loginReady) status('Sessão da Enquete pronta. Mantenha a janela do Chrome aberta durante o uso.', 'ok');
-  else if (config.loginOpen) { status('Janela de login aberta. A captura ocorrerá quando a Enquete da conta estiver disponível.'); startLoginPoll(); }
-  else status(config.sessionLostAt ? 'A janela do Chrome da automação foi fechada. Clique em Abrir janela de login e entre de novo.' : 'Informe a conta e clique em Abrir janela de login. As perguntas aparecem depois que o robô ler a Enquete do escritório.', config.sessionLostAt ? 'error' : '');
+  
+  if (config.loginOpen) {
+    status('Janela do navegador de automação aberta. Aguardando login no G-Click.');
+    startLoginPoll();
+  } else {
+    status(config.sessionLostAt ? 'A janela do Chrome da automação foi fechada. Clique em Abrir janela de login e entre de novo.' : 'Informe a conta e clique em Abrir janela de login. As perguntas aparecem depois que o robô ler a Enquete do escritório.', config.sessionLostAt ? 'error' : '');
+  }
   updateRecentSheetLinks();
   updateLedgerLink();
   refreshWriterStatus();

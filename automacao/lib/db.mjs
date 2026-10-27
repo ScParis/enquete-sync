@@ -93,7 +93,8 @@ const DEFAULT_PERMISSIONS = [
   { slug: 'enquete.gravar', module: 'G-Click', description: 'Executar gravação de respostas no G-Click' },
   { slug: 'mapeamentos.gerenciar', module: 'Configurações', description: 'Criar e editar mapeamentos de tarefas e perfis' },
   { slug: 'planilha.escrever', module: 'Planilha', description: 'Sincronizar dados com o Google Sheets via Apps Script' },
-  { slug: 'usuarios.administrar', module: 'Administração', description: 'Gerenciar usuários, cargos e permissões' }
+  { slug: 'usuarios.administrar', module: 'Administração', description: 'Gerenciar usuários, cargos e permissões' },
+  { slug: 'obrigacoes.visualizar', module: 'Obrigações', description: 'Visualizar e inspecionar obrigações no G-Click' }
 ];
 
 const DEFAULT_ROLES = [
@@ -106,8 +107,8 @@ const DEFAULT_ROLES = [
   {
     name: 'Operador',
     slug: 'operador',
-    description: 'Pode visualizar, exportar, conferir e gravar na Enquete',
-    permissions: ['enquete.visualizar', 'enquete.exportar', 'enquete.conferir', 'enquete.gravar']
+    description: 'Pode visualizar, exportar, conferir e gravar na Enquete e Obrigações',
+    permissions: ['enquete.visualizar', 'enquete.exportar', 'enquete.conferir', 'enquete.gravar', 'obrigacoes.visualizar']
   },
   {
     name: 'Auditor',

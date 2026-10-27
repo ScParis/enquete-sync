@@ -50,6 +50,9 @@ try { accountSettings = JSON.parse(await fs.readFile(accountsFile, 'utf8')); }
 catch (error) { if (error.code !== 'ENOENT') throw error; }
 if (!accountSettings || typeof accountSettings !== 'object' || Array.isArray(accountSettings)) throw new Error('contas.json inválido');
 let busy = false, loginContext = null, loginLock = null, loginReady = false, catalogState = null, lastReport = null, previewState = null;
+let catalogStatus = 'not_requested'; // 'not_requested' | 'loading' | 'ready' | 'failed' | 'invalidated'
+let catalogSessionGeneration = 0;
+let ongoingCatalogPromise = null;
 let auditProgress = { running: false, completed: 0, total: 0, task: '', error: null };
 let autoAttemptedAccountId = null;
 let applyProgress = { running: false };
@@ -340,7 +343,9 @@ let sessionLostAt = null;
 function watchLoginContext(context) {
   context.on('close', async () => {
     if (loginContext !== context) return;
-    loginContext = null; loginReady = false; catalogState = null; previewState = null; sessionLostAt = new Date().toISOString();
+    loginContext = null; loginReady = false; catalogState = null; previewState = null;
+    catalogStatus = 'invalidated'; catalogSessionGeneration++; ongoingCatalogPromise = null;
+    sessionLostAt = new Date().toISOString();
     if (loginLock) { const release = loginLock; loginLock = null; await release().catch(() => {}); }
   });
 }
@@ -393,7 +398,7 @@ async function route(req, res) {
   // Rotas de Autenticação Públicas / Sessão
   if (req.method === 'GET' && url.pathname === '/api/auth/me') {
     const user = getAuthUser(req);
-    return send(res, 200, { authenticated: Boolean(user), user: user ?? null, token });
+    return send(res, 200, { authenticated: Boolean(user), user: user ?? null });
   }
   if (req.method === 'POST' && url.pathname === '/api/auth/login') {
     const payload = await body(req);
@@ -401,7 +406,7 @@ async function route(req, res) {
     if (!user) return send(res, 401, { error: 'E-mail ou senha incorretos' });
     const { sessionId } = authService.createSession(user.id);
     const cookie = `gclick_session=${sessionId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800`;
-    return sendCookie(res, 200, { ok: true, user, token }, cookie);
+    return sendCookie(res, 200, { ok: true, user }, cookie);
   }
   if (req.method === 'POST' && url.pathname === '/api/auth/logout') {
     const sessionId = getCookie(req, 'gclick_session');
@@ -410,17 +415,118 @@ async function route(req, res) {
     return sendCookie(res, 200, { ok: true }, cookie);
   }
 
-  // Identificação e Autorização Geral
-  const authUser = getAuthUser(req);
-  const isTokenAuth = req.headers['x-gclick-token'] === token;
-  const currentUser = authUser || (isTokenAuth ? authService.getUserById(1) : null);
+  // Identificação e Autorização Geral estritamente via Sessão (sem bypass de token)
+  const currentUser = getAuthUser(req);
 
-  if (req.method === 'GET' && url.pathname === '/api/config') return send(res, 200, {
-    token, savedMappings, savedProfiles, targetModels: TARGET_MODELS, availableFields: AVAILABLE_FIELDS,
-    accounts: await listStoredAccounts(), loginOpen: Boolean(loginContext), loginReady, sessionLostAt,
-    catalog: loginReady ? catalogState : null, catalogLive: Boolean(catalogState && loginReady), busy,
-    user: currentUser ?? null
-  });
+  if (req.method === 'GET' && url.pathname === '/api/config') {
+    if (!currentUser) return send(res, 401, { error: 'Sessão necessária', code: 'unauthenticated' });
+    return send(res, 200, {
+      savedMappings, savedProfiles, targetModels: TARGET_MODELS, availableFields: AVAILABLE_FIELDS,
+      accounts: await listStoredAccounts(), loginOpen: Boolean(loginContext), loginReady, sessionLostAt,
+      catalog: catalogState,
+      catalogLive: Boolean(catalogState && catalogStatus === 'ready'),
+      catalogStatus,
+      catalogAccountId: catalogState?.accountId ?? null,
+      catalogCapturedAt: catalogState?.capturedAt ?? null,
+      busy,
+      user: currentUser
+    });
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/gclick/session') {
+    if (!currentUser) return send(res, 401, { error: 'Sessão necessária', code: 'unauthenticated' });
+    const accountId = url.searchParams.get('accountId')?.trim();
+    if (!loginContext) {
+      return send(res, 200, {
+        browserStatus: 'closed',
+        gclickAuthStatus: 'unknown',
+        activeAccountId: accountId || null,
+        activeEmpresaNome: null,
+        availableEmpresas: [],
+        message: 'Navegador de automação fechado.'
+      });
+    }
+
+    const pages = loginContext.pages().filter(p => !p.isClosed());
+    const urls = pages.map(page => { try { return new URL(page.url()); } catch { return null; } }).filter(Boolean);
+    const onAuth = urls.some(current => /(^|\.)gclick\.com\.br$/.test(current.hostname) && current.pathname.startsWith('/autenticacao'));
+    const onEmpresas = urls.some(current => current.hostname === 'appp.gclick.com.br' && current.pathname.includes('/empresas'));
+    const hasInternalPage = urls.some(current => /(^|\.)gclick\.com\.br$/.test(current.hostname) && !current.pathname.startsWith('/autenticacao'));
+
+    let authStatus = 'unknown';
+    if (urls.length === 0 || onAuth) {
+      authStatus = 'awaiting_login';
+    } else if (hasInternalPage) {
+      authStatus = 'login_detected';
+    }
+
+    // Leitura passiva do localStorage (empresa ativa e lista de acessos)
+    let activeEmpresa = null;
+    let accessEmpresas = [];
+    for (const p of pages) {
+      if (p.isClosed()) continue;
+      try {
+        const u = new URL(p.url());
+        if (!/(^|\.)gclick\.com\.br$/.test(u.hostname) || u.pathname.startsWith('/autenticacao')) continue;
+        const empresaData = await p.evaluate(() => {
+          try {
+            const curRaw = localStorage.getItem('g3CurrentEmpresa');
+            const allRaw = localStorage.getItem('g3AccessEmpresas');
+            return {
+              current: curRaw ? JSON.parse(curRaw) : null,
+              all: allRaw ? JSON.parse(allRaw) : []
+            };
+          } catch { return null; }
+        }).catch(() => null);
+
+        if (empresaData) {
+          if (!activeEmpresa && empresaData.current) activeEmpresa = empresaData.current;
+          if (Array.isArray(empresaData.all) && empresaData.all.length) accessEmpresas = empresaData.all;
+        }
+        if (activeEmpresa && accessEmpresas.length) break;
+      } catch { /* inspeção passiva sem falhar requisição */ }
+    }
+
+    // Identifica o nome da empresa solicitada ou ativa
+    let resolvedNome = null;
+    if (accountId && accessEmpresas.length) {
+      const match = accessEmpresas.find(e => String(e.id) === String(accountId));
+      if (match?.nome) resolvedNome = match.nome;
+    }
+    if (!resolvedNome && activeEmpresa?.nome) {
+      resolvedNome = activeEmpresa.nome;
+    }
+
+    // Fallback: se ainda não resolveu por localStorage, tenta seletores comuns de interface
+    if (!resolvedNome) {
+      for (const p of pages) {
+        if (p.isClosed()) continue;
+        try {
+          const domNome = await p.evaluate(() => {
+            const el = document.querySelector('.empresa-ativa, .nome-empresa, #nomeEmpresa, .current-empresa, .user-empresa, .navbar-brand, .escritorio-nome, .header-empresa');
+            return el?.innerText?.trim() || null;
+          }).catch(() => null);
+          if (domNome && !['G-Click', 'Dashboard', 'Início', 'Enquete'].includes(domNome)) {
+            resolvedNome = domNome;
+            break;
+          }
+        } catch {}
+      }
+    }
+
+    return send(res, 200, {
+      browserStatus: 'open',
+      gclickAuthStatus: authStatus,
+      onEmpresas,
+      activeAccountId: accountId || (activeEmpresa?.id ? String(activeEmpresa.id) : null),
+      activeEmpresaNome: resolvedNome,
+      currentEmpresaId: activeEmpresa?.id ? String(activeEmpresa.id) : null,
+      availableEmpresas: accessEmpresas.map(e => ({ id: String(e.id), nome: e.nome })),
+      message: authStatus === 'login_detected'
+        ? 'Login detectado no G-Click pela URL da aba. O acesso aos módulos será validado ao acioná-los.'
+        : 'Aguardando login no G-Click no navegador de automação.'
+    });
+  }
 
   if (req.method === 'GET' && url.pathname === '/api/users') {
     if (!currentUser || !authService.hasPermission(currentUser.id, 'usuarios.administrar')) {
@@ -473,6 +579,30 @@ async function route(req, res) {
     return send(res, 200, auditLogCsv(rows), 'text/csv; charset=utf-8');
   }
   if (req.method !== 'POST' || !url.pathname.startsWith('/api/')) return send(res, 404, { error: 'Rota não encontrada' });
+  
+  // Validação de Origem/CSRF local para rotas com efeitos
+  const origin = req.headers['origin'];
+  const referer = req.headers['referer'];
+  if (origin) {
+    try {
+      const originUrl = new URL(origin);
+      if (!['127.0.0.1', 'localhost'].includes(originUrl.hostname)) {
+        return send(res, 403, { error: 'Origem não permitida', code: 'forbidden_origin' });
+      }
+    } catch {
+      return send(res, 403, { error: 'Origem inválida', code: 'forbidden_origin' });
+    }
+  } else if (referer) {
+    try {
+      const refUrl = new URL(referer);
+      if (!['127.0.0.1', 'localhost'].includes(refUrl.hostname)) {
+        return send(res, 403, { error: 'Referer não permitido', code: 'forbidden_origin' });
+      }
+    } catch {
+      return send(res, 403, { error: 'Referer inválido', code: 'forbidden_origin' });
+    }
+  }
+
   if (!currentUser) return send(res, 401, { error: 'Sessão da interface expirada ou não autenticada', code: 'unauthenticated' });
   const payload = await body(req);
 
@@ -565,21 +695,35 @@ async function route(req, res) {
     return send(res, 200, { catalog: catalogState?.accountId === accountId && loginReady ? catalogState : null, live: true, sheetUrl });
   }
   if (url.pathname === '/api/obrigacoes/inspect') {
+    const accountId = requireAccount(payload.accountId ?? '6581');
+    if (!authService.hasPermission(currentUser.id, 'obrigacoes.visualizar', accountId)) {
+      return send(res, 403, { error: 'Acesso negado para a conta informada' });
+    }
+    if (!loginContext) {
+      throw new Error('A janela do G-Click precisa estar aberta para inspecionar Obrigações. Abra a janela em Conexão & Conta e realize o login.');
+    }
     return send(res, 200, await exclusive(async () => {
-      const accountId = requireAccount(payload.accountId ?? '6581');
-      const targetUrl = payload.url ?? `https://app.gclick.com.br/configuracaoListar.do?obj=coobrigacaoopen&tipo=0&status=1&empId=${encodeURIComponent(accountId)}`;
-      const context = loginContext ?? (await openBrowser(profile, false));
-      const shouldClose = !loginContext;
-      try {
-        const page = await context.newPage();
+      const pages = loginContext.pages().filter(p => !p.isClosed());
+      const loggedIn = pages.some(p => {
         try {
-          const analysis = await inspectObrigacoesPage(page, { url: targetUrl });
-          return analysis;
-        } finally {
-          await page.close();
+          const u = new URL(p.url());
+          return /(^|\.)gclick\.com\.br$/.test(u.hostname) && !u.pathname.startsWith('/autenticacao');
+        } catch { return false; }
+      });
+      if (!loggedIn) {
+        throw new Error('Sessão no G-Click não detectada. Faça o login na janela do navegador antes de inspecionar Obrigações.');
+      }
+
+      const targetUrl = payload.url ?? `https://app.gclick.com.br/configuracaoListar.do?obj=coobrigacaoopen&tipo=0&status=1&empId=${encodeURIComponent(accountId)}`;
+      const page = await loginContext.newPage();
+      try {
+        const analysis = await inspectObrigacoesPage(page, { url: targetUrl });
+        if (analysis?.currentUrl && (analysis.currentUrl.includes('/autenticacao') || analysis.currentUrl.includes('/login'))) {
+          throw new Error('Acesso à página de Obrigações redirecionado para login. Verifique as credenciais ou permissões no G-Click.');
         }
+        return analysis;
       } finally {
-        if (shouldClose) await context.close();
+        await page.close();
       }
     }, true));
   }
@@ -786,18 +930,56 @@ async function route(req, res) {
       tasks: [...counts.values()].map(({ name, count, clients, invalidCnpjs }) => ({ name, count, clients: clients.size, invalidCnpjs }))
         .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')) });
   }
-  if (url.pathname === '/api/catalog') return send(res, 200, await exclusive(async () => {
-    if (!loginContext) throw new Error('Abra primeiro a janela de login do G-Click no menu Conexão & Conta');
+  if (url.pathname === '/api/catalog') {
     const accountId = requireAccount(payload.accountId);
-    if (!loginReady || !catalogState || catalogState.accountId !== accountId) {
-      if (!(await hasGclickSession(loginContext, accountId))) {
-        throw new Error(`A Enquete da conta ${accountId} não abriu no Chrome da automação. Confira se o usuário logado tem acesso a este escritório.`);
-      }
-      loginReady = true;
+    if (!authService.hasPermission(currentUser.id, 'enquete.visualizar', accountId)) {
+      return send(res, 403, { error: 'Acesso negado: permissão "enquete.visualizar" necessária nesta conta' });
     }
-    if (!catalogState || catalogState.accountId !== accountId || payload.refresh) await captureCatalog(accountId);
-    return { catalog: catalogState };
-  }, true));
+    if (!loginContext) throw new Error('Abra primeiro a janela de login do G-Click no menu Conexão & Conta');
+
+    // Se já houver captura em andamento para a mesma conta, reaproveita a mesma Promise (deduplicação contra clique duplo)
+    if (ongoingCatalogPromise && ongoingCatalogPromise.accountId === accountId) {
+      const result = await ongoingCatalogPromise.promise;
+      return send(res, 200, result);
+    }
+
+    const currentGen = ++catalogSessionGeneration;
+    catalogStatus = 'loading';
+
+    const executeCapture = async () => {
+      try {
+        if (!(await hasGclickSession(loginContext, accountId))) {
+          catalogStatus = 'failed';
+          throw new Error(`A Enquete da conta ${accountId} não abriu no Chrome da automação. Confira se o usuário logado tem acesso a este escritório.`);
+        }
+        await captureCatalog(accountId);
+
+        // Se a geração mudou durante a captura (ex.: usuário trocou de conta ou reiniciou login), descarta resultado desatualizado
+        if (catalogSessionGeneration !== currentGen) {
+          return { catalog: null, invalidated: true };
+        }
+
+        loginReady = true;
+        catalogStatus = 'ready';
+        return {
+          catalog: catalogState,
+          catalogStatus: 'ready',
+          catalogAccountId: catalogState?.accountId,
+          catalogCapturedAt: catalogState?.capturedAt
+        };
+      } catch (err) {
+        if (catalogSessionGeneration === currentGen) catalogStatus = 'failed';
+        throw err;
+      } finally {
+        if (ongoingCatalogPromise?.accountId === accountId) ongoingCatalogPromise = null;
+      }
+    };
+
+    const promise = exclusive(executeCapture, true);
+    ongoingCatalogPromise = { accountId, promise };
+
+    return send(res, 200, await promise);
+  }
   if (url.pathname === '/api/mappings/preview') return send(res, 200, await exclusive(async () => {
     const accountId = requireAccount(payload.accountId);
     if (!authService.hasPermission(currentUser.id, 'enquete.conferir', accountId)) {
@@ -843,7 +1025,6 @@ async function route(req, res) {
     if (autoAudit) auditProgress = { running: true, completed: 0, total: taskNames.length, task: filterTask ? `Conferindo ${filterTask}` : 'Identificando tarefas da planilha', error: null };
     try {
     const mappings = [], pending = [], excluded = [];
-    let savedChanged = false;
     for (const task of taskNames) {
       let saved = savedMappings.find(x => x.accountId === accountId && x.task === task);
       if (!saved && catalogState?.questions) {
@@ -857,10 +1038,9 @@ async function route(req, res) {
             questionLabel: match.question.label,
             answerLabel: match.answer.label,
             catalogSource: 'live',
-            updatedAt: new Date().toISOString()
+            updatedAt: new Date().toISOString(),
+            isSuggestion: true
           };
-          savedMappings.push(saved);
-          savedChanged = true;
         }
       }
       if (saved?.excluded) { excluded.push(task); if (autoAudit) auditProgress.completed++; continue; }
@@ -868,7 +1048,6 @@ async function route(req, res) {
       if (!rules) { pending.push(task); if (autoAudit) auditProgress.completed++; continue; }
       mappings.push({ task, rules });
     }
-    if (savedChanged) await saveMappings();
     if (!autoAudit && (pending.length || excluded.length)) throw new Error(`Há ${pending.length + excluded.length} tarefa(s) selecionada(s) sem mapeamento válido; revise a fila`);
     if (!autoAudit && !mappings.length) throw new Error('Nenhum mapeamento confirmado foi encontrado na planilha');
     const results = [], inspected = [], invalidSource = [], failedTasks = [], applicable = [];
@@ -1144,7 +1323,9 @@ async function route(req, res) {
     busy = true;
     try {
       if (loginContext) await loginContext.close();
-      loginContext = null; loginReady = false; catalogState = null; previewState = null; autoAttemptedAccountId = null; auditCache.clear(); await persistAuditCache();
+      loginContext = null; loginReady = false; catalogState = null; previewState = null; autoAttemptedAccountId = null;
+      catalogStatus = 'not_requested'; catalogSessionGeneration++; ongoingCatalogPromise = null;
+      auditCache.clear(); await persistAuditCache();
       if (loginLock) await loginLock();
       loginLock = null;
       loginLock = await acquireLock();
@@ -1152,53 +1333,63 @@ async function route(req, res) {
       watchLoginContext(loginContext); sessionLostAt = null;
       const page = loginContext.pages()[0] ?? await loginContext.newPage();
       await page.goto(LOGIN_URL);
-      return send(res, 200, { open: true });
-    } catch (e) { if (loginContext) await loginContext.close(); loginContext = null; loginReady = false; catalogState = null; if (loginLock) await loginLock(); loginLock = null; throw e; }
+      return send(res, 200, { open: true, catalogStatus: 'not_requested' });
+    } catch (e) { if (loginContext) await loginContext.close(); loginContext = null; loginReady = false; catalogState = null; catalogStatus = 'not_requested'; if (loginLock) await loginLock(); loginLock = null; throw e; }
     finally { busy = false; }
   }
   if (url.pathname === '/api/login/close') {
-    if (busy) throw new Error('Outra operação está em andamento');
     if (!loginContext) throw new Error('Abra primeiro a janela de login da automação.');
     const accountId = requireAccount(payload.accountId);
-    busy = true;
-    try {
-      if (payload.auto) {
-        const pages = loginContext.pages().filter(p => !p.isClosed());
-        const urls = pages.map(page => { try { return new URL(page.url()); } catch { return null; } }).filter(Boolean);
-        const onEnquete = urls.some(current => current.hostname === 'app.gclick.com.br' && current.pathname.endsWith('/Listar.do') &&
-          current.searchParams.get('obj') === 'enqueteopen' && current.searchParams.get('empId') === accountId);
-        const onEmpresas = urls.some(current => current.hostname === 'appp.gclick.com.br' && current.pathname.includes('/empresas'));
-        const loggedIn = urls.some(current => /(^|\.)gclick\.com\.br$/.test(current.hostname) && !current.pathname.startsWith('/autenticacao'));
+    const pages = loginContext.pages().filter(p => !p.isClosed());
+    const urls = pages.map(page => { try { return new URL(page.url()); } catch { return null; } }).filter(Boolean);
+    const onAuth = urls.some(current => /(^|\.)gclick\.com\.br$/.test(current.hostname) && current.pathname.startsWith('/autenticacao'));
+    const onEmpresas = urls.some(current => current.hostname === 'appp.gclick.com.br' && current.pathname.includes('/empresas'));
+    const loggedIn = urls.some(current => /(^|\.)gclick\.com\.br$/.test(current.hostname) && !current.pathname.startsWith('/autenticacao'));
 
-        if (!onEnquete && !loggedIn) return send(res, 200, { open: true, ready: false, stage: 'login', message: 'Aguardando o login no Chrome da automação.' });
+    if (!loggedIn || onAuth) {
+      return send(res, 200, { open: true, ready: false, stage: 'login', message: 'Aguardando o login no Chrome da automação.' });
+    }
+    if (onEmpresas) {
+      return send(res, 200, { open: true, ready: false, stage: 'select_company', message: `Login realizado. Selecione a empresa no G-Click (conta ${accountId}) para continuar.` });
+    }
 
-        // Se está na tela de empresas, tenta entrar automaticamente no escritório selecionado
-        if (onEmpresas) {
-          const empPage = pages.find(p => { try { return new URL(p.url()).pathname.includes('/empresas'); } catch { return false; } });
-          if (empPage) {
-            const entered = await enterEmpresa(empPage, accountId).catch(() => null);
-            if (!entered?.entered) {
-              return send(res, 200, { open: true, ready: false, stage: 'select_company', message: `Login realizado. Selecione a empresa no G-Click (conta ${accountId}) para continuar.` });
-            }
-          }
+    // Leitura passiva da empresa
+    let empresaNome = null;
+    const mainPage = pages.find(p => {
+      try {
+        const u = new URL(p.url());
+        return /(^|\.)gclick\.com\.br$/.test(u.hostname) && !u.pathname.startsWith('/autenticacao');
+      } catch { return false; }
+    });
+    if (mainPage) {
+      try {
+        const raw = await mainPage.evaluate(() => localStorage.getItem('g3AccessEmpresas')).catch(() => null);
+        if (raw) {
+          const list = JSON.parse(raw);
+          const found = list.find(e => String(e.id) === String(accountId));
+          if (found) empresaNome = found.nome;
         }
+      } catch {}
+    }
 
-        if (autoAttemptedAccountId === accountId)
-          return send(res, 200, { open: true, ready: false, stage: 'no_access', message: `A Enquete da conta ${accountId} não abriu. Confira o acesso ao escritório e clique em Verificar sessão / Repetir captura para tentar novamente.` });
-        autoAttemptedAccountId = accountId;
-        if (!(await hasGclickSession(loginContext, accountId)))
-          return send(res, 200, { open: true, ready: false, stage: 'no_access', message: `A Enquete da conta ${accountId} não abriu. Confira o acesso ao escritório e clique em Verificar sessão / Repetir captura para tentar novamente.` });
-      } else if (!(await hasGclickSession(loginContext, accountId)))
-        throw new Error(`A Enquete da conta ${accountId} não abriu no Chrome da automação. Confira o login e o acesso a esse escritório.`);
-      await captureCatalog(accountId);
-      loginReady = true;
-      return send(res, 200, { open: true, ready: true, catalog: catalogState });
-    } finally { busy = false; }
+    // Não navega para a Enquete e não captura catálogo silenciosamente
+    return send(res, 200, {
+      open: true,
+      ready: false,
+      stage: 'login_detected',
+      accountId,
+      empresaNome,
+      catalog: catalogState?.accountId === accountId ? catalogState : null,
+      message: 'Login detectado no G-Click. Para ler a Enquete, abra Enquete -> Mapeamento e clique em Buscar Perguntas e Respostas (Sob Demanda).'
+    });
   }
   return send(res, 404, { error: 'Rota não encontrada' });
 }
 const server = http.createServer((req, res) => { route(req, res).catch(async e => { console.error(`[API 400] ${req.method} ${req.url}: ${e.message}`); if (e.report) lastReport = e.report; send(res, 400, { error: humanError(e), report: e.report ?? null }); }); });
-server.listen(port, host, () => console.log(`G-Click local: http://${host}:${port}`));
+export { server, route };
+if (process.argv[1] === new URL(import.meta.url).pathname) {
+  server.listen(port, host, () => console.log(`G-Click local: http://${host}:${port}`));
+}
 process.on('uncaughtException', err => { console.error('[UNCAUGHT EXCEPTION]', err); });
 process.on('unhandledRejection', reason => { console.error('[UNHANDLED REJECTION]', reason); });
 for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, async () => { try { if (loginContext) await loginContext.close(); if (loginLock) await loginLock(); } finally { server.close(() => process.exit(0)); } });

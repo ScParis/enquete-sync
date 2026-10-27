@@ -4,9 +4,15 @@ import http from 'node:http';
 import { AuthService } from '../lib/auth-service.mjs';
 import { getDatabase } from '../lib/db.mjs';
 
+import { server } from '../server.mjs';
+
 test('Rotas HTTP de Autenticação e RBAC: login, me, logout, gestão de usuários e overrides', async (t) => {
-  // Faz requisições HTTP locais no servidor ativo (porta 8766)
-  const base = 'http://127.0.0.1:8766';
+  // Inicia servidor em porta dinâmica para teste isolado sem colidir com ambiente local
+  const testServer = http.createServer(server.listeners('request')[0]);
+  await new Promise(resolve => testServer.listen(0, '127.0.0.1', resolve));
+  const testPort = testServer.address().port;
+  const base = `http://127.0.0.1:${testPort}`;
+  t.after(() => new Promise(resolve => testServer.close(resolve)));
 
   // 1. Falha de Login
   const failRes = await fetch(`${base}/api/auth/login`, {
@@ -98,9 +104,50 @@ test('Rotas HTTP de Autenticação e RBAC: login, me, logout, gestão de usuári
   });
   assert.equal(logoutRes.status, 200);
 
-  // 8. Checar /api/auth/me após logout
+  // 8. Checar /api/auth/me após logout (não deve conter campo token)
   const meAfterLogout = await fetch(`${base}/api/auth/me`, {
     headers: { Cookie: sessionCookie }
   });
-  assert.equal((await meAfterLogout.json()).authenticated, false);
+  const meAfterData = await meAfterLogout.json();
+  assert.equal(meAfterData.authenticated, false);
+  assert.equal(meAfterData.token, undefined, 'Anônimo nunca deve receber token');
+
+  // 9. /api/config deve recusar anônimo
+  const configAnon = await fetch(`${base}/api/config`);
+  assert.equal(configAnon.status, 401);
+
+  // 10. GET /api/gclick/session autenticado
+  const loginAgain = await fetch(`${base}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: 'admin@gclick.local', password: 'Admin@123456' })
+  });
+  const newCookie = loginAgain.headers.get('set-cookie').split(';')[0];
+  const sessionRes = await fetch(`${base}/api/gclick/session?accountId=2420`, {
+    headers: { Cookie: newCookie }
+  });
+  assert.equal(sessionRes.status, 200);
+  const sessionData = await sessionRes.json();
+  assert.ok(sessionData.browserStatus, 'Deve retornar browserStatus');
+  assert.ok(sessionData.gclickAuthStatus, 'Deve retornar gclickAuthStatus');
+  assert.equal(sessionData.activeAccountId, '2420');
+
+  // 11. /api/obrigacoes/inspect sem autenticação recusa 401
+  const obrigacoesAnon = await fetch(`${base}/api/obrigacoes/inspect`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ accountId: '2420' })
+  });
+  assert.equal(obrigacoesAnon.status, 401);
+
+  // 12. /api/obrigacoes/inspect autenticado mas sem janela aberta recusa com erro amigável sem abrir browser headless
+  const obrigacoesAuth = await fetch(`${base}/api/obrigacoes/inspect`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: newCookie },
+    body: JSON.stringify({ accountId: '2420' })
+  });
+  assert.equal(obrigacoesAuth.status, 400);
+  const obrigacoesData = await obrigacoesAuth.json();
+  assert.match(obrigacoesData.error, /janela do G-Click precisa estar aberta/);
 });
+

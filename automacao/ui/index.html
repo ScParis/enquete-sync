@@ -36,7 +36,7 @@
       <span class="top-sub">Painel local</span>
     </div>
     <div class="topbar-right">
-      <div class="account-pill" id="topAccountPill">Conta: <strong id="topAccountId">—</strong></div>
+      <div class="account-pill" id="topAccountPill">Conta: <strong id="topAccountId">—</strong> <span id="topAccountNome" style="color:var(--text-dimmed);margin-left:4px;font-weight:normal"></span> <span id="topSessionBadge" class="tag-pill" style="display:none;margin-left:6px;font-size:11px"></span></div>
       <div class="local-badge"><span></span> Executando neste computador (8766)</div>
     </div>
   </header>
@@ -212,9 +212,9 @@
           <datalist id="accountList"></datalist>
           <div class="row" style="margin-top:14px">
             <button id="openLogin" type="button" class="primary">Abrir janela de login</button>
-            <button id="closeLogin" type="button" class="secondary">Verificar sessão / Repetir captura</button>
+            <button id="closeLogin" type="button" class="secondary">Verificar login no G-Click</button>
           </div>
-          <p class="hint">Basta entrar no G-Click na janela da automação: o robô abre a Enquete da conta e captura o catálogo de perguntas e respostas sozinho. A leitura da planilha também funciona antes do login.</p>
+          <p class="hint">Basta entrar no G-Click na janela da automação. Após o login ser detectado, acesse o módulo <strong>Enquete → Mapeamento</strong> e clique em <strong>Buscar Perguntas e Respostas (Sob Demanda)</strong> para carregar o catálogo.</p>
         </section>
       </div>
 
