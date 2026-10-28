@@ -1,3 +1,101 @@
+// Sistema de Notificações Toast Enterprise não-intrusivo
+class ToastManager {
+  constructor() {
+    this.container = null;
+  }
+  ensureContainer() {
+    if (this.container && document.body.contains(this.container)) return;
+    let existing = document.getElementById('toast-container');
+    if (!existing) {
+      existing = document.createElement('div');
+      existing.id = 'toast-container';
+      existing.className = 'toast-container';
+      existing.setAttribute('aria-live', 'polite');
+      existing.setAttribute('aria-atomic', 'true');
+      document.body.appendChild(existing);
+    }
+    this.container = existing;
+  }
+  show({ title, message, type = 'info', duration = 4000, action = null }) {
+    this.ensureContainer();
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.setAttribute('role', 'alert');
+    const icons = { success: '✓', error: '✕', warning: '⚠', info: 'ℹ' };
+    const iconEl = document.createElement('span');
+    iconEl.className = 'toast-icon';
+    iconEl.textContent = icons[type] || 'ℹ';
+    const contentEl = document.createElement('div');
+    contentEl.className = 'toast-content';
+    if (title) {
+      const titleEl = document.createElement('strong');
+      titleEl.className = 'toast-title';
+      titleEl.textContent = title;
+      contentEl.appendChild(titleEl);
+    }
+    if (message) {
+      const msgEl = document.createElement('span');
+      msgEl.className = 'toast-message';
+      msgEl.textContent = message;
+      contentEl.appendChild(msgEl);
+    }
+    toast.appendChild(iconEl);
+    toast.appendChild(contentEl);
+    if (action && typeof action.onClick === 'function') {
+      const actionBtn = document.createElement('button');
+      actionBtn.type = 'button';
+      actionBtn.className = 'toast-action';
+      actionBtn.textContent = action.label || 'Ver';
+      actionBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        action.onClick();
+        this.dismiss(toast);
+      });
+      toast.appendChild(actionBtn);
+    }
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'toast-close';
+    closeBtn.innerHTML = '&times;';
+    closeBtn.setAttribute('aria-label', 'Fechar notificação');
+    closeBtn.addEventListener('click', () => this.dismiss(toast));
+    toast.appendChild(closeBtn);
+    if (duration > 0) {
+      const progress = document.createElement('div');
+      progress.className = 'toast-progress';
+      progress.style.animationDuration = `${duration}ms`;
+      toast.appendChild(progress);
+    }
+    this.container.appendChild(toast);
+    requestAnimationFrame(() => toast.classList.add('toast-visible'));
+    if (duration > 0) {
+      toast._timer = setTimeout(() => this.dismiss(toast), duration);
+    }
+    return toast;
+  }
+  dismiss(toast) {
+    if (!toast || toast.classList.contains('toast-hiding')) return;
+    toast.classList.add('toast-hiding');
+    if (toast._timer) clearTimeout(toast._timer);
+    toast.addEventListener('transitionend', () => {
+      if (toast.parentNode) toast.parentNode.removeChild(toast);
+    }, { once: true });
+  }
+  success(message, title = 'Sucesso', options = {}) {
+    return this.show({ ...options, title, message, type: 'success' });
+  }
+  error(message, title = 'Erro', options = {}) {
+    return this.show({ ...options, title, message, type: 'error', duration: options.duration ?? 6000 });
+  }
+  warning(message, title = 'Atenção', options = {}) {
+    return this.show({ ...options, title, message, type: 'warning', duration: options.duration ?? 5000 });
+  }
+  info(message, title = 'Informação', options = {}) {
+    return this.show({ ...options, title, message, type: 'info' });
+  }
+}
+const toast = new ToastManager();
+
 const $ = id => document.getElementById(id);
 let config = { accounts: [], savedMappings: [] };
 let authToken = '', previewId = null, lastReport = null, working = false, downloadFiles = [], liveCatalog = null, catalogLive = false, taskCatalog = [], tasksAutoFilled = false, loginPoll = null, loginPollBusy = false, savedMappings = [], editingTask = null, selectedTasks = new Set();
@@ -9,6 +107,29 @@ const RESULTS_PAGE_SIZE = 50;
 const labels = { vazio: 'Sem resposta', ja_correto: 'Já correto', divergente: 'Divergente', nao_encontrado: 'Não localizado', bloqueado: 'Bloqueado', sem_mapeamento: 'Sem mapeamento', sem_tarefa: 'Sem obrigação na planilha', nao_verificado: 'Não verificado', a_conferir: 'A conferir', pronto: 'Elegível' };
 let focusTask = null, auditRunning = false, auditMessage = '';
 const ACCOUNT_KEY = 'gclick.lastAccount';
+
+// Helper de Estado de Carregamento para Botões (Enterprise UX)
+async function withButtonLoading(btnOrId, loadingLabel, asyncFn) {
+  const btn = typeof btnOrId === 'string' ? $(btnOrId) : btnOrId;
+  if (!btn) return asyncFn();
+  if (btn.classList.contains('btn-loading')) return; // Evita duplo clique concorrente
+
+  const originalText = btn.textContent;
+  const originalDisabled = btn.disabled;
+
+  btn.classList.add('btn-loading');
+  btn.disabled = true;
+  if (loadingLabel) btn.setAttribute('data-loading-text', loadingLabel);
+
+  try {
+    return await asyncFn();
+  } finally {
+    btn.classList.remove('btn-loading');
+    btn.disabled = originalDisabled;
+    btn.removeAttribute('data-loading-text');
+  }
+}
+
 const currentAccount = () => {
   const val = $('accountId')?.value?.trim();
   if (val && /^\d+$/.test(val)) return val;
@@ -923,24 +1044,38 @@ async function refreshDownloads() {
   } catch (e) { status(e.message, 'error'); }
 }
 async function login(endpoint) {
-  try {
-    setBusy(true); clearPreview(); stopLoginPoll();
-    status(endpoint === 'login/open' ? 'Abrindo o Chrome na página de autenticação do G-Click…' : 'Verificando login no G-Click…');
-    if (!/^\d+$/.test(currentAccount())) throw new Error('Informe o código da conta G-Click (empId do escritório) antes de conectar.');
-    const result = await api(endpoint, { accountId: currentAccount() });
-    if (result.catalog) useCatalog(result.catalog, true);
-    else if (endpoint === 'login/open') {
-      liveCatalog = null; catalogLive = false; renderCatalogOverview(); renderQueue();
-      startLoginPoll();
+  const btnId = endpoint === 'login/open' ? 'openLogin' : 'closeLogin';
+  const label = endpoint === 'login/open' ? 'Abrindo navegador…' : 'Verificando login…';
+  return withButtonLoading(btnId, label, async () => {
+    try {
+      setBusy(true); clearPreview(); stopLoginPoll();
+      status(endpoint === 'login/open' ? 'Abrindo o Chrome na página de autenticação do G-Click…' : 'Verificando login no G-Click…');
+      if (!/^\d+$/.test(currentAccount())) {
+        toast.warning('Informe o código da conta G-Click (empId do escritório) antes de conectar.', 'Conta necessária');
+        throw new Error('Informe o código da conta G-Click (empId do escritório) antes de conectar.');
+      }
+      const result = await api(endpoint, { accountId: currentAccount() });
+      if (result.catalog) useCatalog(result.catalog, true);
+      else if (endpoint === 'login/open') {
+        liveCatalog = null; catalogLive = false; renderCatalogOverview(); renderQueue();
+        startLoginPoll();
+      }
+      if (result.accountId || result.empresaNome) {
+        updateTopAccountDisplay(result.accountId || currentAccount(), result.empresaNome, result.stage === 'login_detected' ? 'login_detected' : 'logged_in');
+      }
+      const msg = endpoint === 'login/open'
+        ? 'Entre no G-Click na janela que abriu. Quando o login for detectado, abra Enquete -> Mapeamento e clique em Buscar Perguntas e Respostas (Sob Demanda).'
+        : (result.catalog ? `Catálogo atual conferido: ${result.catalog.questionCount} perguntas.` : (result.message || 'Login verificado no G-Click.'));
+      status(msg, 'ok');
+      toast.success(msg, endpoint === 'login/open' ? 'Navegador aberto' : 'Sessão G-Click');
+    } catch (error) {
+      status(error.message, 'error');
+      toast.error(error.message, 'Falha no Login G-Click');
+      if (endpoint === 'login/close') startLoginPoll();
+    } finally {
+      setBusy(false);
     }
-    if (result.accountId || result.empresaNome) {
-      updateTopAccountDisplay(result.accountId || currentAccount(), result.empresaNome, result.stage === 'login_detected' ? 'login_detected' : 'logged_in');
-    }
-    status(endpoint === 'login/open'
-      ? 'Entre no G-Click na janela que abriu. Quando o login for detectado, abra Enquete -> Mapeamento e clique em Buscar Perguntas e Respostas (Sob Demanda).'
-      : (result.catalog ? `Catálogo atual conferido: ${result.catalog.questionCount} perguntas.` : (result.message || 'Login verificado no G-Click.')), 'ok');
-  } catch (error) { status(error.message, 'error'); if (endpoint === 'login/close') startLoginPoll(); }
-  finally { setBusy(false); }
+  });
 }
 for (const input of document.querySelectorAll('input[name="sourceType"]')) input.addEventListener('change', () => { $('fileBox').hidden = sourceType() !== 'file'; $('urlBox').hidden = sourceType() !== 'url'; $('recentBox').hidden = sourceType() !== 'recent'; taskCatalog = []; selectedTasks.clear(); clearImportedTable(); renderQueue(); $('taskStatus').textContent = 'Leia as tarefas da fonte selecionada.'; sourceStatus(sourceType() === 'url' ? 'Links privados exigem JSON de conta de serviço. Para usar seu login do Google, baixe a aba como CSV e importe em Arquivo.' : sourceType() === 'file' ? 'Escolha o CSV ou XLSX e clique em Importar arquivo selecionado.' : 'Baixe o CSV da aba e selecione o arquivo recebido.'); clearPreview(); if (sourceType() === 'recent') refreshDownloads(); });
 for (const id of ['accountId','file','sheetName','sourceUrl','recentSheetUrl','serviceKey']) $(id).addEventListener('input', () => { previewId = null; updateApply(); if (id === 'accountId') updateSidebarBadges(); });
@@ -1069,17 +1204,34 @@ $('copyScript').addEventListener('click', async () => {
   } catch (error) { $('copyStatus').textContent = error.message; }
 });
 $('saveWriter').addEventListener('click', async () => {
-  try {
-    $('writerStatus').textContent = 'Testando o Apps Script…';
-    const r = await api('sheet-writer/save', { accountId: currentAccount(), url: $('writerUrl').value.trim() });
-    status(`Registro na planilha ativo (aba “${r.aba}”).${r.sync?.linhas ? ` ${r.sync.linhas} linha(s) atualizadas com marcações anteriores.` : ''}`, 'ok');
-  } catch (error) { status(error.message, 'error'); }
-  refreshWriterStatus();
+  await withButtonLoading('saveWriter', 'Testando script…', async () => {
+    try {
+      $('writerStatus').textContent = 'Testando o Apps Script…';
+      const r = await api('sheet-writer/save', { accountId: currentAccount(), url: $('writerUrl').value.trim() });
+      const msg = `Registro na planilha ativo (aba “${r.aba}”).${r.sync?.linhas ? ` ${r.sync.linhas} linha(s) atualizadas com marcações anteriores.` : ''}`;
+      status(msg, 'ok');
+      toast.success(msg, 'Planilha Conectada');
+    } catch (error) {
+      status(error.message, 'error');
+      toast.error(error.message, 'Falha no Apps Script');
+    }
+    refreshWriterStatus();
+  });
 });
 $('resendMarks').addEventListener('click', async () => {
-  try { const r = await api('sheet-writer/resend', { accountId: currentAccount() }); status(r.error ? `Planilha: ${r.error}` : `Planilha: ${r.linhas ?? 0} linha(s) atualizada(s)${r.pending ? `; ${r.pending} sem linha correspondente` : ''}.`, r.error ? 'error' : 'ok'); }
-  catch (error) { status(error.message, 'error'); }
-  refreshWriterStatus();
+  await withButtonLoading('resendMarks', 'Reenviando…', async () => {
+    try {
+      const r = await api('sheet-writer/resend', { accountId: currentAccount() });
+      const msg = r.error ? `Planilha: ${r.error}` : `Planilha: ${r.linhas ?? 0} linha(s) atualizada(s)${r.pending ? `; ${r.pending} sem linha correspondente` : ''}.`;
+      status(msg, r.error ? 'error' : 'ok');
+      if (r.error) toast.error(r.error, 'Falha no reenvio');
+      else toast.success(msg, 'Marcações Reenviadas');
+    } catch (error) {
+      status(error.message, 'error');
+      toast.error(error.message, 'Falha no reenvio');
+    }
+    refreshWriterStatus();
+  });
 });
 function planilhaText(p) {
   if (!p) return '';
@@ -1750,6 +1902,14 @@ async function loadObrigacoesSection() {
   const accountId = currentAccount() || (config.accounts && config.accounts[0] ? (typeof config.accounts[0] === 'string' ? config.accounts[0] : config.accounts[0].accountId) : '') || '6581';
   try {
     if ($('obrigMetricSource')) $('obrigMetricSource').textContent = 'Carregando catálogo da conta ' + accountId + '…';
+    const tbody = $('obrigacoesTableBody');
+    if (tbody) {
+      tbody.innerHTML = `
+        <tr class="skeleton-table-row"><td><div class="skeleton-box" style="width:18px"></div></td><td><div class="skeleton-box" style="width:160px"></div></td><td><div class="skeleton-box" style="width:90px"></div></td><td><div class="skeleton-box" style="width:70px"></div></td><td><div class="skeleton-box" style="width:60px"></div></td><td><div class="skeleton-box" style="width:110px"></div></td><td><div class="skeleton-box" style="width:100px"></div></td><td><div class="skeleton-box" style="width:80px"></div></td></tr>
+        <tr class="skeleton-table-row"><td><div class="skeleton-box" style="width:18px"></div></td><td><div class="skeleton-box" style="width:200px"></div></td><td><div class="skeleton-box" style="width:100px"></div></td><td><div class="skeleton-box" style="width:75px"></div></td><td><div class="skeleton-box" style="width:65px"></div></td><td><div class="skeleton-box" style="width:120px"></div></td><td><div class="skeleton-box" style="width:95px"></div></td><td><div class="skeleton-box" style="width:80px"></div></td></tr>
+        <tr class="skeleton-table-row"><td><div class="skeleton-box" style="width:18px"></div></td><td><div class="skeleton-box" style="width:140px"></div></td><td><div class="skeleton-box" style="width:85px"></div></td><td><div class="skeleton-box" style="width:70px"></div></td><td><div class="skeleton-box" style="width:55px"></div></td><td><div class="skeleton-box" style="width:105px"></div></td><td><div class="skeleton-box" style="width:110px"></div></td><td><div class="skeleton-box" style="width:80px"></div></td></tr>
+      `;
+    }
     const res = await api('obrigacoes/catalog', { accountId });
     obrigacoesList = res.items || [];
 
@@ -2994,6 +3154,7 @@ async function submitBatchWhatsapp() {
     const okMsg = `Lote de WhatsApp concluído: ${res.successCount} criadas com sucesso, ${res.failureCount} falhas.`;
     status(okMsg, 'ok');
     setObrigStatus(okMsg, 'ok');
+    toast.success(okMsg, 'Automação em Lote Concluída');
 
     selectedObrigacoesIds.clear();
     $('modalBatchWhatsapp').style.display = 'none';
@@ -3001,6 +3162,7 @@ async function submitBatchWhatsapp() {
   } catch (err) {
     status('Erro na criação de WhatsApp em massa: ' + err.message, 'error');
     setObrigStatus('Falha na ação em massa: ' + err.message, 'error');
+    toast.error('Erro na criação de WhatsApp em massa: ' + err.message, 'Falha no Lote WhatsApp');
   } finally {
     stopObrigProgressPoll();
     setBusy(false);

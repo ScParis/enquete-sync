@@ -1684,3 +1684,194 @@ td {
   from { opacity: 0; transform: translateY(-8px); }
   to { opacity: 1; transform: translateY(0); }
 }
+
+/* ==========================================================================
+   SISTEMA DE TOASTS ENTERPRISE (UX FEEDBACK)
+   ========================================================================== */
+.toast-container {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 99999;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 380px;
+  width: calc(100vw - 40px);
+  pointer-events: none;
+}
+
+.toast {
+  pointer-events: auto;
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 16px;
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.15), 0 8px 10px -6px rgba(15, 23, 42, 0.1);
+  border: 1px solid #e2e8f0;
+  opacity: 0;
+  transform: translateX(30px);
+  transition: opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1), transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
+}
+
+.toast.toast-visible {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.toast.toast-hiding {
+  opacity: 0;
+  transform: translateX(40px);
+}
+
+.toast-icon {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 800;
+  margin-top: 1px;
+}
+
+.toast-success { border-left: 4px solid #10b981; }
+.toast-success .toast-icon { background: #d1fae5; color: #065f46; }
+
+.toast-error { border-left: 4px solid #ef4444; }
+.toast-error .toast-icon { background: #fee2e2; color: #991b1b; }
+
+.toast-warning { border-left: 4px solid #f59e0b; }
+.toast-warning .toast-icon { background: #fef3c7; color: #92400e; }
+
+.toast-info { border-left: 4px solid #3b82f6; }
+.toast-info .toast-icon { background: #dbeafe; color: #1e40af; }
+
+.toast-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.toast-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.toast-message {
+  font-size: 12px;
+  color: #475569;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.toast-action {
+  background: none;
+  border: 1px solid #cbd5e1;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #0f172a;
+  cursor: pointer;
+  align-self: center;
+  margin-left: 4px;
+}
+.toast-action:hover {
+  background: #f1f5f9;
+}
+
+.toast-close {
+  background: none;
+  border: none;
+  font-size: 16px;
+  line-height: 1;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 0;
+  margin-left: 4px;
+  align-self: flex-start;
+}
+.toast-close:hover {
+  color: #0f172a;
+}
+
+.toast-progress {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 2.5px;
+  background: rgba(15, 23, 42, 0.15);
+  width: 100%;
+  animation: toastProgress linear forwards;
+}
+
+@keyframes toastProgress {
+  from { width: 100%; }
+  to { width: 0%; }
+}
+
+/* ==========================================================================
+   ESTADOS DE CARGA EM BOTÕES (BUTTON LOADING STATES)
+   ========================================================================== */
+.btn-loading {
+  position: relative !important;
+  color: transparent !important;
+  pointer-events: none !important;
+  cursor: not-allowed !important;
+  opacity: 0.85;
+}
+
+.btn-loading::after {
+  content: "";
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  top: calc(50% - 8px);
+  left: calc(50% - 8px);
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: btnSpin 0.6s linear infinite;
+}
+
+/* Spinner escuro para botões secundários/claros */
+button.secondary.btn-loading::after,
+button.ghost.btn-loading::after {
+  border: 2px solid rgba(15, 23, 42, 0.2);
+  border-top-color: #0f172a;
+}
+
+@keyframes btnSpin {
+  to { transform: rotate(360deg); }
+}
+
+/* ==========================================================================
+   SKELETONS VISUAIS DE CARREGAMENTO (TABELAS & CARDS)
+   ========================================================================== */
+.skeleton-box {
+  background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+  background-size: 200% 100%;
+  animation: skeletonShimmer 1.5s infinite;
+  border-radius: 4px;
+  display: inline-block;
+  height: 14px;
+}
+
+@keyframes skeletonShimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.skeleton-table-row td {
+  padding: 12px 14px !important;
+}
+
