@@ -30,6 +30,8 @@ import {
 import { buildAuditLogRows, auditLogCsv } from './lib/audit-logger.mjs';
 import { AuthService } from './lib/auth-service.mjs';
 
+import { handleAuthRoutes, handleUserAdminPostRoutes } from './routes/auth.routes.mjs';
+
 const root = path.dirname(new URL(import.meta.url).pathname);
 const authService = new AuthService();
 const host = '127.0.0.1';
@@ -462,24 +464,8 @@ async function route(req, res) {
   if (req.method === 'GET' && url.pathname === '/ui/jb-logo.svg') return send(res, 200, await fs.readFile(path.join(root, 'ui/jb-logo.svg'), 'utf8'), 'image/svg+xml; charset=utf-8');
 
   // Rotas de Autenticação Públicas / Sessão
-  if (req.method === 'GET' && url.pathname === '/api/auth/me') {
-    const user = getAuthUser(req);
-    return send(res, 200, { authenticated: Boolean(user), user: user ?? null });
-  }
-  if (req.method === 'POST' && url.pathname === '/api/auth/login') {
-    const payload = await body(req);
-    const user = authService.authenticate(payload.email, payload.password);
-    if (!user) return send(res, 401, { error: 'E-mail ou senha incorretos' });
-    const { sessionId } = authService.createSession(user.id);
-    const cookie = `gclick_session=${sessionId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800`;
-    return sendCookie(res, 200, { ok: true, user }, cookie);
-  }
-  if (req.method === 'POST' && url.pathname === '/api/auth/logout') {
-    const sessionId = getCookie(req, 'gclick_session');
-    if (sessionId) authService.deleteSession(sessionId);
-    const cookie = `gclick_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
-    return sendCookie(res, 200, { ok: true }, cookie);
-  }
+  const authHandled = await handleAuthRoutes(req, res, { url, currentUser: getAuthUser(req), authService, body, send, sendCookie, getCookie });
+  if (authHandled !== false) return;
 
   // Identificação e Autorização Geral estritamente via Sessão (sem bypass de token)
   const currentUser = getAuthUser(req);
@@ -674,26 +660,8 @@ async function route(req, res) {
   const payload = await body(req);
 
   // Endpoints Administrativos de Usuários
-  if (url.pathname === '/api/users/create') {
-    if (!authService.hasPermission(currentUser.id, 'usuarios.administrar')) return send(res, 403, { error: 'Acesso negado' });
-    const user = authService.createUser(payload);
-    return send(res, 200, { ok: true, user });
-  }
-  if (url.pathname === '/api/users/update') {
-    if (!authService.hasPermission(currentUser.id, 'usuarios.administrar')) return send(res, 403, { error: 'Acesso negado' });
-    const user = authService.updateUser(payload.id, payload);
-    return send(res, 200, { ok: true, user });
-  }
-  if (url.pathname === '/api/users/delete') {
-    if (!authService.hasPermission(currentUser.id, 'usuarios.administrar')) return send(res, 403, { error: 'Acesso negado' });
-    authService.deleteUser(payload.id);
-    return send(res, 200, { ok: true });
-  }
-  if (url.pathname === '/api/users/override') {
-    if (!authService.hasPermission(currentUser.id, 'usuarios.administrar')) return send(res, 403, { error: 'Acesso negado' });
-    authService.setUserOverride(payload.userId, payload.permissionSlug, payload.allowed);
-    return send(res, 200, { ok: true, user: authService.getUserById(payload.userId) });
-  }
+  const userAdminHandled = await handleUserAdminPostRoutes(req, res, { url, currentUser, payload, authService, send });
+  if (userAdminHandled !== false) return;
   if (url.pathname === '/api/source/inspect') {
     const source = await loadSource(payload);
     const headerRow = Number.isInteger(payload.headerRow) ? payload.headerRow : 1;
