@@ -755,7 +755,22 @@ async function api(endpoint, data) {
   if (!response.ok) throw new Error(body.error || 'Falha na operação');
   return body;
 }
-function setBusy(value) { working = value; for (const id of ['openLogin','closeLogin']) $(id).disabled = value; updateApply(); }
+function setBusy(value, title = 'Executando automação…', detail = 'Processando dados no G-Click') {
+  working = value;
+  for (const id of ['openLogin','closeLogin']) {
+    if ($(id)) $(id).disabled = value;
+  }
+  updateApply();
+
+  const banner = $('activeOperationBanner');
+  if (banner) {
+    banner.hidden = !value;
+    if (value) {
+      if ($('activeOpTitle')) $('activeOpTitle').textContent = title;
+      if ($('activeOpDetail')) $('activeOpDetail').textContent = detail;
+    }
+  }
+}
 function metric(label, value, kind = '') { const d = document.createElement('div'); d.className = `metric ${kind}`; const strong = document.createElement('strong'); strong.textContent = value; const span = document.createElement('span'); span.textContent = label; d.append(strong, span); return d; }
 function render(report) {
   lastReport = report;
@@ -3387,6 +3402,196 @@ for (const stepBtn of document.querySelectorAll('.pipeline-step')) {
 $('sidebarToggle')?.addEventListener('click', () => {
   $('sidebar')?.classList.toggle('open');
 });
+
+// ==========================================================================
+// CANCELAMENTO DE OPERAÇÕES & INTERRUPÇÃO SEGURA (Esc / Botão)
+// ==========================================================================
+async function requestCancelOperation() {
+  if (!working) {
+    toast.show({ title: 'Nenhuma operação ativa', message: 'Não há automação em execução para cancelar.', type: 'info' });
+    return;
+  }
+  const confirmModal = $('modalConfirmCancel');
+  if (confirmModal) confirmModal.hidden = false;
+}
+
+async function executeCancelOperation() {
+  $('modalConfirmCancel')?.setAttribute('hidden', 'true');
+  status('Solicitando cancelamento da operação ao servidor…', 'error');
+  try {
+    const res = await api('cancel', {});
+    toast.show({
+      title: 'Operação Interrompida',
+      message: res.message || 'A operação foi cancelada com sucesso.',
+      type: 'warning'
+    });
+    status('Operação cancelada com sucesso.', 'ok');
+  } catch (err) {
+    toast.show({ title: 'Erro ao Cancelar', message: err.message, type: 'error' });
+  } finally {
+    setBusy(false);
+  }
+}
+
+$('btnCancelActiveOperation')?.addEventListener('click', requestCancelOperation);
+$('btnCloseConfirmCancel')?.addEventListener('click', () => { $('modalConfirmCancel')?.setAttribute('hidden', 'true'); });
+$('btnDismissCancel')?.addEventListener('click', () => { $('modalConfirmCancel')?.setAttribute('hidden', 'true'); });
+$('btnConfirmAbort')?.addEventListener('click', executeCancelOperation);
+
+// ==========================================================================
+// COMMAND PALETTE ENTERPRISE (⌘K / Ctrl+K)
+// ==========================================================================
+const COMMANDS_REGISTRY = [
+  { id: 'nav-conn', title: 'Conexão & Conta G-Click', desc: 'Gerenciar sessão e código empId do escritório', icon: '🔑', badge: 'Módulo 1', action: () => switchSection('connection') },
+  { id: 'nav-source', title: 'Fonte (Importação)', desc: 'Carregar arquivo CSV da planilha ou Downloads', icon: '📥', badge: 'Módulo 1', action: () => switchSection('source') },
+  { id: 'nav-writer', title: 'Sincronização com Google Sheets', desc: 'Configurar script Apps Script e registrar logs', icon: '🔄', badge: 'Módulo 1', action: () => switchSection('writer') },
+  { id: 'nav-catalog', title: 'Catálogo de Perguntas & Respostas', desc: 'Visualizar perguntas lidas na Enquete', icon: '📑', badge: 'Módulo 2', action: () => switchSection('catalog') },
+  { id: 'nav-mapping', title: 'Tarefas e Mapeamento da Enquete', desc: 'Configurar associação de tarefas às respostas', icon: '🔀', badge: 'Módulo 2', action: () => switchSection('mapping') },
+  { id: 'nav-audit', title: 'Auditoria & Conferência na Enquete', desc: 'Auditar divergências e validar marcações', icon: '🔍', badge: 'Módulo 2', action: () => switchSection('audit') },
+  { id: 'nav-apply', title: 'Gravação no G-Click', desc: 'Executar robô para gravação com confirmação', icon: '⚡', badge: 'Módulo 2', action: () => switchSection('apply') },
+  { id: 'nav-obrig', title: 'Módulo de Obrigações', desc: 'Gerenciar catálogo de obrigações, WhatsApp e E-mail', icon: '📁', badge: 'Módulo 3', action: () => switchSection('obrigacoes') },
+  { id: 'nav-users', title: 'Usuários & Permissões (RBAC)', desc: 'Administrar acessos e exceções de usuários', icon: '👥', badge: 'Módulo 4', action: () => switchSection('users') },
+  { id: 'act-refresh-catalog', title: 'Buscar Catálogo Sob Demanda', desc: 'Ler perguntas e respostas ativas da Enquete no G-Click', icon: '🔄', badge: 'Ação', action: () => $('refreshCatalogManual')?.click() },
+  { id: 'act-view-all', title: 'Visão Geral (Todas as Seções)', desc: 'Exibir painel integrado completo', icon: '📊', badge: 'Navegação', action: () => switchSection('all') }
+];
+
+let selectedCommandIndex = 0;
+
+function openCommandPalette() {
+  const modal = $('modalCommandPalette');
+  if (!modal) return;
+  modal.hidden = false;
+  const input = $('commandPaletteInput');
+  if (input) {
+    input.value = '';
+    input.focus();
+  }
+  selectedCommandIndex = 0;
+  renderCommandResults('');
+}
+
+function closeCommandPalette() {
+  const modal = $('modalCommandPalette');
+  if (modal) modal.hidden = true;
+}
+
+function renderCommandResults(query) {
+  const container = $('commandPaletteResults');
+  if (!container) return;
+  const q = String(query || '').toLowerCase().trim();
+  const filtered = COMMANDS_REGISTRY.filter(cmd => {
+    return cmd.title.toLowerCase().includes(q) || cmd.desc.toLowerCase().includes(q) || cmd.badge.toLowerCase().includes(q);
+  });
+
+  if (!filtered.length) {
+    container.innerHTML = `<div class="cmd-empty-msg">Nenhum comando ou seção encontrada para "<strong>${escapeHtml(query)}</strong>"</div>`;
+    return;
+  }
+
+  container.innerHTML = filtered.map((cmd, idx) => `
+    <div class="cmd-item ${idx === selectedCommandIndex ? 'selected' : ''}" data-cmd-id="${cmd.id}" data-index="${idx}">
+      <div class="cmd-item-left">
+        <span class="cmd-item-icon">${cmd.icon}</span>
+        <div>
+          <span class="cmd-item-text">${escapeHtml(cmd.title)}</span>
+          <span class="cmd-item-desc">${escapeHtml(cmd.desc)}</span>
+        </div>
+      </div>
+      <span class="cmd-item-badge">${escapeHtml(cmd.badge)}</span>
+    </div>
+  `).join('');
+
+  container.querySelectorAll('.cmd-item').forEach(el => {
+    el.addEventListener('click', () => {
+      const cmdId = el.dataset.cmdId;
+      const cmd = COMMANDS_REGISTRY.find(c => c.id === cmdId);
+      if (cmd) {
+        closeCommandPalette();
+        cmd.action();
+      }
+    });
+  });
+}
+
+function executeSelectedCommand() {
+  const input = $('commandPaletteInput');
+  const q = String(input?.value || '').toLowerCase().trim();
+  const filtered = COMMANDS_REGISTRY.filter(cmd => {
+    return cmd.title.toLowerCase().includes(q) || cmd.desc.toLowerCase().includes(q) || cmd.badge.toLowerCase().includes(q);
+  });
+  const cmd = filtered[selectedCommandIndex];
+  if (cmd) {
+    closeCommandPalette();
+    cmd.action();
+  }
+}
+
+$('btnOpenCommandPalette')?.addEventListener('click', openCommandPalette);
+$('modalCommandPalette')?.addEventListener('click', (e) => {
+  if (e.target === $('modalCommandPalette')) closeCommandPalette();
+});
+
+$('commandPaletteInput')?.addEventListener('input', (e) => {
+  selectedCommandIndex = 0;
+  renderCommandResults(e.target.value);
+});
+
+$('commandPaletteInput')?.addEventListener('keydown', (e) => {
+  const container = $('commandPaletteResults');
+  const items = container?.querySelectorAll('.cmd-item') || [];
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    if (items.length > 0) {
+      selectedCommandIndex = (selectedCommandIndex + 1) % items.length;
+      items.forEach((it, i) => it.classList.toggle('selected', i === selectedCommandIndex));
+      items[selectedCommandIndex]?.scrollIntoView({ block: 'nearest' });
+    }
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    if (items.length > 0) {
+      selectedCommandIndex = (selectedCommandIndex - 1 + items.length) % items.length;
+      items.forEach((it, i) => it.classList.toggle('selected', i === selectedCommandIndex));
+      items[selectedCommandIndex]?.scrollIntoView({ block: 'nearest' });
+    }
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    executeSelectedCommand();
+  }
+});
+
+// Listener global de atalhos de teclado (⌘K e Esc)
+window.addEventListener('keydown', (e) => {
+  // Atalho ⌘K ou Ctrl+K para Command Palette
+  if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+    e.preventDefault();
+    const modal = $('modalCommandPalette');
+    if (modal && !modal.hidden) closeCommandPalette();
+    else openCommandPalette();
+    return;
+  }
+
+  // Atalho Esc para fechar modal ou interromper automação ativa
+  if (e.key === 'Escape') {
+    const cmdModal = $('modalCommandPalette');
+    if (cmdModal && !cmdModal.hidden) {
+      e.preventDefault();
+      closeCommandPalette();
+      return;
+    }
+    const cancelModal = $('modalConfirmCancel');
+    if (cancelModal && !cancelModal.hidden) {
+      e.preventDefault();
+      executeCancelOperation();
+      return;
+    }
+    if (working) {
+      e.preventDefault();
+      requestCancelOperation();
+    }
+  }
+});
+
 const savedSection = localStorage.getItem(SECTION_STORAGE_KEY) || 'all';
 switchSection(savedSection);
 updateSidebarBadges();
+

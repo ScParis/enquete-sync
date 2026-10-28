@@ -306,7 +306,7 @@ export async function handleObrigacoesRoutes(req, res, {
         error: 'Sessão do G-Click não conectada. Conecte sua conta no menu "Conexão & Conta G-Click" antes de ajustar as obrigações em lote.'
       });
     }
-    return send(res, 200, await exclusive(async () => {
+    return send(res, 200, await exclusive(async (signal) => {
       obrigacoesProgressRef.value = {
         running: true,
         action: 'batch_email',
@@ -476,7 +476,7 @@ export async function handleObrigacoesRoutes(req, res, {
         error: 'Sessão do G-Click não conectada. Conecte sua conta no menu "Conexão & Conta G-Click" antes de ajustar as obrigações em lote.'
       });
     }
-    return send(res, 200, await exclusive(async () => {
+    return send(res, 200, await exclusive(async (signal) => {
       obrigacoesProgressRef.value = {
         running: true,
         action: 'batch_whatsapp',

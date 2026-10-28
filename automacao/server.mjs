@@ -34,6 +34,7 @@ import { AuthService } from './lib/auth-service.mjs';
 import { handleAuthRoutes, handleUserAdminPostRoutes } from './routes/auth.routes.mjs';
 import { handleSheetsRoutes } from './routes/sheets.routes.mjs';
 import { handleObrigacoesRoutes } from './routes/obrigacoes.routes.mjs';
+import { handleSourceProfileRoutes } from './routes/source-profile.routes.mjs';
 
 const root = path.dirname(new URL(import.meta.url).pathname);
 const authService = new AuthService();
@@ -92,6 +93,7 @@ async function saveObrigacoesTemplates() {
   await fs.rename(temp, obrigacoesTemplatesFile);
 }
 let busy = false, loginContext = null, loginLock = null, loginReady = false, catalogState = null, lastReport = null, previewState = null;
+let activeAbortController = null;
 let catalogStatus = 'not_requested'; // 'not_requested' | 'loading' | 'ready' | 'failed' | 'invalidated'
 let catalogSessionGeneration = 0;
 let ongoingCatalogPromise = null;
@@ -350,9 +352,17 @@ async function exclusive(fn, allowLoginPending = false) {
   const isSessionValid = loginReady || hasGclickActiveSession(loginContext);
   if (busy || (loginContext && !isSessionValid && !allowLoginPending)) throw new Error('Outra operação está em andamento ou a janela de login ainda não foi validada');
   busy = true;
+  activeAbortController = new AbortController();
+  const signal = activeAbortController.signal;
   let unlock;
-  try { if (!loginContext) unlock = await acquireLock(); return await fn(); }
-  finally { if (unlock) await unlock(); busy = false; }
+  try {
+    if (!loginContext) unlock = await acquireLock();
+    return await fn(signal);
+  } finally {
+    if (unlock) await unlock();
+    busy = false;
+    activeAbortController = null;
+  }
 }
 function send(res, code, data, type = 'application/json; charset=utf-8') {
   res.writeHead(code, { 'Content-Type': type, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
@@ -665,67 +675,44 @@ async function route(req, res) {
   // Endpoints Administrativos de Usuários
   const userAdminHandled = await handleUserAdminPostRoutes(req, res, { url, currentUser, payload, authService, send });
   if (userAdminHandled !== false) return;
-  if (url.pathname === '/api/source/inspect') {
-    const source = await loadSource(payload);
-    const headerRow = Number.isInteger(payload.headerRow) ? payload.headerRow : 1;
-    const structure = parseHeaderAndSample(source.csv, { headerRow });
-    const accountId = payload.accountId ? String(payload.accountId).trim() : '';
-    const sheetId = String(payload.sheetName ?? payload.sheetId ?? source.label);
-    const existing = savedProfiles.find(p => p.accountId === accountId && (p.sourceFingerprint === source.label || p.sheetIdentifier === sheetId));
-    const suggested = createSuggestedProfile(accountId || '0000', source.label, sheetId, structure, payload.targetModel || 'enquete_automacao');
-    return send(res, 200, {
-      source: source.label,
-      stale: source.stale,
-      structure,
-      existingProfile: existing ?? null,
-      suggestedProfile: suggested,
-      targetModels: TARGET_MODELS,
-      availableFields: AVAILABLE_FIELDS
-    });
-  }
-  if (url.pathname === '/api/mapping/profiles') {
-    const accountId = payload.accountId ? String(payload.accountId).trim() : '';
-    const profiles = accountId ? savedProfiles.filter(p => p.accountId === accountId) : savedProfiles;
-    return send(res, 200, { profiles });
-  }
-  if (url.pathname === '/api/mapping/profiles/save') {
-    const profile = payload.profile;
-    if (!profile || typeof profile !== 'object') throw new Error('Perfil inválido');
-    previewState = null;
-    profile.version = (profile.version || 0) + 1;
-    profile.updatedAt = new Date().toISOString();
-    const idx = savedProfiles.findIndex(p => p.id === profile.id || (p.accountId === profile.accountId && p.sourceFingerprint === profile.sourceFingerprint && p.sheetIdentifier === profile.sheetIdentifier));
-    if (idx >= 0) savedProfiles[idx] = profile;
-    else savedProfiles.push(profile);
-    await saveProfiles();
-    return send(res, 200, { success: true, profile, savedProfiles });
-  }
-  if (url.pathname === '/api/source/load') {
-    previewState = null;
-    const source = await loadSource(payload);
-    const table = parseCsvTable(source.csv);
-    const accountId = payload.accountId ? String(payload.accountId).trim() : '';
-    const sheetId = String(payload.sheetName ?? payload.sheetId ?? source.label);
-    const profile = payload.profile ?? savedProfiles.find(p => p.accountId === accountId && (p.sourceFingerprint === source.label || p.sheetIdentifier === sheetId));
-    if (profile) {
-      const normResult = normalizeTable(table, profile);
-      return send(res, 200, {
-        source: source.label,
-        stale: source.stale,
-        rowCount: table.rows.length,
-        profile,
-        normalized: normResult.normalizedRows,
-        audit: normResult.audit,
-        table: { columns: table.columns, rows: table.rows }
-      });
+
+  if (url.pathname === '/api/cancel') {
+    let cancelled = false;
+    if (activeAbortController) {
+      activeAbortController.abort();
+      cancelled = true;
     }
+    busy = false;
+    applyProgress = { running: false, stage: 'cancelado', done: 0 };
+    obrigacoesProgress = { ...obrigacoesProgress, running: false, stage: 'Operação cancelada pelo operador.' };
     return send(res, 200, {
-      source: source.label,
-      stale: source.stale,
-      rowCount: table.rows.length,
-      table: { columns: table.columns, rows: table.rows }
+      success: true,
+      cancelled,
+      message: cancelled ? 'Operação cancelada com sucesso.' : 'Nenhuma operação ativa para cancelar.'
     });
   }
+
+  const previewStateRef = {
+    get value() { return previewState; },
+    set value(v) { previewState = v; }
+  };
+  const sourceProfileHandled = await handleSourceProfileRoutes(req, res, {
+    url,
+    payload,
+    loadSource,
+    parseHeaderAndSample,
+    createSuggestedProfile,
+    validateProfileAgainstStructure,
+    parseCsvTable,
+    normalizeTable,
+    savedProfiles,
+    saveProfiles,
+    targetModels: TARGET_MODELS,
+    availableFields: AVAILABLE_FIELDS,
+    previewStateRef,
+    send
+  });
+  if (sourceProfileHandled !== false) return sourceProfileHandled;
   if (url.pathname === '/api/catalog/reference') {
     const accountId = requireAccount(payload.accountId);
     const sheetUrl = accountSettings[accountId]?.sheetUrl ?? '';
@@ -1288,7 +1275,7 @@ async function route(req, res) {
     }
   }));
   if (url.pathname === '/api/apply/progress') return send(res, 200, applyProgress);
-  if (url.pathname === '/api/mappings/apply') return send(res, 200, await exclusive(async () => {
+  if (url.pathname === '/api/mappings/apply') return send(res, 200, await exclusive(async (signal) => {
     const state = previewState;
     if (!state || state.kind !== 'mappings' || state.id !== payload.previewId || Date.now() - state.at > PREVIEW_TTL) throw new Error('Conferência ausente ou vencida. Recarregue a planilha para conferir de novo.');
     if (!authService.hasPermission(currentUser.id, 'enquete.gravar', state.accountId)) {
@@ -1324,9 +1311,17 @@ async function route(req, res) {
     applyProgress = { running: true, questions: questions.length, done: 0, questionRef: null, stage: 'iniciando', count: 0 };
     try {
       for (const [questionRef, groups] of questions) {
+        if (signal?.aborted) {
+          applyProgress = { ...applyProgress, running: false, stage: 'cancelado' };
+          break;
+        }
         // Lotes grandes são divididos; cada lote pede uma confirmação.
         const total = Math.max(...groups.map(g => g.items.length));
         for (let i = 0; i < total; i += APPLY_CHUNK) {
+          if (signal?.aborted) {
+            applyProgress = { ...applyProgress, running: false, stage: 'cancelado' };
+            break;
+          }
           const chunk = groups.map(g => ({ rules: g.rules, items: g.items.slice(i, i + APPLY_CHUNK) })).filter(g => g.items.length);
           applyProgress = { ...applyProgress, questionRef, stage: 'abrindo', count: chunk.reduce((n, g) => n + g.items.length, 0) };
           const page = await loginContext.newPage();

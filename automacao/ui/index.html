@@ -38,6 +38,11 @@
       <span class="top-sub">Painel Integrado</span>
     </div>
     <div class="topbar-right">
+      <button type="button" id="btnOpenCommandPalette" class="topbar-cmd-btn" title="Buscar ações ou seções (Atalho: ⌘K ou Ctrl+K)">
+        <span class="cmd-icon">🔍</span>
+        <span class="cmd-text">Buscar / Comandos…</span>
+        <kbd class="cmd-kbd">⌘K</kbd>
+      </button>
       <div class="account-pill" id="topAccountPill">Conta: <strong id="topAccountId">—</strong> <span id="topAccountNome" style="color:var(--text-dimmed);margin-left:4px;font-weight:normal"></span> <span id="topSessionBadge" class="tag-pill" style="display:none;margin-left:6px;font-size:11px"></span></div>
       <div class="local-badge"><span></span> Executando neste computador (8766)</div>
     </div>
@@ -184,6 +189,21 @@
     <!-- CONTEÚDO PRINCIPAL COM AS SEÇÕES (WORKBENCH GRID) -->
     <main class="main-content">
       <p id="nextStep" class="next-step" hidden></p>
+
+      <!-- BARRA DE OPERAÇÃO ATIVA & BOTÃO DE CANCELAMENTO -->
+      <div id="activeOperationBanner" class="active-operation-banner" hidden>
+        <div class="active-op-info">
+          <span class="active-op-spinner"></span>
+          <strong id="activeOpTitle">Executando automação…</strong>
+          <span id="activeOpDetail">Processando dados</span>
+        </div>
+        <div class="active-op-actions">
+          <button type="button" id="btnCancelActiveOperation" class="btn-cancel-operation" title="Interromper imediatamente (Atalho: Esc)">
+            <span>✕ Cancelar Operação</span>
+            <kbd>Esc</kbd>
+          </button>
+        </div>
+      </div>
 
       <!-- WORKBENCH PIPELINE STEPPER INTERATIVO -->
       <nav class="workbench-pipeline" aria-label="Pipeline de trabalho">
@@ -1570,6 +1590,44 @@ Atenciosamente,</textarea>
       </div>
       <div class="modal-footer" style="display:flex;justify-content:flex-end;padding:12px 16px">
         <button type="button" id="btnCloseOverrides" class="primary" style="background:#197f73;color:#fff;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;font-weight:600">Concluir</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL DO COMMAND PALETTE (⌘K / Ctrl+K) -->
+  <div id="modalCommandPalette" class="modal-overlay" hidden>
+    <div class="cmd-palette-box">
+      <div class="cmd-palette-header">
+        <span class="cmd-palette-search-icon">🔍</span>
+        <input type="text" id="commandPaletteInput" placeholder="Digite para buscar seções, tarefas ou comandos rápidos…" autocomplete="off">
+        <kbd class="cmd-esc-kbd">Esc para fechar</kbd>
+      </div>
+      <div class="cmd-palette-body" id="commandPaletteResults">
+        <!-- Renderizado dinamicamente via JS -->
+      </div>
+      <div class="cmd-palette-footer">
+        <span>Use <strong>↑</strong> <strong>↓</strong> para navegar</span>
+        <span><strong>Enter</strong> para selecionar</span>
+        <span><strong>Esc</strong> para sair</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL DE CONFIRMAÇÃO DE CANCELAMENTO -->
+  <div id="modalConfirmCancel" class="modal-overlay" hidden>
+    <div class="modal-box" style="max-width:440px">
+      <div class="modal-header">
+        <h3 style="margin:0;color:#991b1b">Interromper Automação?</h3>
+        <button type="button" id="btnCloseConfirmCancel" class="ghost">✕</button>
+      </div>
+      <div class="modal-body" style="padding:16px">
+        <p style="margin:0;font-size:13.5px;color:#334155;line-height:1.5">
+          Uma operação de automação está em andamento. Ao cancelar, o processo atual será interrompido imediatamente e o estado será liberado com segurança.
+        </p>
+      </div>
+      <div class="modal-footer" style="display:flex;justify-content:flex-end;gap:10px;padding:12px 16px">
+        <button type="button" id="btnDismissCancel" class="secondary">Continuar Operação</button>
+        <button type="button" id="btnConfirmAbort" class="primary" style="background:#dc2626;color:#fff;border:none">Sim, Interromper (Esc)</button>
       </div>
     </div>
   </div>
