@@ -29,7 +29,8 @@ test('login carrega catálogo e escolha da resposta preenche a regra', async () 
     page.on('pageerror', error => { throw error; });
     await page.route('**/api/config', route => route.fulfill({ json: { token: 'test', rules: das, presets: [{ name: 'DAS / Simples', rules: das }, { name: 'DeSTDA', rules: destda }], savedMappings: known } }));
     await page.route('**/api/login/open', route => route.fulfill({ json: { open: true } }));
-    await page.route('**/api/login/close', route => route.fulfill({ json: { ready: true, catalog } }));
+    await page.route('**/api/gclick/session*', route => route.fulfill({ json: { browserStatus: 'open', gclickAuthStatus: 'login_detected', activeEmpresaNome: 'Empresa Teste', accountId: '6581' } }));
+    await page.route('**/api/catalog', route => route.fulfill({ json: { catalog } }));
     await page.route('**/api/mappings/save', route => route.fulfill({ json: { savedMappings: [...known, { accountId: '6581', task: 'DAC - Mensal', answerRef: '02.02.02' }] } }));
     await page.route('**/api/downloads', route => route.fulfill({ json: { files: [{ name: 'obrigações.csv', modifiedAt: new Date().toISOString(), size: 100, stale: false }] } }));
     await page.route('**/api/tasks', route => route.fulfill({ json: { source: 'obrigações.csv', rowCount: 4, tasks: ['DeSTDA', 'DeSTDA - Declaração mensal', 'DAC - Mensal', 'DAS - Mensal'].map(name => ({ name, count: 1 })) } }));
@@ -37,6 +38,8 @@ test('login carrega catálogo e escolha da resposta preenche a regra', async () 
     await page.getByRole('radio', { name: 'Navegador integrado' }).click();
     await page.locator('#accountId').fill('6581');
     await page.getByRole('button', { name: 'Abrir janela de login' }).click();
+    await page.waitForFunction(() => document.querySelector('#topSessionBadge')?.textContent.includes('Login detectado'), null, { timeout: 10000 });
+    await page.locator('#refreshCatalogManual').click();
     await page.waitForFunction(() => document.querySelector('#queueSummary').textContent.includes('1 sugestões para revisar'), null, { timeout: 10000 });
     assert.match(await page.locator('#queueSummary').innerText(), /1 sugestões para revisar/);
     assert.equal(await page.locator('#queueFilter').inputValue(), 'ready');

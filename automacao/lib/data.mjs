@@ -70,8 +70,8 @@ function rowField(r, field) {
     if (field === 'empId' && (!r._norm.empId || r._norm.empId === '') && r._norm.cod) return r._norm.cod;
     return r._norm[field];
   }
-  if (field === 'tarefa') return r['Obrigação / Tarefa'] ?? r.tarefa;
-  if (field === 'empresa') return r.Empresa ?? r.empresa;
+  if (field === 'tarefa') return r['Obrigação / Tarefa'] ?? r['Obrigação'] ?? r['Tarefa'] ?? r.tarefa;
+  if (field === 'empresa') return r.Empresa ?? r.empresa ?? '';
   if (field === 'empId') return r.EmpID ?? r.empId ?? r['Cod.'] ?? r.cod;
   if (field === 'cod') return r['Cod.'] ?? r.cod ?? r.EmpID ?? r.empId;
   if (field === 'cnpj') return r.CNPJ ?? r.cnpj;
@@ -88,7 +88,7 @@ export function scopeFromEligible(rows, rules) {
     const hasCnpj = validCnpj(cnpj);
     const hasId = Boolean(empId && String(empId).trim() && String(empId).trim() !== '-');
     if (!hasCnpj && !hasId) {
-      invalid.push({ row: r._row, cnpj: cnpj || '-', empresa: rowField(r, 'empresa'), reason: 'CNPJ e ID do cliente (Cod.) ausentes' });
+      invalid.push({ row: r._row, cnpj: cnpj || '-', empresa: rowField(r, 'empresa') || (validCnpj(cnpj) ? formatCnpj(cnpj) : (hasId ? `ID ${empId}` : '-')), reason: 'CNPJ e ID do cliente (Cod.) ausentes' });
     } else {
       scopeKeys.push(hasCnpj ? normalizeCnpj(cnpj) : `id:${String(empId).trim()}`);
     }
@@ -99,9 +99,12 @@ export function scopeFromEligible(rows, rules) {
 
 export function makePlan(rows, scope, rules) {
   const isNormalized = Boolean(rows[0]?._norm);
-  const required = isNormalized ? ['tarefa', 'empresa'] : ['Obrigação / Tarefa', 'Empresa'];
-  if (!rows.length || required.some(k => isNormalized ? !(k in rows[0]._norm) : !(k in rows[0]))) {
-    throw new Error(`Planilha sem colunas obrigatórias: ${required.join(', ')}`);
+  if (!rows.length) throw new Error('Planilha vazia');
+  if (isNormalized) {
+    if (!('tarefa' in rows[0]._norm)) throw new Error('Planilha sem colunas obrigatórias: tarefa');
+  } else {
+    const hasTaskCol = ['Obrigação / Tarefa', 'Obrigação', 'Tarefa', 'tarefa'].some(k => k in rows[0]);
+    if (!hasTaskCol) throw new Error('Planilha sem colunas obrigatórias: Obrigação / Tarefa');
   }
   if (!Array.isArray(rules.allowedTasks) || !rules.allowedTasks.length || !Array.isArray(rules.excludedTasks)) throw new Error('Regras sem listas de tarefas válidas');
   if (rules.allowedTasks.some(t => rules.excludedTasks.includes(t))) throw new Error('Regras permitidas e excluídas se sobrepõem');
@@ -123,12 +126,13 @@ export function makePlan(rows, scope, rules) {
     const cnpjRaw = first ? rowField(first, 'cnpj') : null;
     const cnpjFormatted = validCnpj(cnpjRaw) ? formatCnpj(cnpjRaw) : (rawId ? `ID ${rawId}` : (first?.empId ? `ID ${first.empId}` : ''));
     const empIdVal = identities.size ? [...identities][0] : (rowField(first, 'empId') || rowField(first, 'cod') || null);
+    const empresaVal = rowField(first, 'empresa') || cnpjFormatted || (empIdVal ? `ID ${empIdVal}` : '-');
 
     return {
       cnpj: cnpjFormatted,
       empId: empIdVal,
       cod: rowField(first, 'cod') ?? empIdVal,
-      empresa: rowField(first, 'empresa') ?? null,
+      empresa: empresaVal,
       status, reason,
       tasks: [...new Set(found.map(r => rowField(r, 'tarefa')))],
       matchingRows: allowed.map(r => r._row),

@@ -8,14 +8,14 @@ export const TARGET_MODELS = {
   enquete_automacao: {
     id: 'enquete_automacao',
     label: 'Automação da Enquete G-Click',
-    description: 'Exige tarefa, cliente e ao menos um identificador (CNPJ, EmpID ou Cod.) para validação e gravação na Enquete.',
-    requiredFields: ['tarefa', 'empresa']
+    description: 'Exige tarefa e ao menos um identificador (CNPJ, EmpID ou Cod.) para validação e gravação na Enquete.',
+    requiredFields: ['tarefa']
   },
   cliente_identificacao: {
     id: 'cliente_identificacao',
     label: 'Cadastro & Identificação de Clientes',
     description: 'Mapeia dados cadastrais sem exigir obrigações ou tarefas.',
-    requiredFields: ['empresa']
+    requiredFields: []
   },
   generico_consulta: {
     id: 'generico_consulta',
@@ -116,7 +116,8 @@ export function normalizeTable(table, profile) {
 
   const targetModel = profile?.targetModel ?? 'generico_consulta';
   const columnsMapping = profile?.columns ?? [];
-  const colMapByIndex = new Map(columnsMapping.map(c => [c.sourceIndex, c]));
+  const colMapByIndex = new Map(columnsMapping.map((c, i) => [Number(c.sourceIndex ?? i), c]));
+  const colMapByName = new Map(columnsMapping.filter(c => c.sourceName).map(c => [String(c.sourceName).trim().toLowerCase(), c]));
 
   const normalizedRows = [];
   const filledCounts = {};
@@ -136,7 +137,7 @@ export function normalizeTable(table, profile) {
 
     // Popula normObj via mapeamento
     rowCells.forEach((cellVal, colIdx) => {
-      const mapping = colMapByIndex.get(colIdx);
+      const mapping = colMapByIndex.get(Number(colIdx)) ?? colMapByName.get(String(table.columns[colIdx] || '').trim().toLowerCase());
       if (!mapping) {
         // Coluna sem mapeamento explícito: preserva se não foi ignorada
         return;
@@ -164,6 +165,33 @@ export function normalizeTable(table, profile) {
         }
       }
     });
+
+    // Fallbacks inteligentes de auto-identificação caso a coluna bruta já possua identificadores ou tarefas
+    if (!normObj.cnpj && !normObj.empId && !normObj.cod) {
+      for (const [colName, val] of Object.entries(rawObj)) {
+        if (/^cnpj(\b|_|\s|$)/i.test(colName.toLowerCase())) {
+          const cleaned = normalizeCnpj(val);
+          if (validCnpj(cleaned)) {
+            normObj.cnpj = cleaned;
+            if (cnpjSet.has(cleaned)) duplicateCnpjs.add(cleaned);
+            cnpjSet.add(cleaned);
+            filledCounts['cnpj'] = (filledCounts['cnpj'] || 0) + 1;
+            break;
+          }
+        }
+      }
+    }
+    if (!normObj.tarefa) {
+      for (const [colName, val] of Object.entries(rawObj)) {
+        if (['obrigação', 'obrigacao', 'tarefa', 'obrigação / tarefa', 'obrigacoes', 'obrigações'].includes(colName.toLowerCase().trim())) {
+          normObj.tarefa = String(val ?? '').trim();
+          if (normObj.tarefa) {
+            filledCounts['tarefa'] = (filledCounts['tarefa'] || 0) + 1;
+            break;
+          }
+        }
+      }
+    }
 
     if (normObj.cod && !normObj.empId) normObj.empId = normObj.cod;
     if (normObj.empId && !normObj.cod) normObj.cod = normObj.empId;

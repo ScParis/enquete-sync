@@ -10,12 +10,16 @@ let instance = null;
 export function getDatabase(customPath = null) {
   if (customPath) {
     const db = new DatabaseSync(customPath);
+    db.exec('PRAGMA busy_timeout = 5000;');
+    db.exec('PRAGMA journal_mode = WAL;');
     db.exec('PRAGMA foreign_keys = ON;');
     initSchema(db);
     return db;
   }
   if (!instance) {
     instance = new DatabaseSync(defaultDbPath);
+    instance.exec('PRAGMA busy_timeout = 5000;');
+    instance.exec('PRAGMA journal_mode = WAL;');
     instance.exec('PRAGMA foreign_keys = ON;');
     initSchema(instance);
   }
@@ -93,7 +97,8 @@ const DEFAULT_PERMISSIONS = [
   { slug: 'enquete.gravar', module: 'G-Click', description: 'Executar gravação de respostas no G-Click' },
   { slug: 'mapeamentos.gerenciar', module: 'Configurações', description: 'Criar e editar mapeamentos de tarefas e perfis' },
   { slug: 'planilha.escrever', module: 'Planilha', description: 'Sincronizar dados com o Google Sheets via Apps Script' },
-  { slug: 'usuarios.administrar', module: 'Administração', description: 'Gerenciar usuários, cargos e permissões' }
+  { slug: 'usuarios.administrar', module: 'Administração', description: 'Gerenciar usuários, cargos e permissões' },
+  { slug: 'obrigacoes.visualizar', module: 'Obrigações', description: 'Visualizar e inspecionar obrigações no G-Click' }
 ];
 
 const DEFAULT_ROLES = [
@@ -106,8 +111,8 @@ const DEFAULT_ROLES = [
   {
     name: 'Operador',
     slug: 'operador',
-    description: 'Pode visualizar, exportar, conferir e gravar na Enquete',
-    permissions: ['enquete.visualizar', 'enquete.exportar', 'enquete.conferir', 'enquete.gravar']
+    description: 'Pode visualizar, exportar, conferir e gravar na Enquete e Obrigações',
+    permissions: ['enquete.visualizar', 'enquete.exportar', 'enquete.conferir', 'enquete.gravar', 'obrigacoes.visualizar']
   },
   {
     name: 'Auditor',

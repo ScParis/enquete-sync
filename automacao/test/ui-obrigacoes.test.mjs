@@ -39,11 +39,32 @@ const mockObrigacoes = [
       { ordem: 1, tipo: 'E', texto: 'Enviar e-mail' },
       { ordem: 2, tipo: '16', texto: 'Disparar WhatsApp' }
     ]
+  },
+  {
+    indice: 3,
+    id: 39,
+    coid: 4,
+    departamento: 'Departamento Pessoal',
+    nome: '13º | 1ª Parcela',
+    frequencia: 'Anual (Novembro)',
+    diaVencimento: '20',
+    fatoGerador: 'Mesmo ano',
+    orgao: 'Empresa',
+    status: 'Ativo',
+    quadroKanban: null,
+    atividades: [
+      { ordem: 1, tipo: 'fa fa-file-pdf-o', texto: '$ 1 PARCELA DECIMO TERCEIRO' },
+      { ordem: 2, tipo: '16', texto: 'AUTO ENVIO' }
+    ]
   }
 ];
 
 test('ui-obrigacoes: renderiza catálogo, aplica busca, abre modal e insere tags dinâmicas', async () => {
   const server = http.createServer(async (req, res) => {
+    if (req.url === '/api/auth/me') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ authenticated: true, user: { id: 1, name: 'Admin', email: 'admin@gclick.local', role: 'admin' }, token: 'test' }));
+    }
     const file = req.url === '/' ? 'ui/index.html' : req.url === '/ui/app.js' ? 'ui/app.js' : 'ui/style.css';
     res.writeHead(200, { 'Content-Type': file.endsWith('.js') ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : 'text/html' });
     res.end(await fs.readFile(path.join(root, file)));
@@ -80,14 +101,15 @@ test('ui-obrigacoes: renderiza catálogo, aplica busca, abre modal e insere tags
     await page.route('**/api/obrigacoes/audit', route => route.fulfill({
       json: {
         accountId: '6581',
-        total: 2,
+        total: 3,
         conforme: 1,
         pendenteWhatsapp: 1,
-        pendenteEmail: 0,
+        pendenteEmail: 1,
         semDisparo: 0,
         items: [
           { id: 8, paridade: { status: 'pendente_whatsapp', hasEmail: true, hasWhatsapp: false } },
-          { id: 9, paridade: { status: 'conforme', hasEmail: true, hasWhatsapp: true } }
+          { id: 9, paridade: { status: 'conforme', hasEmail: true, hasWhatsapp: true } },
+          { id: 39, paridade: { status: 'pendente_email', hasEmail: false, hasWhatsapp: true } }
         ]
       }
     }));
@@ -112,14 +134,43 @@ test('ui-obrigacoes: renderiza catálogo, aplica busca, abre modal e insere tags
     assert.equal(await page.locator('#section-connection').isVisible(), false);
 
     // 3. Verificar cards de métricas
-    await page.waitForFunction(() => document.querySelector('#obrigMetricTotal')?.textContent === '2');
-    assert.equal(await page.locator('#obrigMetricTotal').innerText(), '2');
+    await page.waitForFunction(() => document.querySelector('#obrigMetricTotal')?.textContent === '3' && document.querySelector('#obrigMetricConforme')?.textContent === '1');
+    assert.equal(await page.locator('#obrigMetricTotal').innerText(), '3');
     assert.equal(await page.locator('#obrigMetricConforme').innerText(), '1');
     assert.equal(await page.locator('#obrigMetricPendente').innerText(), '1');
 
     // 4. Verificar linhas da tabela
     const rows = await page.locator('#obrigacoesTableBody tr').count();
-    assert.equal(rows, 2);
+    assert.equal(rows, 3);
+
+    // 4.1 Testar filtro de frequência dinâmico
+    const freqOptions = await page.locator('#obrigFreqFilter option').allInnerTexts();
+    assert.ok(freqOptions.includes('Anual (Novembro)'));
+    assert.ok(freqOptions.includes('Mensal'));
+    assert.ok(freqOptions.includes('Trimestral'));
+
+    await page.locator('#obrigFreqFilter').selectOption('Anual (Novembro)');
+    await page.waitForTimeout(100);
+    assert.equal(await page.locator('#obrigacoesTableBody tr').count(), 1);
+    assert.match(await page.locator('#obrigacoesTableBody').innerText(), /13º \| 1ª Parcela/);
+
+    // O item 13º | 1ª Parcela tem hasWhatsapp: true e deve exibir o botão 'Ajustar WhatsApp'
+    assert.match(await page.locator('#obrigacoesTableBody').innerText(), /Ajustar WhatsApp/);
+
+    await page.locator('#obrigFreqFilter').selectOption('');
+    await page.waitForTimeout(100);
+    assert.equal(await page.locator('#obrigacoesTableBody tr').count(), 3);
+
+    // 4.2 Testar filtro de paridade 'pendente_email' (Sem E-mail)
+    await page.locator('#obrigParidadeFilter').selectOption('pendente_email');
+    await page.waitForTimeout(100);
+    assert.equal(await page.locator('#obrigacoesTableBody tr').count(), 1);
+    assert.match(await page.locator('#obrigacoesTableBody').innerText(), /Sem E-mail/);
+    assert.match(await page.locator('#obrigacoesTableBody').innerText(), /Ajustar WhatsApp/);
+
+    await page.locator('#obrigParidadeFilter').selectOption('');
+    await page.waitForTimeout(100);
+    assert.equal(await page.locator('#obrigacoesTableBody tr').count(), 3);
 
     // 5. Testar busca rápida
     await page.locator('#obrigSearchInput').fill('DAS SIMPLES');

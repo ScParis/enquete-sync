@@ -287,6 +287,10 @@ export async function extractObrigacoesList(page, { url = DEFAULT_URL } = {}) {
           id = id || u.searchParams.get('id');
           coid = u.searchParams.get('coid');
         }
+        let kanban = tds[11]?.innerText.trim() || tds[12]?.innerText.trim() || null;
+        if (kanban && (kanban === 'Ativo' || kanban === 'Inativo')) {
+          kanban = null;
+        }
         return {
           indice: Number(tds[0]?.innerText.trim()) || null,
           departamento: tds[1]?.innerText.trim(),
@@ -301,8 +305,8 @@ export async function extractObrigacoesList(page, { url = DEFAULT_URL } = {}) {
           fatoGerador: tds[8]?.innerText.trim(),
           orgao: tds[9]?.innerText.trim(),
           reenvio: tds[10]?.innerText.trim(),
-          status: tds[11]?.innerText.trim(),
-          quadroKanban: tds[12]?.innerText.trim()
+          status: 'Ativo',
+          quadroKanban: kanban
         };
       }).filter(Boolean);
     });
@@ -584,7 +588,7 @@ export async function extractObrigacaoAtividades(page, { url, id, coid, empId = 
 
 /**
  * Sincroniza o catálogo de obrigações da conta, navegando em cada obrigação ativa
- * e IMPORTANDO APENAS as que possuem passo de E-mail (Tipo E) e/ou WhatsApp (Tipo 16).
+ * e classificando a paridade de canais de todas as obrigações (inclusive sem_disparo).
  */
 export async function syncObrigacoesComCanais(page, { accountId, onProgress = null } = {}) {
   const targetUrl = `https://app.gclick.com.br/configuracaoListar.do?obj=coobrigacaoopen&tipo=0&status=1&empId=${encodeURIComponent(accountId)}`;
@@ -593,7 +597,7 @@ export async function syncObrigacoesComCanais(page, { accountId, onProgress = nu
   const baseList = await extractObrigacoesList(page, { url: targetUrl });
   
   const total = baseList.length;
-  const filtered = [];
+  const items = [];
 
   for (let i = 0; i < total; i++) {
     const item = baseList[i];
@@ -602,7 +606,7 @@ export async function syncObrigacoesComCanais(page, { accountId, onProgress = nu
         status: 'inspecting_item',
         current: i + 1,
         total,
-        matched: filtered.length,
+        matched: items.filter(it => it.paridade?.hasEmail || it.paridade?.hasWhatsapp).length,
         nome: item.nome
       });
     }
@@ -615,23 +619,25 @@ export async function syncObrigacoesComCanais(page, { accountId, onProgress = nu
       });
 
       const paridade = classifyObrigacaoParidade(atividades, item);
-      // REGRA: Importar APENAS as que possuem passo de envio de E-mail e/ou de WhatsApp
-      if (paridade.hasEmail || paridade.hasWhatsapp) {
-        filtered.push({
-          ...item,
-          atividades,
-          paridade
-        });
-      }
+      items.push({
+        ...item,
+        atividades,
+        paridade
+      });
     } catch (err) {
       console.warn(`Erro ao inspecionar atividades da obrigação #${item.id} (${item.nome}):`, err.message);
+      items.push({
+        ...item,
+        atividades: [],
+        paridade: classifyObrigacaoParidade([], item)
+      });
     }
   }
 
   return {
     totalScanned: total,
-    totalImported: filtered.length,
-    items: filtered
+    totalImported: items.length,
+    items
   };
 }
 
@@ -1346,14 +1352,17 @@ export async function configureEmailActivity(page, {
   automacao = '1',
   anexarTodos = true,
   tipoCancelamento = '1',
-  particularidadeCliente = null
+  particularidadeCliente = null,
+  onProgress = null
 } = {}) {
+  if (typeof onProgress === 'function') onProgress({ stage: `Acessando obrigação #${id} no G-Click...`, percent: 20 });
   const targetUrl = `https://app.gclick.com.br/configuracaoAbrir.do?obj=coobrigacaoopen&id=${id}&coid=${coid}&empId=${empId}`;
   await gotoWithRetry(page, targetUrl);
   await page.waitForLoadState('domcontentloaded');
   await page.waitForTimeout(1000);
 
   // 1. Navega para a aba de atividades (Passo 2 / #step2)
+  if (typeof onProgress === 'function') onProgress({ stage: `Acessando aba de atividades da obrigação #${id}...`, percent: 40 });
   await page.evaluate(() => {
     if (typeof window.proximoPassoObrigacoes === 'function') {
       window.proximoPassoObrigacoes('2');
@@ -1365,6 +1374,7 @@ export async function configureEmailActivity(page, {
   await page.waitForTimeout(1200);
 
   // 2. Abre o modal de e-mail (chave inglesa)
+  if (typeof onProgress === 'function') onProgress({ stage: `Abrindo configurações de e-mail da obrigação #${id}...`, percent: 60 });
   await page.evaluate(() => {
     const btn = document.querySelector('button[onclick*="configurarAtividadeEmail2"], a[onclick*="configurarAtividadeEmail2"], [onclick*="coaconfigemail"]');
     if (btn) btn.click();
@@ -1800,14 +1810,17 @@ export async function createAndConfigureWhatsappActivity(page, {
   automacao = '1',
   anexarTodos = true,
   tipoCancelamento = '1',
-  particularidadeCliente = null
+  particularidadeCliente = null,
+  onProgress = null
 } = {}) {
+  if (typeof onProgress === 'function') onProgress({ stage: `Acessando obrigação #${id} no G-Click...`, percent: 20 });
   const targetUrl = `https://app.gclick.com.br/configuracaoAbrir.do?obj=coobrigacaoopen&id=${id}&coid=${coid}&empId=${empId}`;
   await gotoWithRetry(page, targetUrl);
   await page.waitForLoadState('domcontentloaded');
   await page.waitForTimeout(1000);
 
   // 1. Navega para a aba de atividades (Passo 2 / #step2)
+  if (typeof onProgress === 'function') onProgress({ stage: `Acessando aba de atividades da obrigação #${id}...`, percent: 35 });
   await page.evaluate(() => {
     if (typeof window.proximoPassoObrigacoes === 'function') {
       window.proximoPassoObrigacoes('2');
@@ -1819,6 +1832,7 @@ export async function createAndConfigureWhatsappActivity(page, {
   await page.waitForTimeout(1500);
 
   // 2. Validação da regra 1:1 estrita e canal exclusivo
+  if (typeof onProgress === 'function') onProgress({ stage: `Verificando atividades existentes da obrigação #${id}...`, percent: 50 });
   const auditAtual = await page.evaluate(() => {
     const table = document.querySelector('#viewobrigpasso2 table') || document.querySelector('table');
     if (!table) return { atividades: [], emailCount: 0, whatsappCount: 0 };
@@ -1855,11 +1869,11 @@ export async function createAndConfigureWhatsappActivity(page, {
     };
   }
 
-  if (paridade.emailCount === 0) {
+  if (paridade.emailCount === 0 && auditAtual.whatsappCount === 0) {
     return {
       success: true,
       skipped: true,
-      reason: 'Obrigação sem atividades de envio de e-mail. Não requer atividade de WhatsApp.'
+      reason: 'Obrigação sem atividades de envio de e-mail e sem WhatsApp existente.'
     };
   }
 
@@ -1871,18 +1885,22 @@ export async function createAndConfigureWhatsappActivity(page, {
     await page.evaluate(() => {
       if (typeof window.iniciarNovaAtividade === 'function') {
         window.iniciarNovaAtividade();
+      }
+      const modal = document.querySelector('#dialogoAtividade');
+      if (modal && typeof window.jQuery === 'function') {
+        window.jQuery(modal).modal('show');
       } else {
         const btn = Array.from(document.querySelectorAll('button, a')).find(b => b.innerText.includes('Atividades') || b.getAttribute('onclick')?.includes('iniciarNovaAtividade'));
         if (btn) btn.click();
       }
     });
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(800);
 
-    // 3.2 Seleciona o Tipo: Atendimento: DIGISAC (16)
-    await page.evaluate(({ tipoDesejado }) => {
+    // 3.2 Seleciona o Tipo: Atendimento: DIGISAC (16) e dispara listarAtividadePadraoPorTipo
+    const tipoVal = await page.evaluate(({ tipoDesejado }) => {
       const modal = document.querySelector('#dialogoAtividade, .modal.in, .modal.show') || document.body;
       const tipoSelect = modal.querySelector('select#atipo, select[name*="tipo"], select');
-      if (!tipoSelect) return;
+      if (!tipoSelect) return null;
 
       let targetOption = Array.from(tipoSelect.options).find(o => o.text.toLowerCase().includes('digisac') || o.text.toLowerCase().includes('whatsapp'));
       if (!targetOption) {
@@ -1891,50 +1909,105 @@ export async function createAndConfigureWhatsappActivity(page, {
       if (targetOption) {
         tipoSelect.value = targetOption.value;
         tipoSelect.dispatchEvent(new Event('change', { bubbles: true }));
+        if (typeof window.listarAtividadePadraoPorTipo === 'function') {
+          window.listarAtividadePadraoPorTipo('aptextoobrigacao');
+        }
+        return targetOption.value;
       }
+      return null;
     }, { tipoDesejado });
+
+    if (!tipoVal) {
+      throw new Error(`Não foi possível encontrar a opção de tipo "${tipoDesejado}" (valor 16 / DIGISAC) no G-Click.`);
+    }
+
+    // 3.3 Aguarda o AJAX de calendarioListar.do popular #viewatextos com as opções de texto
+    await page.waitForFunction(() => {
+      const container = document.querySelector('#viewatextos');
+      if (!container) return false;
+      const select = container.querySelector('select#atexto') || container.querySelector('select');
+      return Boolean(select && select.options && select.options.length > 0);
+    }, { timeout: 10000 }).catch(() => {});
+    await page.waitForTimeout(600);
+
+    // 3.4 Seleciona o texto desejado ou cadastra novo texto caso não exista
+    const saveResult = await page.evaluate(async ({ textoDesejado }) => {
+      const modal = document.querySelector('#dialogoAtividade, .modal.in, .modal.show') || document.body;
+      const container = document.querySelector('#viewatextos') || modal;
+      const textoSelect = container.querySelector('select#atexto') || container.querySelector('select');
+
+      let matchedOpt = null;
+      if (textoSelect && textoSelect.options.length > 0) {
+        matchedOpt = Array.from(textoSelect.options).find(o => o.text.trim().toLowerCase() === textoDesejado.trim().toLowerCase());
+        if (!matchedOpt) {
+          matchedOpt = Array.from(textoSelect.options).find(o => o.text.toLowerCase().includes(textoDesejado.toLowerCase()) || o.text.toLowerCase().includes('enviar'));
+        }
+      }
+
+      if (matchedOpt) {
+        textoSelect.value = matchedOpt.value;
+        textoSelect.dispatchEvent(new Event('change', { bubbles: true }));
+        if (typeof window.jQuery === 'function' && window.jQuery(textoSelect).trigger) {
+          window.jQuery(textoSelect).trigger('chosen:updated');
+        }
+        // Salva a atividade existente
+        if (typeof window.salvarAtividadeConfig === 'function') {
+          window.salvarAtividadeConfig('aconfig');
+        } else {
+          const plusBtn = modal.querySelector('button[onclick*="salvarAtividadeConfig"]');
+          if (plusBtn) plusBtn.click();
+        }
+        return { action: 'selected', text: matchedOpt.text, value: matchedOpt.value };
+      }
+
+      // Se não encontrou o texto nas opções padrão, cadastra via natexto e salvarNovaAtividadePadrao
+      const natextoInput = modal.querySelector('input#natexto, input[placeholder*="novo texto" i]');
+      if (natextoInput) {
+        natextoInput.value = textoDesejado;
+        natextoInput.dispatchEvent(new Event('input', { bubbles: true }));
+        natextoInput.dispatchEvent(new Event('change', { bubbles: true }));
+
+        if (typeof window.salvarNovaAtividadePadrao === 'function') {
+          window.salvarNovaAtividadePadrao('aptexto');
+        } else {
+          const btnNovo = modal.querySelector('#btnnovaatividadepadrao, button[onclick*="salvarNovaAtividadePadrao"]');
+          if (btnNovo) btnNovo.click();
+        }
+        return { action: 'created_standard_and_saved', text: textoDesejado };
+      }
+
+      return { action: 'failed', reason: 'Nem select#atexto nem input#natexto foram encontrados' };
+    }, { textoDesejado });
+
+    // Aguarda processamento do coSalvar.do e atualização da tabela
+    await page.waitForTimeout(2500);
+
+    // Fecha o modal caso ainda esteja aberto
+    await page.evaluate(() => {
+      const modal = document.querySelector('#dialogoAtividade');
+      if (modal && typeof window.jQuery === 'function') {
+        window.jQuery(modal).modal('hide');
+      }
+      const closeBtn = document.querySelector('#dialogoAtividade button.close, #dialogoAtividade [data-dismiss="modal"]');
+      if (closeBtn) closeBtn.click();
+    });
     await page.waitForTimeout(1000);
 
-    // 3.3 Seleciona ou cadastra o texto "Enviar Cliente" e salva no botão "+"
-    await page.evaluate(async ({ textoDesejado }) => {
-      const modal = document.querySelector('#dialogoAtividade, .modal.in, .modal.show') || document.body;
-      const selects = Array.from(modal.querySelectorAll('select'));
-      const textoSelect = selects[1] || modal.querySelector('select#natexto, select[name*="texto"]');
+    // Valida se a linha realmente foi criada na tabela
+    const checkRow = await page.evaluate(() => {
+      const table = document.querySelector('#viewobrigpasso2 table') || document.querySelector('table');
+      const trs = Array.from(table?.querySelectorAll('tbody tr') || []);
+      const whatsRows = trs.filter(tr => Boolean(tr.querySelector('img, [class*="whatsapp"], [class*="digisac"], [onclick*="configurarAtividadeMensagem"]')));
+      const toastrError = document.querySelector('.toast-warning, .toast-error')?.innerText?.trim() || null;
+      return { whatsCount: whatsRows.length, toastrError };
+    });
 
-      let matched = false;
-      if (textoSelect) {
-        const opt = Array.from(textoSelect.options).find(o => o.text.toLowerCase().includes(textoDesejado.toLowerCase()));
-        if (opt) {
-          textoSelect.value = opt.value;
-          textoSelect.dispatchEvent(new Event('change', { bubbles: true }));
-          matched = true;
-        }
-      }
-
-      if (!matched) {
-        const novoInput = modal.querySelector('input[placeholder*="novo texto" i], input#natexto, input[name*="novoTexto"]');
-        if (novoInput) {
-          novoInput.value = textoDesejado;
-          novoInput.dispatchEvent(new Event('input', { bubbles: true }));
-          const btnNovo = Array.from(modal.querySelectorAll('button, a')).find(b => b.innerText.trim().toLowerCase() === 'novo');
-          if (btnNovo) btnNovo.click();
-          await new Promise(r => setTimeout(r, 600));
-        }
-      }
-
-      const plusBtn = modal.querySelector('button[onclick*="salvarAtividadeConfig"], button.btn-primary, button.btn-success, [onclick*="salvar"]')
-        || Array.from(modal.querySelectorAll('button')).find(b => b.innerText.trim() === '+' || b.querySelector('i.fa-plus'));
-      if (plusBtn) {
-        plusBtn.click();
-      } else if (typeof window.salvarAtividadeConfig === 'function') {
-        window.salvarAtividadeConfig('aconfig');
-      }
-
-      await new Promise(r => setTimeout(r, 1500));
-      const closeBtn = modal.querySelector('button.close, [data-dismiss="modal"], button[onclick*="close"], button[onclick*="fechar"]');
-      if (closeBtn) closeBtn.click();
-    }, { textoDesejado });
-    await page.waitForTimeout(2000);
+    if (checkRow.whatsCount <= f) {
+      const errMsg = checkRow.toastrError
+        ? `G-Click rejeitou a criação da atividade: "${checkRow.toastrError}"`
+        : `G-Click não persistiu a nova atividade de WhatsApp na tabela (saveResult: ${JSON.stringify(saveResult)})`;
+      throw new Error(errMsg);
+    }
   }
 
   // 4. Configura TODOS os passos de WhatsApp (novos e existentes desconfigurados)
@@ -1963,29 +2036,22 @@ export async function createAndConfigureWhatsappActivity(page, {
     }, wIdx);
 
     if (opened) {
-      await page.waitForTimeout(1500);
+      // Aguarda carregar o modal #dialogoamensagem e o select #daeacanal via AJAX
+      await page.waitForFunction(() => {
+        const modal = document.querySelector('#dialogoamensagem');
+        if (!modal) return false;
+        const canalSelect = modal.querySelector('select#daeacanal, select#daecanal');
+        const txtArea = modal.querySelector('textarea#daetexto, textarea');
+        return Boolean(canalSelect || txtArea);
+      }, { timeout: 10000 }).catch(() => {});
+      await page.waitForTimeout(600);
 
       // 4.2 Preenche destinatário, canal, corpo da mensagem e gatilho automático
       await page.evaluate(({ catList, canalAlvo, msg, automacaoAtiva }) => {
         const modal = document.querySelector('#dialogoamensagem, .modal.in, .modal.show, div[id*="mensagem"]') || document.body;
 
-        // Categorias de telefone
-        if (Array.isArray(catList) && catList.length > 0) {
-          const catSelect = modal.querySelector('select#daecategorias, select[name*="categoria"], select[multiple]');
-          if (catSelect) {
-            const catStrings = catList.map(String);
-            for (const opt of catSelect.options) {
-              opt.selected = catStrings.includes(opt.value) || catStrings.some(c => opt.text.toLowerCase().includes(c.toLowerCase()));
-            }
-            catSelect.dispatchEvent(new Event('change', { bubbles: true }));
-            if (typeof window.jQuery === 'function' && window.jQuery(catSelect).trigger) {
-              window.jQuery(catSelect).trigger('chosen:updated');
-            }
-          }
-        }
-
-        // Canal
-        const canalSelect = modal.querySelector('select#daecanal, select[name*="canal"], select');
+        // Canal - select#daeacanal no G-Click
+        const canalSelect = modal.querySelector('select#daeacanal, select#daecanal, select[name*="canal"]');
         if (canalSelect && canalSelect.options.length > 0) {
           let optFound = null;
           if (canalAlvo) {
@@ -2002,6 +2068,31 @@ export async function createAndConfigureWhatsappActivity(page, {
             canalSelect.selectedIndex = 1;
             canalSelect.dispatchEvent(new Event('change', { bubbles: true }));
           }
+          if (typeof window.jQuery === 'function' && window.jQuery(canalSelect).trigger) {
+            window.jQuery(canalSelect).trigger('chosen:updated');
+          }
+        }
+
+        // Categorias de telefone
+        if (Array.isArray(catList) && catList.length > 0) {
+          const catSelect = modal.querySelector('select#daecategorias, select[name*="categoria"], select[multiple]');
+          if (catSelect) {
+            const catStrings = catList.map(String);
+            for (const opt of catSelect.options) {
+              opt.selected = catStrings.includes(opt.value) || catStrings.some(c => opt.text.toLowerCase().includes(c.toLowerCase()));
+            }
+            catSelect.dispatchEvent(new Event('change', { bubbles: true }));
+            if (typeof window.jQuery === 'function' && window.jQuery(catSelect).trigger) {
+              window.jQuery(catSelect).trigger('chosen:updated');
+            }
+          }
+        }
+
+        // Checkbox Enviar mensagem automaticamente
+        const chkAuto = modal.querySelector('input#daemensagem, input[type="checkbox"][name*="mensagem"], input[type="checkbox"]');
+        if (chkAuto) {
+          chkAuto.checked = automacaoAtiva;
+          chkAuto.dispatchEvent(new Event('change', { bubbles: true }));
         }
 
         // Corpo da mensagem
@@ -2010,13 +2101,6 @@ export async function createAndConfigureWhatsappActivity(page, {
           txtArea.value = msg.trim();
           txtArea.dispatchEvent(new Event('input', { bubbles: true }));
           txtArea.dispatchEvent(new Event('change', { bubbles: true }));
-        }
-
-        // Checkbox Enviar mensagem automaticamente
-        const chkAuto = modal.querySelector('input#daemensagem, input[type="checkbox"][name*="mensagem"], input[type="checkbox"]');
-        if (chkAuto) {
-          chkAuto.checked = automacaoAtiva;
-          chkAuto.dispatchEvent(new Event('change', { bubbles: true }));
         }
       }, {
         catList: categorias,
@@ -2050,10 +2134,11 @@ export async function createAndConfigureWhatsappActivity(page, {
 
       // 4.4 Salva o modal de mensagem
       await page.evaluate(() => {
-        const btnSalvar = document.querySelector('#btnsalvaramensagem, #dialogoamensagem button.btn-success, #dialogoamensagem button.btn-primary');
-        if (btnSalvar) btnSalvar.click();
-        else if (typeof window.salvandoAtividadeMensagem === 'function') {
+        if (typeof window.salvandoAtividadeMensagem === 'function') {
           window.salvandoAtividadeMensagem('coaconfigemailmensagem');
+        } else {
+          const btnSalvar = document.querySelector('#btnsalvaramensagem, #dialogoamensagem button.btn-success, #dialogoamensagem button.btn-primary');
+          if (btnSalvar) btnSalvar.click();
         }
       });
       await page.waitForTimeout(2000);
@@ -2225,6 +2310,10 @@ export async function createAndConfigureWhatsappActivity(page, {
     paridadeFinal = classifyObrigacaoParidade(atividadesFinais);
   } catch (e) {
     console.warn(`Não foi possível reler as atividades da obrigação #${id}:`, e.message);
+  }
+
+  if (passosFaltantes > 0 && paridadeFinal && !paridadeFinal.hasWhatsapp) {
+    throw new Error(`Falha ao registrar atividade de WhatsApp na obrigação #${id} no G-Click. O G-Click não gravou a atividade na lista.`);
   }
 
   return {

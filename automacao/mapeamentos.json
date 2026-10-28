@@ -400,5 +400,32 @@
     "answerLabel": "DeSTDA",
     "catalogSource": "live",
     "updatedAt": "2026-10-25T02:52:43.158Z"
+  },
+  {
+    "accountId": "4966",
+    "task": "03.886.732/0001-19",
+    "answerRef": "02.04.02",
+    "questionLabel": "Qual dessas Obrigações Municipais são entregues para esse cliente ?",
+    "answerLabel": "DIPAM",
+    "catalogSource": "live",
+    "updatedAt": "2026-10-27T23:52:41.160Z"
+  },
+  {
+    "accountId": "4966",
+    "task": "12.487.494/0001-60",
+    "answerRef": "02.04.02",
+    "questionLabel": "Qual dessas Obrigações Municipais são entregues para esse cliente ?",
+    "answerLabel": "DIPAM",
+    "catalogSource": "live",
+    "updatedAt": "2026-10-27T23:53:07.218Z"
+  },
+  {
+    "accountId": "4966",
+    "task": "DIPAM",
+    "answerRef": "02.04.02",
+    "questionLabel": "Qual dessas Obrigações Municipais são entregues para esse cliente ?",
+    "answerLabel": "DIPAM",
+    "catalogSource": "live",
+    "updatedAt": "2026-10-28T00:12:28.986Z"
   }
 ]

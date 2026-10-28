@@ -87,9 +87,38 @@ async function saveObrigacoesTemplates() {
   await fs.rename(temp, obrigacoesTemplatesFile);
 }
 let busy = false, loginContext = null, loginLock = null, loginReady = false, catalogState = null, lastReport = null, previewState = null;
+let catalogStatus = 'not_requested'; // 'not_requested' | 'loading' | 'ready' | 'failed' | 'invalidated'
+let catalogSessionGeneration = 0;
+let ongoingCatalogPromise = null;
 let auditProgress = { running: false, completed: 0, total: 0, task: '', error: null };
 let autoAttemptedAccountId = null;
 let applyProgress = { running: false };
+let obrigacoesProgress = {
+  running: false,
+  action: null,
+  stage: '',
+  current: 0,
+  total: 0,
+  percent: 0,
+  nome: '',
+  id: null,
+  matched: 0,
+  updatedAt: 0
+};
+function hasGclickActiveSession(context) {
+  if (!context) return false;
+  try {
+    const pages = context.pages().filter(p => !p.isClosed());
+    return pages.some(p => {
+      try {
+        const u = new URL(p.url());
+        return /(^|\.)gclick\.com\.br$/.test(u.hostname) && !u.pathname.startsWith('/autenticacao');
+      } catch { return false; }
+    });
+  } catch {
+    return false;
+  }
+}
 // Leitura de cada tarefa na Enquete, reaproveitada enquanto planilha, catálogo e mapeamento não mudam.
 const auditCache = new Map();
 const AUDIT_CACHE_TTL = 2 * 60 * 60 * 1000;
@@ -313,7 +342,8 @@ async function acquireLock() {
   return async () => { await handle.close(); await fs.unlink(lockPath).catch(() => {}); };
 }
 async function exclusive(fn, allowLoginPending = false) {
-  if (busy || (loginContext && !loginReady && !allowLoginPending)) throw new Error('Outra operação está em andamento ou a janela de login ainda não foi validada');
+  const isSessionValid = loginReady || hasGclickActiveSession(loginContext);
+  if (busy || (loginContext && !isSessionValid && !allowLoginPending)) throw new Error('Outra operação está em andamento ou a janela de login ainda não foi validada');
   busy = true;
   let unlock;
   try { if (!loginContext) unlock = await acquireLock(); return await fn(); }
@@ -377,7 +407,9 @@ let sessionLostAt = null;
 function watchLoginContext(context) {
   context.on('close', async () => {
     if (loginContext !== context) return;
-    loginContext = null; loginReady = false; catalogState = null; previewState = null; sessionLostAt = new Date().toISOString();
+    loginContext = null; loginReady = false; catalogState = null; previewState = null;
+    catalogStatus = 'invalidated'; catalogSessionGeneration++; ongoingCatalogPromise = null;
+    sessionLostAt = new Date().toISOString();
     if (loginLock) { const release = loginLock; loginLock = null; await release().catch(() => {}); }
   });
 }
@@ -426,11 +458,12 @@ async function route(req, res) {
   if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/login')) return send(res, 200, await fs.readFile(path.join(root, 'ui/index.html'), 'utf8'), 'text/html; charset=utf-8');
   if (req.method === 'GET' && url.pathname === '/ui/app.js') return send(res, 200, await fs.readFile(path.join(root, 'ui/app.js'), 'utf8'), 'text/javascript; charset=utf-8');
   if (req.method === 'GET' && url.pathname === '/ui/style.css') return send(res, 200, await fs.readFile(path.join(root, 'ui/style.css'), 'utf8'), 'text/css; charset=utf-8');
+  if (req.method === 'GET' && url.pathname === '/ui/jb-logo.svg') return send(res, 200, await fs.readFile(path.join(root, 'ui/jb-logo.svg'), 'utf8'), 'image/svg+xml; charset=utf-8');
 
   // Rotas de Autenticação Públicas / Sessão
   if (req.method === 'GET' && url.pathname === '/api/auth/me') {
     const user = getAuthUser(req);
-    return send(res, 200, { authenticated: Boolean(user), user: user ?? null, token });
+    return send(res, 200, { authenticated: Boolean(user), user: user ?? null });
   }
   if (req.method === 'POST' && url.pathname === '/api/auth/login') {
     const payload = await body(req);
@@ -438,7 +471,7 @@ async function route(req, res) {
     if (!user) return send(res, 401, { error: 'E-mail ou senha incorretos' });
     const { sessionId } = authService.createSession(user.id);
     const cookie = `gclick_session=${sessionId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800`;
-    return sendCookie(res, 200, { ok: true, user, token }, cookie);
+    return sendCookie(res, 200, { ok: true, user }, cookie);
   }
   if (req.method === 'POST' && url.pathname === '/api/auth/logout') {
     const sessionId = getCookie(req, 'gclick_session');
@@ -447,17 +480,119 @@ async function route(req, res) {
     return sendCookie(res, 200, { ok: true }, cookie);
   }
 
-  // Identificação e Autorização Geral
-  const authUser = getAuthUser(req);
-  const isTokenAuth = req.headers['x-gclick-token'] === token;
-  const currentUser = authUser || (isTokenAuth ? authService.getUserById(1) : null);
+  // Identificação e Autorização Geral estritamente via Sessão (sem bypass de token)
+  const currentUser = getAuthUser(req);
 
-  if (req.method === 'GET' && url.pathname === '/api/config') return send(res, 200, {
-    token, savedMappings, savedProfiles, targetModels: TARGET_MODELS, availableFields: AVAILABLE_FIELDS,
-    accounts: await listStoredAccounts(), loginOpen: Boolean(loginContext), loginReady, sessionLostAt,
-    catalog: loginReady ? catalogState : null, catalogLive: Boolean(catalogState && loginReady), busy,
-    user: currentUser ?? null, headless: process.env.GCLICK_HEADLESS === 'true'
-  });
+  if (req.method === 'GET' && url.pathname === '/api/config') {
+    if (!currentUser) return send(res, 401, { error: 'Sessão necessária', code: 'unauthenticated' });
+    return send(res, 200, {
+      savedMappings, savedProfiles, targetModels: TARGET_MODELS, availableFields: AVAILABLE_FIELDS,
+      accounts: await listStoredAccounts(), loginOpen: Boolean(loginContext), loginReady, sessionLostAt,
+      catalog: catalogState,
+      catalogLive: Boolean(catalogState && catalogStatus === 'ready'),
+      catalogStatus,
+      catalogAccountId: catalogState?.accountId ?? null,
+      catalogCapturedAt: catalogState?.capturedAt ?? null,
+      busy,
+      user: currentUser,
+      headless: process.env.GCLICK_HEADLESS === 'true'
+    });
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/gclick/session') {
+    if (!currentUser) return send(res, 401, { error: 'Sessão necessária', code: 'unauthenticated' });
+    const accountId = url.searchParams.get('accountId')?.trim();
+    if (!loginContext) {
+      return send(res, 200, {
+        browserStatus: 'closed',
+        gclickAuthStatus: 'unknown',
+        activeAccountId: accountId || null,
+        activeEmpresaNome: null,
+        availableEmpresas: [],
+        message: 'Navegador de automação fechado.'
+      });
+    }
+
+    const pages = loginContext.pages().filter(p => !p.isClosed());
+    const urls = pages.map(page => { try { return new URL(page.url()); } catch { return null; } }).filter(Boolean);
+    const onAuth = urls.some(current => /(^|\.)gclick\.com\.br$/.test(current.hostname) && current.pathname.startsWith('/autenticacao'));
+    const onEmpresas = urls.some(current => current.hostname === 'appp.gclick.com.br' && current.pathname.includes('/empresas'));
+    const hasInternalPage = urls.some(current => /(^|\.)gclick\.com\.br$/.test(current.hostname) && !current.pathname.startsWith('/autenticacao'));
+
+    let authStatus = 'unknown';
+    if (urls.length === 0 || onAuth) {
+      authStatus = 'awaiting_login';
+    } else if (hasInternalPage) {
+      authStatus = 'login_detected';
+    }
+
+    // Leitura passiva do localStorage (empresa ativa e lista de acessos)
+    let activeEmpresa = null;
+    let accessEmpresas = [];
+    for (const p of pages) {
+      if (p.isClosed()) continue;
+      try {
+        const u = new URL(p.url());
+        if (!/(^|\.)gclick\.com\.br$/.test(u.hostname) || u.pathname.startsWith('/autenticacao')) continue;
+        const empresaData = await p.evaluate(() => {
+          try {
+            const curRaw = localStorage.getItem('g3CurrentEmpresa');
+            const allRaw = localStorage.getItem('g3AccessEmpresas');
+            return {
+              current: curRaw ? JSON.parse(curRaw) : null,
+              all: allRaw ? JSON.parse(allRaw) : []
+            };
+          } catch { return null; }
+        }).catch(() => null);
+
+        if (empresaData) {
+          if (!activeEmpresa && empresaData.current) activeEmpresa = empresaData.current;
+          if (Array.isArray(empresaData.all) && empresaData.all.length) accessEmpresas = empresaData.all;
+        }
+        if (activeEmpresa && accessEmpresas.length) break;
+      } catch { /* inspeção passiva sem falhar requisição */ }
+    }
+
+    // Identifica o nome da empresa solicitada ou ativa
+    let resolvedNome = null;
+    if (accountId && accessEmpresas.length) {
+      const match = accessEmpresas.find(e => String(e.id) === String(accountId));
+      if (match?.nome) resolvedNome = match.nome;
+    }
+    if (!resolvedNome && activeEmpresa?.nome) {
+      resolvedNome = activeEmpresa.nome;
+    }
+
+    // Fallback: se ainda não resolveu por localStorage, tenta seletores comuns de interface
+    if (!resolvedNome) {
+      for (const p of pages) {
+        if (p.isClosed()) continue;
+        try {
+          const domNome = await p.evaluate(() => {
+            const el = document.querySelector('.empresa-ativa, .nome-empresa, #nomeEmpresa, .current-empresa, .user-empresa, .navbar-brand, .escritorio-nome, .header-empresa');
+            return el?.innerText?.trim() || null;
+          }).catch(() => null);
+          if (domNome && !['G-Click', 'Dashboard', 'Início', 'Enquete'].includes(domNome)) {
+            resolvedNome = domNome;
+            break;
+          }
+        } catch {}
+      }
+    }
+
+    return send(res, 200, {
+      browserStatus: 'open',
+      gclickAuthStatus: authStatus,
+      onEmpresas,
+      activeAccountId: (activeEmpresa?.id ? String(activeEmpresa.id) : (accountId || null)),
+      activeEmpresaNome: resolvedNome,
+      currentEmpresaId: activeEmpresa?.id ? String(activeEmpresa.id) : null,
+      availableEmpresas: accessEmpresas.map(e => ({ id: String(e.id), nome: e.nome })),
+      message: authStatus === 'login_detected'
+        ? 'Login detectado no G-Click pela URL da aba. O acesso aos módulos será validado ao acioná-los.'
+        : 'Aguardando login no G-Click no navegador de automação.'
+    });
+  }
 
   if (req.method === 'GET' && url.pathname === '/api/users') {
     if (!currentUser || !authService.hasPermission(currentUser.id, 'usuarios.administrar')) {
@@ -510,6 +645,30 @@ async function route(req, res) {
     return send(res, 200, auditLogCsv(rows), 'text/csv; charset=utf-8');
   }
   if (req.method !== 'POST' || !url.pathname.startsWith('/api/')) return send(res, 404, { error: 'Rota não encontrada' });
+  
+  // Validação de Origem/CSRF local para rotas com efeitos
+  const origin = req.headers['origin'];
+  const referer = req.headers['referer'];
+  if (origin) {
+    try {
+      const originUrl = new URL(origin);
+      if (!['127.0.0.1', 'localhost'].includes(originUrl.hostname)) {
+        return send(res, 403, { error: 'Origem não permitida', code: 'forbidden_origin' });
+      }
+    } catch {
+      return send(res, 403, { error: 'Origem inválida', code: 'forbidden_origin' });
+    }
+  } else if (referer) {
+    try {
+      const refUrl = new URL(referer);
+      if (!['127.0.0.1', 'localhost'].includes(refUrl.hostname)) {
+        return send(res, 403, { error: 'Referer não permitido', code: 'forbidden_origin' });
+      }
+    } catch {
+      return send(res, 403, { error: 'Referer inválido', code: 'forbidden_origin' });
+    }
+  }
+
   if (!currentUser) return send(res, 401, { error: 'Sessão da interface expirada ou não autenticada', code: 'unauthenticated' });
   const payload = await body(req);
 
@@ -602,26 +761,58 @@ async function route(req, res) {
     return send(res, 200, { catalog: catalogState?.accountId === accountId && loginReady ? catalogState : null, live: true, sheetUrl });
   }
   if (url.pathname === '/api/obrigacoes/inspect') {
+    const accountId = requireAccount(payload.accountId ?? '6581');
+    if (!authService.hasPermission(currentUser.id, 'obrigacoes.visualizar', accountId)) {
+      return send(res, 403, { error: 'Acesso negado para a conta informada' });
+    }
+    if (!loginContext) {
+      throw new Error('A janela do G-Click precisa estar aberta para inspecionar Obrigações. Abra a janela em Conexão & Conta e realize o login.');
+    }
     return send(res, 200, await exclusive(async () => {
-      const accountId = requireAccount(payload.accountId ?? '6581');
-      const targetUrl = payload.url ?? `https://app.gclick.com.br/configuracaoListar.do?obj=coobrigacaoopen&tipo=0&status=1&empId=${encodeURIComponent(accountId)}`;
-      const context = loginContext ?? (await openBrowser(profile, false));
-      const shouldClose = !loginContext;
-      try {
-        const page = await context.newPage();
+      const pages = loginContext.pages().filter(p => !p.isClosed());
+      const loggedIn = pages.some(p => {
         try {
-          const analysis = await inspectObrigacoesPage(page, { url: targetUrl });
-          return analysis;
-        } finally {
-          await page.close();
+          const u = new URL(p.url());
+          return /(^|\.)gclick\.com\.br$/.test(u.hostname) && !u.pathname.startsWith('/autenticacao');
+        } catch { return false; }
+      });
+      if (!loggedIn) {
+        throw new Error('Sessão no G-Click não detectada. Faça o login na janela do navegador antes de inspecionar Obrigações.');
+      }
+
+      const targetUrl = payload.url ?? `https://app.gclick.com.br/configuracaoListar.do?obj=coobrigacaoopen&tipo=0&status=1&empId=${encodeURIComponent(accountId)}`;
+      const page = await loginContext.newPage();
+      try {
+        const analysis = await inspectObrigacoesPage(page, { url: targetUrl });
+        if (analysis?.currentUrl && (analysis.currentUrl.includes('/autenticacao') || analysis.currentUrl.includes('/login'))) {
+          throw new Error('Acesso à página de Obrigações redirecionado para login. Verifique as credenciais ou permissões no G-Click.');
         }
+        return analysis;
       } finally {
-        if (shouldClose) await context.close();
+        await page.close();
       }
     }, true));
   }
   if (url.pathname === '/api/obrigacoes/catalog') {
-    const accountId = payload.accountId ? String(payload.accountId).trim() : '6581';
+    let accountId = payload.accountId ? String(payload.accountId).trim() : '';
+    if (!accountId && loginContext) {
+      try {
+        const pages = loginContext.pages().filter(p => !p.isClosed());
+        for (const p of pages) {
+          const u = new URL(p.url());
+          if (/(^|\.)gclick\.com\.br$/.test(u.hostname) && !u.pathname.startsWith('/autenticacao')) {
+            const empId = await p.evaluate(() => {
+              try {
+                const cur = localStorage.getItem('g3CurrentEmpresa');
+                return cur ? JSON.parse(cur)?.id : null;
+              } catch { return null; }
+            }).catch(() => null);
+            if (empId) { accountId = String(empId); break; }
+          }
+        }
+      } catch {}
+    }
+    if (!accountId) accountId = '6581';
     const catalogPath = path.join(catalogsDir, `obrigacoes-${accountId}.json`);
     let items = [];
     let source = 'none';
@@ -631,7 +822,7 @@ async function route(req, res) {
     } catch (e) {
       if (e.code !== 'ENOENT') console.error('Erro ao ler catálogo de obrigações:', e);
     }
-    const isLive = Boolean(loginContext && loginReady && catalogState?.accountId === accountId);
+    const isLive = Boolean(loginContext && hasGclickActiveSession(loginContext));
     return send(res, 200, {
       accountId,
       items,
@@ -640,20 +831,49 @@ async function route(req, res) {
       live: isLive
     });
   }
+  if (url.pathname === '/api/obrigacoes/progress') {
+    return send(res, 200, obrigacoesProgress);
+  }
   if (url.pathname === '/api/obrigacoes/sync-catalog') {
     const accountId = requireAccount(payload.accountId ?? '6581');
-    if (!loginContext || !loginReady) {
+    if (!loginContext || !hasGclickActiveSession(loginContext)) {
       return send(res, 400, {
         error: 'Sessão do G-Click não conectada. Conecte sua conta no menu "Conexão & Conta G-Click" antes de sincronizar as obrigações.'
       });
     }
     return send(res, 200, await exclusive(async () => {
       console.log(`[OBRIGACOES] Iniciando sincronização filtrada para a conta ${accountId}…`);
+      obrigacoesProgress = {
+        running: true,
+        action: 'sync',
+        stage: `Iniciando sincronização das obrigações da conta ${accountId}...`,
+        current: 0,
+        total: 0,
+        percent: 0,
+        nome: '',
+        id: null,
+        matched: 0,
+        updatedAt: Date.now()
+      };
       const page = await loginContext.newPage();
       try {
         const result = await syncObrigacoesComCanais(page, {
           accountId,
           onProgress: (p) => {
+            const current = p.current || 0;
+            const total = p.total || 0;
+            const percent = total > 0 ? Math.round((current / total) * 100) : 0;
+            obrigacoesProgress = {
+              running: true,
+              action: 'sync',
+              stage: `Sincronizando ${current}/${total}: ${p.nome || ''}`,
+              current,
+              total,
+              percent,
+              nome: p.nome || '',
+              matched: p.matched || 0,
+              updatedAt: Date.now()
+            };
             if (p.status === 'inspecting_item') {
               console.log(`[OBRIGACOES] Analisando ${p.current}/${p.total}: ${p.nome} (encontradas com canais: ${p.matched})`);
             }
@@ -671,6 +891,12 @@ async function route(req, res) {
           source: 'live'
         };
       } finally {
+        obrigacoesProgress = {
+          ...obrigacoesProgress,
+          running: false,
+          percent: 100,
+          updatedAt: Date.now()
+        };
         await page.close().catch(() => {});
       }
     }, true));
@@ -708,7 +934,7 @@ async function route(req, res) {
     const id = payload.id;
     const coid = payload.coid;
     if (!id || !coid) throw new Error('Parâmetros id e coid são obrigatórios');
-    if (!loginContext || !loginReady) {
+    if (!loginContext || !hasGclickActiveSession(loginContext)) {
       return send(res, 400, {
         error: 'Sessão do G-Click não conectada. Conecte sua conta no menu "Conexão & Conta G-Click" antes de inspecionar a obrigação.'
       });
@@ -738,12 +964,23 @@ async function route(req, res) {
     const id = payload.id;
     const coid = payload.coid;
     if (!id || !coid) throw new Error('Parâmetros id e coid são obrigatórios');
-    if (!loginContext || !loginReady) {
+    if (!loginContext || !hasGclickActiveSession(loginContext)) {
       return send(res, 400, {
         error: 'Sessão do G-Click não conectada. Conecte sua conta no menu "Conexão & Conta G-Click" antes de ajustar a obrigação.'
       });
     }
     return send(res, 200, await exclusive(async () => {
+      obrigacoesProgress = {
+        running: true,
+        action: 'single_email',
+        stage: `Configurando E-mail da obrigação #${id}...`,
+        current: 1,
+        total: 1,
+        percent: 30,
+        id,
+        nome: '',
+        updatedAt: Date.now()
+      };
       const page = await loginContext.newPage();
       try {
         const resConfig = await configureEmailActivity(page, {
@@ -764,6 +1001,12 @@ async function route(req, res) {
           ...resConfig
         };
       } finally {
+        obrigacoesProgress = {
+          ...obrigacoesProgress,
+          running: false,
+          percent: 100,
+          updatedAt: Date.now()
+        };
         await page.close().catch(() => {});
       }
     }, true));
@@ -774,12 +1017,23 @@ async function route(req, res) {
     if (items.length === 0) throw new Error('Selecione pelo menos uma obrigação para configurar em lote.');
     const departamento = String(payload.departamento ?? '').trim();
     if (!departamento) throw new Error('Para a ação em massa, o departamento deve estar obrigatoriamente selecionado no filtro.');
-    if (!loginContext || !loginReady) {
+    if (!loginContext || !hasGclickActiveSession(loginContext)) {
       return send(res, 400, {
         error: 'Sessão do G-Click não conectada. Conecte sua conta no menu "Conexão & Conta G-Click" antes de ajustar as obrigações em lote.'
       });
     }
     return send(res, 200, await exclusive(async () => {
+      obrigacoesProgress = {
+        running: true,
+        action: 'batch_email',
+        stage: `Iniciando configuração de e-mail em massa para ${items.length} obrigação(ões)...`,
+        current: 0,
+        total: items.length,
+        percent: 0,
+        id: null,
+        nome: '',
+        updatedAt: Date.now()
+      };
       const page = await loginContext.newPage();
       try {
         const batchRes = await configureBatchEmailActivities(page, {
@@ -793,6 +1047,22 @@ async function route(req, res) {
             anexarTodos: payload.anexarTodos !== false,
             tipoCancelamento: payload.tipoCancelamento ?? '1',
             particularidadeCliente: payload.particularidadeCliente ?? null
+          },
+          onProgress: (p) => {
+            const current = p.current || 0;
+            const total = p.total || items.length;
+            const percent = total > 0 ? Math.round((current / total) * 100) : 0;
+            obrigacoesProgress = {
+              running: true,
+              action: 'batch_email',
+              stage: `Configurando E-mail ${current}/${total}: ${p.item?.nome || ''}`,
+              current,
+              total,
+              percent,
+              nome: p.item?.nome || '',
+              id: p.item?.id,
+              updatedAt: Date.now()
+            };
           }
         });
         return {
@@ -802,6 +1072,12 @@ async function route(req, res) {
           ...batchRes
         };
       } finally {
+        obrigacoesProgress = {
+          ...obrigacoesProgress,
+          running: false,
+          percent: 100,
+          updatedAt: Date.now()
+        };
         await page.close().catch(() => {});
       }
     }, true));
@@ -811,7 +1087,7 @@ async function route(req, res) {
     const id = payload.id;
     const coid = payload.coid;
     if (!id || !coid) throw new Error('Parâmetros id e coid são obrigatórios');
-    if (!loginContext || !loginReady) {
+    if (!loginContext || !hasGclickActiveSession(loginContext)) {
       return send(res, 400, {
         error: 'Sessão do G-Click não conectada. Conecte sua conta no menu "Conexão & Conta G-Click" antes de inspecionar o WhatsApp.'
       });
@@ -838,12 +1114,23 @@ async function route(req, res) {
     const id = payload.id;
     const coid = payload.coid;
     if (!id || !coid) throw new Error('Parâmetros id e coid são obrigatórios');
-    if (!loginContext || !loginReady) {
+    if (!loginContext || !hasGclickActiveSession(loginContext)) {
       return send(res, 400, {
         error: 'Sessão do G-Click não conectada. Conecte sua conta no menu "Conexão & Conta G-Click" antes de criar o passo de WhatsApp.'
       });
     }
     return send(res, 200, await exclusive(async () => {
+      obrigacoesProgress = {
+        running: true,
+        action: 'single_whatsapp',
+        stage: `Criando passo de WhatsApp para obrigação #${id}...`,
+        current: 1,
+        total: 1,
+        percent: 30,
+        id,
+        nome: '',
+        updatedAt: Date.now()
+      };
       const page = await loginContext.newPage();
       try {
         const resConfig = await createAndConfigureWhatsappActivity(page, {
@@ -881,6 +1168,12 @@ async function route(req, res) {
           ...resConfig
         };
       } finally {
+        obrigacoesProgress = {
+          ...obrigacoesProgress,
+          running: false,
+          percent: 100,
+          updatedAt: Date.now()
+        };
         await page.close().catch(() => {});
       }
     }, true));
@@ -891,12 +1184,23 @@ async function route(req, res) {
     if (items.length === 0) throw new Error('Selecione pelo menos uma obrigação para configurar WhatsApp em lote.');
     const departamento = String(payload.departamento ?? '').trim();
     if (!departamento) throw new Error('Para a ação em massa, o departamento deve estar obrigatoriamente selecionado no filtro.');
-    if (!loginContext || !loginReady) {
+    if (!loginContext || !hasGclickActiveSession(loginContext)) {
       return send(res, 400, {
         error: 'Sessão do G-Click não conectada. Conecte sua conta no menu "Conexão & Conta G-Click" antes de ajustar as obrigações em lote.'
       });
     }
     return send(res, 200, await exclusive(async () => {
+      obrigacoesProgress = {
+        running: true,
+        action: 'batch_whatsapp',
+        stage: `Iniciando criação de WhatsApp em massa para ${items.length} obrigação(ões)...`,
+        current: 0,
+        total: items.length,
+        percent: 0,
+        id: null,
+        nome: '',
+        updatedAt: Date.now()
+      };
       const page = await loginContext.newPage();
       try {
         const batchRes = await configureBatchWhatsappActivities(page, {
@@ -912,6 +1216,22 @@ async function route(req, res) {
             anexarTodos: payload.anexarTodos !== false,
             tipoCancelamento: payload.tipoCancelamento ?? '1',
             particularidadeCliente: payload.particularidadeCliente ?? '542'
+          },
+          onProgress: (p) => {
+            const current = p.current || 0;
+            const total = p.total || items.length;
+            const percent = total > 0 ? Math.round((current / total) * 100) : 0;
+            obrigacoesProgress = {
+              running: true,
+              action: 'batch_whatsapp',
+              stage: `Criando WhatsApp ${current}/${total}: ${p.item?.nome || ''}`,
+              current,
+              total,
+              percent,
+              nome: p.item?.nome || '',
+              id: p.item?.id,
+              updatedAt: Date.now()
+            };
           }
         });
 
@@ -944,6 +1264,12 @@ async function route(req, res) {
           ...batchRes
         };
       } finally {
+        obrigacoesProgress = {
+          ...obrigacoesProgress,
+          running: false,
+          percent: 100,
+          updatedAt: Date.now()
+        };
         await page.close().catch(() => {});
       }
     }, true));
@@ -954,7 +1280,7 @@ async function route(req, res) {
     const coid = payload.coid ?? 4;
     const tipoDesejado = payload.tipoDesejado ?? 'Atendimento: DIGISAC';
     const textoDesejado = payload.textoDesejado ?? 'Enviar Cliente';
-    if (!loginContext || !loginReady) {
+    if (!loginContext || !hasGclickActiveSession(loginContext)) {
       return send(res, 400, {
         error: 'Sessão do G-Click não conectada. Conecte sua conta no menu "Conexão & Conta G-Click" antes de mapear o WhatsApp.'
       });
@@ -1068,7 +1394,10 @@ async function route(req, res) {
     const sheetUrl = accountSettings[accountId]?.sheetUrl;
     if (!sheetUrl) throw new Error('Salve antes o link da aba da planilha desta conta');
     const writers = await readWriters();
-    if (!writers[accountId]?.token) throw new Error('Copie o script primeiro: ele contém a chave desta conta');
+    if (!writers[accountId]?.token) {
+      writers[accountId] = { ...writers[accountId], token: crypto.randomBytes(24).toString('hex') };
+      await saveWriters(writers);
+    }
     const scriptUrl = validScriptUrl(payload.url);
     const tested = await testSheetWriter({ url: scriptUrl, token: writers[accountId].token, gid: parseSheetUrl(sheetUrl).gid });
     writers[accountId] = { ...writers[accountId], url: scriptUrl, aba: tested.aba, testedAt: new Date().toISOString() };
@@ -1102,7 +1431,29 @@ async function route(req, res) {
     const saved = savedMappings.find(x => x.accountId === accountId && x.task === task);
     if (!saved) throw new Error('Tarefa sem mapeamento salvo nesta conta');
     const source = await loadSource(payload);
-    const rows = parseCsv(source.csv);
+    const sheetId = String(payload.sheetName ?? payload.sheetId ?? source.label);
+    const structure = parseHeaderAndSample(source.csv, { headerRow: payload.headerRow ?? 1 });
+    let profile = payload.profile ?? savedProfiles.find(p => p.accountId === accountId && (p.sourceFingerprint === source.label || p.sheetIdentifier === sheetId));
+    if (profile) {
+      const val = validateProfileAgainstStructure(profile, structure);
+      if (!val.valid) {
+        const suggested = createSuggestedProfile(accountId, source.label, sheetId, structure, 'enquete_automacao');
+        const valSug = validateProfileAgainstStructure(suggested, structure);
+        if (valSug.valid) profile = suggested;
+      }
+    } else {
+      const suggested = createSuggestedProfile(accountId, source.label, sheetId, structure, 'enquete_automacao');
+      const valSug = validateProfileAgainstStructure(suggested, structure);
+      if (valSug.valid) profile = suggested;
+    }
+    let rows;
+    if (profile) {
+      const table = parseCsvTable(source.csv);
+      const normResult = normalizeTable(table, profile);
+      rows = normResult.normalizedRows;
+    } else {
+      rows = parseCsv(source.csv);
+    }
     const derived = scopeFromEligible(rows, { allowedTasks: [task], excludedTasks: [] });
     const plan = derived.scope.length ? makePlan(rows, derived.scope, { allowedTasks: [task], excludedTasks: [] }) : [];
     const ledger = await readLedger(accountId);
@@ -1118,14 +1469,21 @@ async function route(req, res) {
     const table = parseCsvTable(source.csv);
     const accountId = payload.accountId ? String(payload.accountId).trim() : '';
     const sheetId = String(payload.sheetName ?? payload.sheetId ?? source.label);
+    const structure = parseHeaderAndSample(source.csv, { headerRow: payload.headerRow ?? 1 });
     let profile = payload.profile ?? savedProfiles.find(p => p.accountId === accountId && (p.sourceFingerprint === source.label || p.sheetIdentifier === sheetId));
     let normalized = null;
     let audit = null;
     let isEligible = true;
     let missingForAutomation = [];
 
-    if (!profile) {
-      const structure = parseHeaderAndSample(source.csv, { headerRow: payload.headerRow ?? 1 });
+    if (profile) {
+      const val = validateProfileAgainstStructure(profile, structure);
+      if (!val.valid) {
+        const suggested = createSuggestedProfile(accountId, source.label, sheetId, structure, 'enquete_automacao');
+        const valSug = validateProfileAgainstStructure(suggested, structure);
+        if (valSug.valid) profile = suggested;
+      }
+    } else {
       const suggested = createSuggestedProfile(accountId, source.label, sheetId, structure, 'enquete_automacao');
       const val = validateProfileAgainstStructure(suggested, structure);
       if (val.valid) profile = suggested;
@@ -1142,7 +1500,6 @@ async function route(req, res) {
         const mappedFields = new Set(profile.columns?.filter(c => c.action === 'map').map(c => c.targetField));
         const missing = [];
         if (!mappedFields.has('tarefa')) missing.push('Obrigação / Tarefa');
-        if (!mappedFields.has('empresa')) missing.push('Empresa');
         if (!mappedFields.has('cnpj') && !mappedFields.has('empId') && !mappedFields.has('cod')) {
           missing.push('Identificador do Cliente (CNPJ ou Cod./EmpID)');
         }
@@ -1150,8 +1507,12 @@ async function route(req, res) {
         if (missingForAutomation.length) isEligible = false;
       }
     } else {
-      const required = ['Obrigação / Tarefa', 'Empresa', 'EmpID', 'CNPJ'];
-      missingForAutomation = required.filter(column => !table.columns.includes(column));
+      const hasTask = ['Obrigação / Tarefa', 'Obrigação', 'Tarefa', 'tarefa'].some(col => table.columns.includes(col));
+      const hasId = ['CNPJ', 'EmpID', 'Cod.', 'Código', 'cnpj', 'empId', 'cod'].some(col => table.columns.includes(col));
+      const missing = [];
+      if (!hasTask) missing.push('Obrigação / Tarefa');
+      if (!hasId) missing.push('Identificador do Cliente (CNPJ ou Cod./EmpID)');
+      missingForAutomation = missing;
       if (missingForAutomation.length) isEligible = false;
     }
 
@@ -1166,12 +1527,12 @@ async function route(req, res) {
     const rows = normalized ?? parseCsv(source.csv);
     const counts = new Map();
     for (const row of rows) {
-      const name = String(row._norm?.tarefa ?? row['Obrigação / Tarefa'] ?? '').trim();
+      const name = String(row._norm?.tarefa ?? row['Obrigação / Tarefa'] ?? row['Obrigação'] ?? row['Tarefa'] ?? '').trim();
       if (!name) continue;
       const item = counts.get(name) ?? { name, count: 0, clients: new Set(), invalidCnpjs: 0 };
       item.count++;
-      const cnpjVal = row._norm?.cnpj ?? row.CNPJ;
-      const idVal = row._norm?.empId ?? row._norm?.cod ?? row.EmpID ?? row['Cod.'];
+      const cnpjVal = row._norm?.cnpj ?? row.CNPJ ?? row.cnpj;
+      const idVal = row._norm?.empId ?? row._norm?.cod ?? row.EmpID ?? row['Cod.'] ?? row.cod ?? row.empId;
       if (validCnpj(cnpjVal)) item.clients.add(normalizeCnpj(cnpjVal));
       else if (idVal && String(idVal).trim() && String(idVal).trim() !== '-') item.clients.add(`id:${String(idVal).trim()}`);
       else item.invalidCnpjs++;
@@ -1182,18 +1543,56 @@ async function route(req, res) {
       tasks: [...counts.values()].map(({ name, count, clients, invalidCnpjs }) => ({ name, count, clients: clients.size, invalidCnpjs }))
         .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')) });
   }
-  if (url.pathname === '/api/catalog') return send(res, 200, await exclusive(async () => {
-    if (!loginContext) throw new Error('Abra primeiro a janela de login do G-Click no menu Conexão & Conta');
+  if (url.pathname === '/api/catalog') {
     const accountId = requireAccount(payload.accountId);
-    if (!loginReady || !catalogState || catalogState.accountId !== accountId) {
-      if (!(await hasGclickSession(loginContext, accountId))) {
-        throw new Error(`A Enquete da conta ${accountId} não abriu no Chrome da automação. Confira se o usuário logado tem acesso a este escritório.`);
-      }
-      loginReady = true;
+    if (!authService.hasPermission(currentUser.id, 'enquete.visualizar', accountId)) {
+      return send(res, 403, { error: 'Acesso negado: permissão "enquete.visualizar" necessária nesta conta' });
     }
-    if (!catalogState || catalogState.accountId !== accountId || payload.refresh) await captureCatalog(accountId);
-    return { catalog: catalogState };
-  }, true));
+    if (!loginContext) throw new Error('Abra primeiro a janela de login do G-Click no menu Conexão & Conta');
+
+    // Se já houver captura em andamento para a mesma conta, reaproveita a mesma Promise (deduplicação contra clique duplo)
+    if (ongoingCatalogPromise && ongoingCatalogPromise.accountId === accountId) {
+      const result = await ongoingCatalogPromise.promise;
+      return send(res, 200, result);
+    }
+
+    const currentGen = ++catalogSessionGeneration;
+    catalogStatus = 'loading';
+
+    const executeCapture = async () => {
+      try {
+        if (!(await hasGclickSession(loginContext, accountId))) {
+          catalogStatus = 'failed';
+          throw new Error(`A Enquete da conta ${accountId} não abriu no Chrome da automação. Confira se o usuário logado tem acesso a este escritório.`);
+        }
+        await captureCatalog(accountId);
+
+        // Se a geração mudou durante a captura (ex.: usuário trocou de conta ou reiniciou login), descarta resultado desatualizado
+        if (catalogSessionGeneration !== currentGen) {
+          return { catalog: null, invalidated: true };
+        }
+
+        loginReady = true;
+        catalogStatus = 'ready';
+        return {
+          catalog: catalogState,
+          catalogStatus: 'ready',
+          catalogAccountId: catalogState?.accountId,
+          catalogCapturedAt: catalogState?.capturedAt
+        };
+      } catch (err) {
+        if (catalogSessionGeneration === currentGen) catalogStatus = 'failed';
+        throw err;
+      } finally {
+        if (ongoingCatalogPromise?.accountId === accountId) ongoingCatalogPromise = null;
+      }
+    };
+
+    const promise = exclusive(executeCapture, true);
+    ongoingCatalogPromise = { accountId, promise };
+
+    return send(res, 200, await promise);
+  }
   if (url.pathname === '/api/mappings/preview') return send(res, 200, await exclusive(async () => {
     const accountId = requireAccount(payload.accountId);
     if (!authService.hasPermission(currentUser.id, 'enquete.conferir', accountId)) {
@@ -1205,9 +1604,16 @@ async function route(req, res) {
     const source = await loadSource(payload);
     const table = parseCsvTable(source.csv);
     const sheetId = String(payload.sheetName ?? payload.sheetId ?? source.label);
+    const structure = parseHeaderAndSample(source.csv, { headerRow: payload.headerRow ?? 1 });
     let profile = payload.profile ?? savedProfiles.find(p => p.accountId === accountId && (p.sourceFingerprint === source.label || p.sheetIdentifier === sheetId));
-    if (!profile) {
-      const structure = parseHeaderAndSample(source.csv, { headerRow: payload.headerRow ?? 1 });
+    if (profile) {
+      const val = validateProfileAgainstStructure(profile, structure);
+      if (!val.valid) {
+        const suggested = createSuggestedProfile(accountId, source.label, sheetId, structure, 'enquete_automacao');
+        const valSug = validateProfileAgainstStructure(suggested, structure);
+        if (valSug.valid) profile = suggested;
+      }
+    } else {
       const suggested = createSuggestedProfile(accountId, source.label, sheetId, structure, 'enquete_automacao');
       const val = validateProfileAgainstStructure(suggested, structure);
       if (val.valid) profile = suggested;
@@ -1219,16 +1625,18 @@ async function route(req, res) {
       }
       const normResult = normalizeTable(table, profile);
       rows = normResult.normalizedRows;
-      if (!rows.length || !rows[0]._norm.tarefa) throw new Error('Planilha sem coluna Obrigação / Tarefa mapeada');
-      if (!('empresa' in rows[0]._norm)) throw new Error('Planilha sem coluna Empresa / Razão Social mapeada');
-      const hasId = ['empId', 'cod', 'cnpj'].some(col => col in rows[0]._norm);
+      const hasTask = rows.some(r => Boolean(r._norm?.tarefa));
+      if (!rows.length || !hasTask) throw new Error('Planilha sem coluna Obrigação / Tarefa mapeada');
+      const hasId = rows.some(r => Boolean(r._norm?.empId || r._norm?.cod || r._norm?.cnpj));
       if (!hasId) throw new Error('Planilha sem colunas de identificação (CNPJ, EmpID ou Cod.) mapeadas');
     } else {
       rows = parseCsv(source.csv);
-      if (!rows.length || !('Obrigação / Tarefa' in rows[0])) throw new Error('Planilha sem coluna Obrigação / Tarefa');
-      if (['Empresa', 'EmpID', 'CNPJ'].some(column => !(column in rows[0]))) throw new Error('Planilha sem colunas Empresa, EmpID ou CNPJ');
+      const hasTask = rows.length && ['Obrigação / Tarefa', 'Obrigação', 'Tarefa', 'tarefa'].some(col => col in rows[0]);
+      if (!hasTask) throw new Error('Planilha sem coluna Obrigação / Tarefa');
+      const hasId = rows.length && ['EmpID', 'Cod.', 'CNPJ', 'empId', 'cod', 'cnpj'].some(col => col in rows[0]);
+      if (!hasId) throw new Error('Planilha sem colunas de identificação (CNPJ, EmpID ou Cod.)');
     }
-    const sourceTasks = new Set(rows.map(row => String(row._norm?.tarefa ?? row['Obrigação / Tarefa'] ?? '').trim()).filter(Boolean));
+    const sourceTasks = new Set(rows.map(row => String(row._norm?.tarefa ?? row['Obrigação / Tarefa'] ?? row['Obrigação'] ?? row['Tarefa'] ?? '').trim()).filter(Boolean));
     const filterTask = typeof payload.filterTask === 'string' && payload.filterTask.trim() ? payload.filterTask.trim() : null;
     if (filterTask && !sourceTasks.has(filterTask)) throw new Error(`Obrigação "${filterTask}" não encontrada na planilha`);
     const autoAudit = payload.autoAudit === true;
@@ -1239,11 +1647,10 @@ async function route(req, res) {
     if (autoAudit) auditProgress = { running: true, completed: 0, total: taskNames.length, task: filterTask ? `Conferindo ${filterTask}` : 'Identificando tarefas da planilha', error: null };
     try {
     const mappings = [], pending = [], excluded = [];
-    let savedChanged = false;
     for (const task of taskNames) {
       let saved = savedMappings.find(x => x.accountId === accountId && x.task === task);
       if (!saved && catalogState?.questions) {
-        const taskRows = rows.filter(item => String(item._norm?.tarefa ?? item['Obrigação / Tarefa'] ?? '').trim() === task);
+        const taskRows = rows.filter(item => String(item._norm?.tarefa ?? item['Obrigação / Tarefa'] ?? item['Obrigação'] ?? item['Tarefa'] ?? '').trim() === task);
         const match = findAutoMatch(task, taskRows, catalogState);
         if (match) {
           saved = {
@@ -1253,10 +1660,9 @@ async function route(req, res) {
             questionLabel: match.question.label,
             answerLabel: match.answer.label,
             catalogSource: 'live',
-            updatedAt: new Date().toISOString()
+            updatedAt: new Date().toISOString(),
+            isSuggestion: true
           };
-          savedMappings.push(saved);
-          savedChanged = true;
         }
       }
       if (saved?.excluded) { excluded.push(task); if (autoAudit) auditProgress.completed++; continue; }
@@ -1264,7 +1670,6 @@ async function route(req, res) {
       if (!rules) { pending.push(task); if (autoAudit) auditProgress.completed++; continue; }
       mappings.push({ task, rules });
     }
-    if (savedChanged) await saveMappings();
     if (!autoAudit && (pending.length || excluded.length)) throw new Error(`Há ${pending.length + excluded.length} tarefa(s) selecionada(s) sem mapeamento válido; revise a fila`);
     if (!autoAudit && !mappings.length) throw new Error('Nenhum mapeamento confirmado foi encontrado na planilha');
     const results = [], inspected = [], invalidSource = [], failedTasks = [], applicable = [];
@@ -1272,10 +1677,10 @@ async function route(req, res) {
     if (autoAudit) {
       for (const task of pending) {
         const seen = new Set();
-        for (const row of rows.filter(item => String(item._norm?.tarefa ?? item['Obrigação / Tarefa'] ?? '').trim() === task)) {
-          const cnpjVal = row._norm?.cnpj ?? row.CNPJ;
-          const empVal = row._norm?.empresa ?? row.Empresa;
-          const idVal = row._norm?.empId ?? row._norm?.cod ?? row.EmpID ?? row['Cod.'];
+        for (const row of rows.filter(item => String(item._norm?.tarefa ?? item['Obrigação / Tarefa'] ?? item['Obrigação'] ?? item['Tarefa'] ?? '').trim() === task)) {
+          const cnpjVal = row._norm?.cnpj ?? row.CNPJ ?? row.cnpj;
+          const empVal = row._norm?.empresa ?? row.Empresa ?? row.empresa ?? (validCnpj(cnpjVal) ? formatCnpj(cnpjVal) : '-');
+          const idVal = row._norm?.empId ?? row._norm?.cod ?? row.EmpID ?? row['Cod.'] ?? row.empId ?? row.cod;
           const hasCnpj = validCnpj(cnpjVal);
           const hasId = Boolean(idVal && String(idVal).trim() && String(idVal).trim() !== '-');
           if (!hasCnpj && !hasId) { invalidSource.push({ row: row._row, cnpj: cnpjVal || '-', empresa: empVal, task, reason: 'CNPJ e ID do cliente (Cod.) ausentes' }); continue; }
@@ -1540,7 +1945,9 @@ async function route(req, res) {
     busy = true;
     try {
       if (loginContext) await loginContext.close();
-      loginContext = null; loginReady = false; catalogState = null; previewState = null; autoAttemptedAccountId = null; auditCache.clear(); await persistAuditCache();
+      loginContext = null; loginReady = false; catalogState = null; previewState = null; autoAttemptedAccountId = null;
+      catalogStatus = 'not_requested'; catalogSessionGeneration++; ongoingCatalogPromise = null;
+      auditCache.clear(); await persistAuditCache();
       if (loginLock) await loginLock();
       loginLock = null;
       loginLock = await acquireLock();
@@ -1548,53 +1955,63 @@ async function route(req, res) {
       watchLoginContext(loginContext); sessionLostAt = null;
       const page = loginContext.pages()[0] ?? await loginContext.newPage();
       await page.goto(LOGIN_URL);
-      return send(res, 200, { open: true });
-    } catch (e) { if (loginContext) await loginContext.close(); loginContext = null; loginReady = false; catalogState = null; if (loginLock) await loginLock(); loginLock = null; throw e; }
+      return send(res, 200, { open: true, catalogStatus: 'not_requested' });
+    } catch (e) { if (loginContext) await loginContext.close(); loginContext = null; loginReady = false; catalogState = null; catalogStatus = 'not_requested'; if (loginLock) await loginLock(); loginLock = null; throw e; }
     finally { busy = false; }
   }
   if (url.pathname === '/api/login/close') {
-    if (busy) throw new Error('Outra operação está em andamento');
     if (!loginContext) throw new Error('Abra primeiro a janela de login da automação.');
     const accountId = requireAccount(payload.accountId);
-    busy = true;
-    try {
-      if (payload.auto) {
-        const pages = loginContext.pages().filter(p => !p.isClosed());
-        const urls = pages.map(page => { try { return new URL(page.url()); } catch { return null; } }).filter(Boolean);
-        const onEnquete = urls.some(current => current.hostname === 'app.gclick.com.br' && current.pathname.endsWith('/Listar.do') &&
-          current.searchParams.get('obj') === 'enqueteopen' && current.searchParams.get('empId') === accountId);
-        const onEmpresas = urls.some(current => current.hostname === 'appp.gclick.com.br' && current.pathname.includes('/empresas'));
-        const loggedIn = urls.some(current => /(^|\.)gclick\.com\.br$/.test(current.hostname) && !current.pathname.startsWith('/autenticacao'));
+    const pages = loginContext.pages().filter(p => !p.isClosed());
+    const urls = pages.map(page => { try { return new URL(page.url()); } catch { return null; } }).filter(Boolean);
+    const onAuth = urls.some(current => /(^|\.)gclick\.com\.br$/.test(current.hostname) && current.pathname.startsWith('/autenticacao'));
+    const onEmpresas = urls.some(current => current.hostname === 'appp.gclick.com.br' && current.pathname.includes('/empresas'));
+    const loggedIn = urls.some(current => /(^|\.)gclick\.com\.br$/.test(current.hostname) && !current.pathname.startsWith('/autenticacao'));
 
-        if (!onEnquete && !loggedIn) return send(res, 200, { open: true, ready: false, stage: 'login', message: 'Aguardando o login no Chrome da automação.' });
+    if (!loggedIn || onAuth) {
+      return send(res, 200, { open: true, ready: false, stage: 'login', message: 'Aguardando o login no Chrome da automação.' });
+    }
+    if (onEmpresas) {
+      return send(res, 200, { open: true, ready: false, stage: 'select_company', message: `Login realizado. Selecione a empresa no G-Click (conta ${accountId}) para continuar.` });
+    }
 
-        // Se está na tela de empresas, tenta entrar automaticamente no escritório selecionado
-        if (onEmpresas) {
-          const empPage = pages.find(p => { try { return new URL(p.url()).pathname.includes('/empresas'); } catch { return false; } });
-          if (empPage) {
-            const entered = await enterEmpresa(empPage, accountId).catch(() => null);
-            if (!entered?.entered) {
-              return send(res, 200, { open: true, ready: false, stage: 'select_company', message: `Login realizado. Selecione a empresa no G-Click (conta ${accountId}) para continuar.` });
-            }
-          }
+    // Leitura passiva da empresa
+    let empresaNome = null;
+    const mainPage = pages.find(p => {
+      try {
+        const u = new URL(p.url());
+        return /(^|\.)gclick\.com\.br$/.test(u.hostname) && !u.pathname.startsWith('/autenticacao');
+      } catch { return false; }
+    });
+    if (mainPage) {
+      try {
+        const raw = await mainPage.evaluate(() => localStorage.getItem('g3AccessEmpresas')).catch(() => null);
+        if (raw) {
+          const list = JSON.parse(raw);
+          const found = list.find(e => String(e.id) === String(accountId));
+          if (found) empresaNome = found.nome;
         }
+      } catch {}
+    }
 
-        if (autoAttemptedAccountId === accountId)
-          return send(res, 200, { open: true, ready: false, stage: 'no_access', message: `A Enquete da conta ${accountId} não abriu. Confira o acesso ao escritório e clique em Verificar sessão / Repetir captura para tentar novamente.` });
-        autoAttemptedAccountId = accountId;
-        if (!(await hasGclickSession(loginContext, accountId)))
-          return send(res, 200, { open: true, ready: false, stage: 'no_access', message: `A Enquete da conta ${accountId} não abriu. Confira o acesso ao escritório e clique em Verificar sessão / Repetir captura para tentar novamente.` });
-      } else if (!(await hasGclickSession(loginContext, accountId)))
-        throw new Error(`A Enquete da conta ${accountId} não abriu no Chrome da automação. Confira o login e o acesso a esse escritório.`);
-      await captureCatalog(accountId);
-      loginReady = true;
-      return send(res, 200, { open: true, ready: true, catalog: catalogState });
-    } finally { busy = false; }
+    // Não navega para a Enquete e não captura catálogo silenciosamente
+    return send(res, 200, {
+      open: true,
+      ready: false,
+      stage: 'login_detected',
+      accountId,
+      empresaNome,
+      catalog: catalogState?.accountId === accountId ? catalogState : null,
+      message: 'Login detectado no G-Click. Para ler a Enquete, abra Enquete -> Mapeamento e clique em Buscar Perguntas e Respostas (Sob Demanda).'
+    });
   }
   return send(res, 404, { error: 'Rota não encontrada' });
 }
 const server = http.createServer((req, res) => { route(req, res).catch(async e => { console.error(`[API 400] ${req.method} ${req.url}: ${e.message}`); if (e.report) lastReport = e.report; send(res, 400, { error: humanError(e), report: e.report ?? null }); }); });
-server.listen(port, host, () => console.log(`G-Click local: http://${host}:${port}`));
+export { server, route };
+if (process.argv[1] === new URL(import.meta.url).pathname) {
+  server.listen(port, host, () => console.log(`G-Click local: http://${host}:${port}`));
+}
 process.on('uncaughtException', err => { console.error('[UNCAUGHT EXCEPTION]', err); });
 process.on('unhandledRejection', reason => { console.error('[UNHANDLED REJECTION]', reason); });
 for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, async () => { try { if (loginContext) await loginContext.close(); if (loginLock) await loginLock(); } finally { server.close(() => process.exit(0)); } });
