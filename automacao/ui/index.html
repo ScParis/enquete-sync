@@ -56,107 +56,88 @@
       </div>
 
       <nav class="sidebar-nav" id="sidebarNav">
-        <!-- VISÃO GERAL -->
-        <button type="button" class="nav-btn nav-overview active" data-section="all" id="navAll" title="Visão Geral (Todas as seções)">
+        <!-- 1. COCKPIT / VISÃO GERAL -->
+        <button type="button" class="nav-btn nav-overview active" data-section="all" id="navAll" title="Dashboard Geral do Escritório">
           <span class="nav-icon">📊</span>
-          <span class="nav-text">Visão Geral (Todas as seções)</span>
+          <span class="nav-text">Dashboard Geral</span>
         </button>
 
-        <!-- MÓDULO 1: CONFIGURAÇÃO DE CONEXÃO -->
+        <!-- 2. DADOS & INTEGRAÇÃO -->
         <div class="nav-module">
           <div class="nav-module-title">
-            <span class="module-icon">⚙️</span>
-            <span>Configuração de Conexão</span>
+            <span class="module-icon">📥</span>
+            <span>Dados & Integração</span>
           </div>
           <div class="nav-sub-list">
             <button type="button" class="nav-btn nav-sub-item" data-section="connection" id="navConnection" title="Conexão & Conta G-Click">
               <span class="nav-icon">🔑</span>
-              <span class="nav-text">Conexão & Conta G-Click</span>
+              <span class="nav-text">Conexão & Sessão</span>
               <span class="nav-badge" id="navBadgeConnection">Aguardando</span>
             </button>
 
-            <!-- SUBMENU: FONTE (IMPORTAÇÃO) -->
-            <div class="nav-tree-branch">
-              <button type="button" class="nav-btn nav-sub-item branch-header" data-section="source" id="navSource" title="Fonte (importação de dados)">
-                <span class="tree-line"></span>
-                <span class="nav-icon">📥</span>
-                <span class="nav-text">Fonte (importação)</span>
-                <span class="nav-badge" id="navBadgeSource">Pendente</span>
-              </button>
+            <button type="button" class="nav-btn nav-sub-item" data-section="source" id="navSource" title="Fonte & Importação de Arquivos">
+              <span class="nav-icon">📁</span>
+              <span class="nav-text">Importação de Planilha</span>
+              <span class="nav-badge" id="navBadgeSource">Pendente</span>
+            </button>
 
-              <!-- SUB-SUBMENU: SINCRONIZAÇÃO COM GOOGLE SHEETS -->
-              <div class="nav-nested-branch">
-                <button type="button" class="nav-btn nav-nested-item" data-section="writer" id="navWriter" title="Sincronização com Google Sheets">
-                  <span class="tree-subline"></span>
-                  <span class="nav-icon">🔄</span>
-                  <span class="nav-text">Sincronização com Google Sheets</span>
-                  <span class="nav-badge" id="navBadgeWriter">Sync</span>
-                </button>
-              </div>
-            </div>
+            <button type="button" class="nav-btn nav-sub-item" data-section="writer" id="navWriter" title="Sincronização com Google Sheets">
+              <span class="nav-icon">🔄</span>
+              <span class="nav-text">Sincronização Sheets</span>
+              <span class="nav-badge" id="navBadgeWriter">Sync</span>
+            </button>
           </div>
         </div>
 
-        <!-- MÓDULO 2: ENQUETE -->
+        <!-- 3. AUTOMAÇÕES -->
         <div class="nav-module">
           <div class="nav-module-title">
-            <span class="module-icon">📋</span>
-            <span>Enquete</span>
+            <span class="module-icon">⚡</span>
+            <span>Automações</span>
           </div>
           <div class="nav-sub-list">
-            <button type="button" class="nav-btn nav-sub-item" data-section="catalog" id="navCatalog" title="Mapeamento de Perguntas e Respostas">
-              <span class="tree-line"></span>
+            <!-- ENQUETE G-CLICK -->
+            <button type="button" class="nav-btn nav-sub-item" data-section="catalog" id="navCatalog" title="Catálogo de Perguntas da Enquete">
               <span class="nav-icon">📑</span>
-              <span class="nav-text">Mapeamento de Perguntas e Respostas</span>
+              <span class="nav-text">Catálogo de Perguntas</span>
               <span class="nav-badge" id="navBadgeCatalog">0 perguntas</span>
             </button>
 
-            <button type="button" class="nav-btn nav-sub-item" data-section="mapping" id="navMapping" title="Tarefas e Mapeamento da Enquete">
-              <span class="tree-line"></span>
+            <button type="button" class="nav-btn nav-sub-item" data-section="mapping" id="navMapping" title="Associação de Tarefas & Mapeamento">
               <span class="nav-icon">🔀</span>
-              <span class="nav-text">Tarefas e Mapeamento da Enquete</span>
+              <span class="nav-text">Mapeamento de Regras</span>
               <span class="nav-badge" id="navBadgeMapping">0</span>
             </button>
 
-            <button type="button" class="nav-btn nav-sub-item" data-section="audit" id="navAudit" title="Auditoria & Conferência na Enquete">
-              <span class="tree-line"></span>
+            <button type="button" class="nav-btn nav-sub-item" data-section="audit" id="navAudit" title="Auditoria & Conferência ao Vivo">
               <span class="nav-icon">🔍</span>
-              <span class="nav-text">Auditoria & Conferência na Enquete</span>
+              <span class="nav-text">Auditoria & Conferência</span>
               <span class="nav-badge" id="navBadgeAudit">0</span>
             </button>
 
-            <button type="button" class="nav-btn nav-sub-item" data-section="apply" id="navApply" title="Gravação no G-Click">
-              <span class="tree-line"></span>
-              <span class="nav-icon">⚡</span>
+            <button type="button" class="nav-btn nav-sub-item" data-section="apply" id="navApply" title="Execução de Gravação na Enquete">
+              <span class="nav-icon">🚀</span>
               <span class="nav-text">Gravação no G-Click</span>
               <span class="nav-badge" id="navBadgeApply">Aguardando</span>
             </button>
-          </div>
-        </div>
 
-        <!-- MÓDULO 3: OBRIGAÇÕES (NOVO) -->
-        <div class="nav-module">
-          <div class="nav-module-title">
-            <span class="module-icon">📁</span>
-            <span>Obrigações <span class="tag-pill">Novo</span></span>
-          </div>
-          <div class="nav-sub-list">
-            <button type="button" class="nav-btn nav-sub-item" data-section="obrigacoes" id="navObrigacoes" title="Módulo de Obrigações">
-              <span class="nav-icon">📌</span>
-              <span class="nav-text">Módulo de Obrigações</span>
+            <!-- OBRIGAÇÕES & WHATSAPP -->
+            <button type="button" class="nav-btn nav-sub-item" data-section="obrigacoes" id="navObrigacoes" title="Gestão de Obrigações, WhatsApp e E-mail">
+              <span class="nav-icon">💬</span>
+              <span class="nav-text">Obrigações & WhatsApp</span>
               <span class="nav-badge" id="navBadgeObrigacoes">Obrigações</span>
             </button>
           </div>
         </div>
 
-        <!-- MÓDULO 4: ADMINISTRAÇÃO & ACESSOS -->
+        <!-- 4. GOVERNANÇA & ACESSOS -->
         <div class="nav-module" id="navModuleAdmin" hidden>
           <div class="nav-module-title">
             <span class="module-icon">🛡️</span>
-            <span>Administração</span>
+            <span>Governança</span>
           </div>
           <div class="nav-sub-list">
-            <button type="button" class="nav-btn nav-sub-item" data-section="users" id="navUsers" title="Usuários & Permissões">
+            <button type="button" class="nav-btn nav-sub-item" data-section="users" id="navUsers" title="Gestão de Usuários & Permissões">
               <span class="nav-icon">👥</span>
               <span class="nav-text">Usuários & Permissões</span>
               <span class="nav-badge" id="navBadgeUsers">RBAC</span>

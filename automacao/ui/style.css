@@ -1,58 +1,58 @@
 :root {
   --font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   
-  /* Cores da marca e superfícies */
-  --bg-app: #f4f7f6;
+  /* Paleta WhatsApp Enterprise & Superfícies */
+  --bg-app: #f0f4f2;
   --bg-card: #ffffff;
-  --bg-card-subtle: #f8fbfa;
-  --text-main: #1d2932;
-  --text-muted: #5e727b;
-  --text-dimmed: #84969e;
+  --bg-card-subtle: #f7faf9;
+  --text-main: #111b21;
+  --text-muted: #54656f;
+  --text-dimmed: #8696a0;
   
-  /* Marca G-Click */
-  --gclick-dark: #0d282e;
-  --gclick-sidebar: #0e292f;
-  --gclick-sidebar-hover: #163a42;
-  --gclick-sidebar-active: #194e58;
-  --gclick-primary: #197f73;
-  --gclick-primary-hover: #146b60;
-  --gclick-primary-light: #e6f5f2;
-  --gclick-accent: #52dba6;
+  /* WhatsApp Enterprise Verde & Escuros */
+  --gclick-dark: #0c2e28;
+  --gclick-sidebar: #0c2e28;
+  --gclick-sidebar-hover: #143d35;
+  --gclick-sidebar-active: #1a4d43;
+  --gclick-primary: #00a884;
+  --gclick-primary-hover: #02906f;
+  --gclick-primary-light: #e7f7f4;
+  --gclick-accent: #25d366;
 
   /* Estados e Badges */
-  --color-success: #10b981;
-  --badge-ok-bg: #134e48;
-  --badge-ok-text: #6ee7b7;
+  --color-success: #00a884;
+  --badge-ok-bg: #0d4a3e;
+  --badge-ok-text: #53eac6;
   
   --color-warning: #f59e0b;
-  --badge-warn-bg: #593e10;
-  --badge-warn-text: #fcd34d;
+  --badge-warn-bg: #4a340b;
+  --badge-warn-text: #fde047;
   
-  --color-info: #3b82f6;
-  --badge-info-bg: #1e3a5f;
-  --badge-info-text: #93c5fd;
+  --color-info: #0284c7;
+  --badge-info-bg: #0c3847;
+  --badge-info-text: #7dd3fc;
   
   --color-danger: #ef4444;
   --badge-danger-bg: #5f1d1d;
   --badge-danger-text: #fca5a5;
 
-  --badge-new-bg: #4c1d95;
-  --badge-new-text: #ddd6fe;
+  --badge-new-bg: #115e59;
+  --badge-new-text: #99f6e4;
 
-  --badge-neutral-bg: #1c383f;
-  --badge-neutral-text: #9ab4b8;
+  --badge-neutral-bg: #143d35;
+  --badge-neutral-text: #a3c2ba;
 
   /* Bordas e Sombras */
-  --border-light: #e2e9e8;
-  --border-focus: #269688;
-  --shadow-sm: 0 1px 3px rgba(18, 60, 68, 0.06);
-  --shadow-card: 0 3px 14px rgba(18, 60, 68, 0.05), 0 1px 3px rgba(18, 60, 68, 0.03);
-  --shadow-lg: 0 10px 28px rgba(18, 60, 68, 0.1);
+  --border-light: #d8e5df;
+  --border-focus: #00a884;
+  --shadow-sm: 0 1px 3px rgba(12, 46, 40, 0.05);
+  --shadow-card: 0 2px 10px rgba(12, 46, 40, 0.04), 0 1px 3px rgba(12, 46, 40, 0.02);
+  --shadow-lg: 0 12px 32px rgba(12, 46, 40, 0.12);
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 14px;
 
-  /* Design System v3.2.0: Escalas de Botões */
+  /* Design System v4.0.0: Escalas de Botões */
   --btn-h-sm: 32px;
   --btn-px-sm: 12px;
   --btn-font-sm: 12px;
@@ -68,26 +68,26 @@
   --btn-font-lg: 15px;
   --btn-radius-lg: 8px;
 
-  /* Design System v3.2.0: Variantes Semânticas de Botões */
-  --btn-primary-bg: #2563eb;
-  --btn-primary-hover: #1d4ed8;
-  --btn-primary-active: #1e40af;
+  /* Design System v4.0.0: Variantes Semânticas de Botões (WhatsApp Theme) */
+  --btn-primary-bg: #00a884;
+  --btn-primary-hover: #02906f;
+  --btn-primary-active: #01755a;
   --btn-primary-text: #ffffff;
-  --btn-primary-shadow: 0 1px 2px rgba(37, 99, 235, 0.2), 0 2px 4px rgba(37, 99, 235, 0.12);
+  --btn-primary-shadow: 0 1px 3px rgba(0, 168, 132, 0.25), 0 2px 6px rgba(0, 168, 132, 0.15);
 
-  --btn-secondary-bg: #f8fafc;
-  --btn-secondary-border: #cbd5e1;
-  --btn-secondary-hover: #f1f5f9;
-  --btn-secondary-text: #1e293b;
+  --btn-secondary-bg: #ffffff;
+  --btn-secondary-border: #cbdad4;
+  --btn-secondary-hover: #f0f5f3;
+  --btn-secondary-text: #111b21;
 
-  --btn-ghost-hover: #f1f5f9;
-  --btn-ghost-text: #475569;
+  --btn-ghost-hover: #e8f0ec;
+  --btn-ghost-text: #4a5c54;
 
-  --btn-danger-bg: #ef4444;
-  --btn-danger-hover: #dc2626;
-  --btn-danger-active: #b91c1c;
+  --btn-danger-bg: #dc2626;
+  --btn-danger-hover: #b91c1c;
+  --btn-danger-active: #991b1b;
   --btn-danger-text: #ffffff;
-  --btn-danger-shadow: 0 1px 2px rgba(239, 68, 68, 0.2);
+  --btn-danger-shadow: 0 1px 2px rgba(220, 38, 38, 0.2);
 }
 
 * {
