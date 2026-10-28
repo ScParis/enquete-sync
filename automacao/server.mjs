@@ -440,31 +440,50 @@ function mappingRules(accountId, task, mapping) {
     inputType: answer.valueKnown === false ? 'checkbox' : 'auto', allowedTasks: [task], excludedTasks: [] });
 }
 const normalizeTaskStr = value => String(value ?? '').trim().replace(/\s+/g, ' ').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('pt-BR');
+const stripOrdinal = s => String(s ?? '').replace(/^\s*\d+\s*[-–—:]?\s+/, '').trim();
 
-function findAutoMatch(task, taskRows, catalog) {
+export function findAutoMatch(task, taskRows, catalog) {
   if (!catalog?.questions) return null;
-  const codeVal = taskRows.find(r => r._norm?.resposta)?._norm?.resposta;
-  if (codeVal && String(codeVal).trim()) {
-    const code = String(codeVal).trim();
-    for (const q of catalog.questions) {
-      for (const a of q.answers) {
-        if (String(a.value ?? '').trim() === code) {
-          return { question: q, answer: a, matchBy: 'code' };
-        }
-      }
-    }
-  }
   const normTask = normalizeTaskStr(task);
+  const normTaskClean = normalizeTaskStr(stripOrdinal(task));
+
+  // 1. Prioridade máxima: correspondência por nome exato da tarefa (ou resposta)
   const matches = [];
   for (const q of catalog.questions) {
     for (const a of q.answers) {
-      if (normalizeTaskStr(a.label) === normTask || normalizeTaskStr(a.display) === normTask) {
+      const aLabelNorm = normalizeTaskStr(a.label);
+      const aDisplayNorm = normalizeTaskStr(a.display);
+      const aClean = normalizeTaskStr(stripOrdinal(a.label));
+      if (
+        aLabelNorm === normTask ||
+        aDisplayNorm === normTask ||
+        (normTaskClean && aClean === normTaskClean)
+      ) {
         matches.push({ question: q, answer: a });
       }
     }
   }
   if (matches.length === 1) {
     return { question: matches[0].question, answer: matches[0].answer, matchBy: 'exact_name' };
+  }
+
+  // 2. Correspondência secundária por código numérico bruto (resposta) caso não haja colisão nem conflito flagrante
+  const codeVal = taskRows?.find(r => r._norm?.resposta)?._norm?.resposta;
+  if (codeVal && String(codeVal).trim()) {
+    const code = String(codeVal).trim();
+    for (const q of catalog.questions) {
+      for (const a of q.answers) {
+        if (String(a.value ?? '').trim() === code) {
+          // Não aceitar match espúrio em meses de ALVARÁ se a tarefa for de outro assunto (ex.: sindicato)
+          const aNorm = normalizeTaskStr(a.label);
+          const isMonth = /^(0\d\s*-\s*)?(janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)$/i.test(aNorm);
+          if (isMonth && !/(janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro|trimestre|mes)/i.test(normTask)) {
+            continue;
+          }
+          return { question: q, answer: a, matchBy: 'code' };
+        }
+      }
+    }
   }
   return null;
 }

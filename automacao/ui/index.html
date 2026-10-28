@@ -57,7 +57,7 @@
 
       <nav class="sidebar-nav" id="sidebarNav">
         <!-- VISÃO GERAL -->
-        <button type="button" class="nav-btn nav-overview active" data-section="all" id="navAll">
+        <button type="button" class="nav-btn nav-overview active" data-section="all" id="navAll" title="Visão Geral (Todas as seções)">
           <span class="nav-icon">📊</span>
           <span class="nav-text">Visão Geral (Todas as seções)</span>
         </button>
@@ -69,7 +69,7 @@
             <span>Configuração de Conexão</span>
           </div>
           <div class="nav-sub-list">
-            <button type="button" class="nav-btn nav-sub-item" data-section="connection" id="navConnection">
+            <button type="button" class="nav-btn nav-sub-item" data-section="connection" id="navConnection" title="Conexão & Conta G-Click">
               <span class="nav-icon">🔑</span>
               <span class="nav-text">Conexão & Conta G-Click</span>
               <span class="nav-badge" id="navBadgeConnection">Aguardando</span>
@@ -77,7 +77,7 @@
 
             <!-- SUBMENU: FONTE (IMPORTAÇÃO) -->
             <div class="nav-tree-branch">
-              <button type="button" class="nav-btn nav-sub-item branch-header" data-section="source" id="navSource">
+              <button type="button" class="nav-btn nav-sub-item branch-header" data-section="source" id="navSource" title="Fonte (importação de dados)">
                 <span class="tree-line"></span>
                 <span class="nav-icon">📥</span>
                 <span class="nav-text">Fonte (importação)</span>
@@ -86,7 +86,7 @@
 
               <!-- SUB-SUBMENU: SINCRONIZAÇÃO COM GOOGLE SHEETS -->
               <div class="nav-nested-branch">
-                <button type="button" class="nav-btn nav-nested-item" data-section="writer" id="navWriter">
+                <button type="button" class="nav-btn nav-nested-item" data-section="writer" id="navWriter" title="Sincronização com Google Sheets">
                   <span class="tree-subline"></span>
                   <span class="nav-icon">🔄</span>
                   <span class="nav-text">Sincronização com Google Sheets</span>
@@ -104,28 +104,28 @@
             <span>Enquete</span>
           </div>
           <div class="nav-sub-list">
-            <button type="button" class="nav-btn nav-sub-item" data-section="catalog" id="navCatalog">
+            <button type="button" class="nav-btn nav-sub-item" data-section="catalog" id="navCatalog" title="Mapeamento de Perguntas e Respostas">
               <span class="tree-line"></span>
               <span class="nav-icon">📑</span>
               <span class="nav-text">Mapeamento de Perguntas e Respostas</span>
               <span class="nav-badge" id="navBadgeCatalog">0 perguntas</span>
             </button>
 
-            <button type="button" class="nav-btn nav-sub-item" data-section="mapping" id="navMapping">
+            <button type="button" class="nav-btn nav-sub-item" data-section="mapping" id="navMapping" title="Tarefas e Mapeamento da Enquete">
               <span class="tree-line"></span>
               <span class="nav-icon">🔀</span>
               <span class="nav-text">Tarefas e Mapeamento da Enquete</span>
               <span class="nav-badge" id="navBadgeMapping">0</span>
             </button>
 
-            <button type="button" class="nav-btn nav-sub-item" data-section="audit" id="navAudit">
+            <button type="button" class="nav-btn nav-sub-item" data-section="audit" id="navAudit" title="Auditoria & Conferência na Enquete">
               <span class="tree-line"></span>
               <span class="nav-icon">🔍</span>
               <span class="nav-text">Auditoria & Conferência na Enquete</span>
               <span class="nav-badge" id="navBadgeAudit">0</span>
             </button>
 
-            <button type="button" class="nav-btn nav-sub-item" data-section="apply" id="navApply">
+            <button type="button" class="nav-btn nav-sub-item" data-section="apply" id="navApply" title="Gravação no G-Click">
               <span class="tree-line"></span>
               <span class="nav-icon">⚡</span>
               <span class="nav-text">Gravação no G-Click</span>
@@ -141,7 +141,7 @@
             <span>Obrigações <span class="tag-pill">Novo</span></span>
           </div>
           <div class="nav-sub-list">
-            <button type="button" class="nav-btn nav-sub-item" data-section="obrigacoes" id="navObrigacoes">
+            <button type="button" class="nav-btn nav-sub-item" data-section="obrigacoes" id="navObrigacoes" title="Módulo de Obrigações">
               <span class="nav-icon">📌</span>
               <span class="nav-text">Módulo de Obrigações</span>
               <span class="nav-badge" id="navBadgeObrigacoes">Obrigações</span>
@@ -156,7 +156,7 @@
             <span>Administração</span>
           </div>
           <div class="nav-sub-list">
-            <button type="button" class="nav-btn nav-sub-item" data-section="users" id="navUsers">
+            <button type="button" class="nav-btn nav-sub-item" data-section="users" id="navUsers" title="Usuários & Permissões">
               <span class="nav-icon">👥</span>
               <span class="nav-text">Usuários & Permissões</span>
               <span class="nav-badge" id="navBadgeUsers">RBAC</span>
@@ -300,8 +300,8 @@
           </label>
           <datalist id="accountList"></datalist>
           <div class="row" style="margin-top:14px">
-            <button id="openLogin" type="button" class="primary">Abrir janela de login</button>
-            <button id="closeLogin" type="button" class="secondary">Verificar login no G-Click</button>
+            <button id="openLogin" type="button" class="btn btn-primary btn-md">Abrir janela de login</button>
+            <button id="closeLogin" type="button" class="btn btn-secondary btn-md">Verificar login no G-Click</button>
           </div>
           <p class="hint">Basta entrar no G-Click na janela da automação. Após o login ser detectado, acesse o módulo <strong>Enquete → Mapeamento</strong> e clique em <strong>Buscar Perguntas e Respostas (Sob Demanda)</strong> para carregar o catálogo.</p>
         </section>
@@ -335,16 +335,16 @@
             <input id="file" type="file" accept=".csv,.xlsx">
             <label class="field-label" for="sheetName">Nome da aba no XLSX <small>(opcional; padrão: primeira aba)</small></label>
             <input id="sheetName" type="text" placeholder="Ex.: Obrigações">
-            <button id="loadFileTasks" type="button" class="secondary">Importar arquivo selecionado</button>
+            <button id="loadFileTasks" type="button" class="btn btn-secondary btn-md" style="margin-top:10px">Importar arquivo selecionado</button>
           </div>
           <div id="recentBox">
             <label class="field-label" for="recentSheetUrl">Link da aba no Google Sheets</label>
             <input id="recentSheetUrl" type="url" placeholder="Link da aba da planilha deste escritório">
             <p class="hint">Colar o link não carrega os dados. Baixe o CSV desta aba e confirme o arquivo abaixo; ao trocar o link, os dados anteriores são removidos.</p>
             <div class="row">
-              <a id="directExport" class="button-link" target="_blank" rel="noopener">Baixar CSV da aba</a>
-              <a id="openSheet" class="button-link" target="_blank" rel="noopener">Abrir planilha</a>
-              <button id="refreshDownloads" type="button" class="secondary">Atualizar downloads</button>
+              <a id="directExport" class="button-link btn btn-secondary btn-md" target="_blank" rel="noopener">Baixar CSV da aba</a>
+              <a id="openSheet" class="button-link btn btn-secondary btn-md" target="_blank" rel="noopener">Abrir planilha</a>
+              <button id="refreshDownloads" type="button" class="btn btn-secondary btn-md">Atualizar downloads</button>
             </div>
             <p id="recentUrlHint" class="hint"></p>
             <label class="field-label" for="downloadFile">CSV da aba</label>
@@ -357,14 +357,14 @@
             <label class="field-label" for="serviceKey">Credencial de conta de serviço <small>(JSON, para planilha privada)</small></label>
             <input id="serviceKey" type="file" accept=".json,application/json">
             <p class="hint">A planilha deve ser compartilhada como Leitor com o e-mail da conta de serviço. A chave é usada somente nesta leitura e não entra no relatório.</p>
-            <button id="loadUrlTasks" type="button" class="secondary">Ler tarefas do link</button>
+            <button id="loadUrlTasks" type="button" class="btn btn-secondary btn-md" style="margin-top:10px">Ler tarefas do link</button>
           </div>
           <div class="row header-config-row" style="margin-top:14px;align-items:flex-end;gap:12px">
             <label style="flex:1;max-width:200px">
               Linha do cabeçalho
               <input id="headerRowInput" type="number" min="1" max="100" value="1" style="margin-top:4px">
             </label>
-            <button id="inspectSourceBtn" type="button" class="primary" style="margin-bottom:0">Conhecer estrutura da fonte</button>
+            <button id="inspectSourceBtn" type="button" class="btn btn-primary btn-md" style="margin-bottom:0">Conhecer estrutura da fonte</button>
           </div>
           <p id="sourceStatus" class="source-status" role="status" aria-live="polite">Selecione uma fonte para carregar os dados da aba.</p>
 
@@ -388,8 +388,8 @@
                 </select>
               </label>
               <div style="flex:1;display:flex;gap:8px">
-                <button id="saveProfileBtn" type="button" class="secondary" style="flex:1">Salvar perfil</button>
-                <button id="applyAndLoadBtn" type="button" class="primary" style="flex:1">Validar & Carregar</button>
+                <button id="saveProfileBtn" type="button" class="btn btn-secondary btn-md" style="flex:1">Salvar perfil</button>
+                <button id="applyAndLoadBtn" type="button" class="btn btn-primary btn-md" style="flex:1">Validar & Carregar</button>
               </div>
             </div>
 
@@ -487,7 +487,7 @@
               <h3 style="margin:0 0 4px">Perguntas e Respostas da Conta</h3>
               <p class="sub-hint" style="margin:0">Catálogo capturado diretamente da Enquete do escritório.</p>
             </div>
-            <button id="refreshCatalogManual" type="button" class="primary btn-demand">
+            <button id="refreshCatalogManual" type="button" class="btn btn-primary btn-md btn-demand">
               <span class="btn-icon">🔄</span> Buscar Perguntas e Respostas (Sob Demanda)
             </button>
           </div>
@@ -540,7 +540,7 @@
               <option value="ready">Associadas</option>
               <option value="excluded">Excluídas</option>
             </select>
-            <button id="btnConfirmAllSuggestions" type="button" class="ghost" style="white-space:nowrap;margin-left:auto" title="Confirma todas as sugestões seguras identificadas pelo nome ou código">Confirmar sugestões seguras</button>
+            <button id="btnConfirmAllSuggestions" type="button" class="btn btn-ghost btn-sm" style="white-space:nowrap;margin-left:auto" title="Confirma todas as sugestões seguras identificadas pelo nome ou código">Confirmar sugestões seguras</button>
           </div>
           <div id="queueList" class="queue-list"></div>
           <div id="mappingEditor" class="mapping-editor" hidden>
@@ -550,10 +550,10 @@
             <label>Pergunta<select id="editorQuestion"></select></label>
             <label>Resposta<select id="editorAnswer"></select></label>
             <div class="row">
-              <button id="confirmMapping" type="button" class="primary">Confirmar mapeamento</button>
-              <button id="clearMapping" type="button" class="ghost">Remover associação salva</button>
-              <button id="excludeMapping" type="button" class="ghost">Excluir tarefa (não gera resposta)</button>
-              <button id="cancelMapping" type="button" class="ghost">Fechar</button>
+              <button id="confirmMapping" type="button" class="btn btn-primary btn-md">Confirmar mapeamento</button>
+              <button id="clearMapping" type="button" class="btn btn-ghost btn-md">Remover associação salva</button>
+              <button id="excludeMapping" type="button" class="btn btn-ghost btn-md">Excluir tarefa (não gera resposta)</button>
+              <button id="cancelMapping" type="button" class="btn btn-ghost btn-md">Fechar</button>
             </div>
           </div>
           <p id="previewHint" class="hint"></p>
@@ -583,7 +583,7 @@
           <p style="font-size:13px;color:#4a6560;line-height:1.45;margin-bottom:14px;">
             Existem tarefas mapeadas que ainda não foram verificadas no G-Click. O robô precisa consultar a Enquete primeiro para identificar quais clientes já possuem a resposta marcada e quais estão realmente pendentes de gravação.
           </p>
-          <button id="runAuditFromApply" type="button" class="primary btn-demand" style="padding:10px 18px;font-size:13px;">
+          <button id="runAuditFromApply" type="button" class="btn btn-primary btn-md btn-demand">
             <span class="btn-icon">🔍</span> Conferir na Enquete Agora para Liberar Gravação
           </button>
         </section>
@@ -592,7 +592,7 @@
           <p class="eyebrow">GRAVAÇÃO</p>
           <h2>Marcar no G-Click</h2>
           <p>O robô abre cada pergunta, marca as respostas de todos os CNPJs pendentes e clica em Alterar. Você só confere o diálogo do G-Click e clica em <strong>Confirmar</strong> (ou fecha para cancelar aquela pergunta). Respostas divergentes nunca são trocadas.</p>
-          <button id="apply" type="button" class="danger" disabled>Marcar respostas no G-Click</button>
+          <button id="apply" type="button" class="btn btn-danger btn-md btn-block" disabled>Marcar respostas no G-Click</button>
           <p id="applyReason" class="hint"></p>
         </section>
         <div id="mappingResult" class="mapping-result" hidden></div>
@@ -635,7 +635,7 @@
 
           <div id="auditLoginNotice" style="display:none;margin:10px 0;padding:10px 14px;background:#fff8e6;border:1px solid #ffd591;border-radius:6px;align-items:center;justify-content:space-between;gap:12px;">
             <span style="font-size:12.5px;color:#873800;">⚠️ <strong>Sessão do G-Click não conectada.</strong> Abra o navegador da automação para que o robô possa ler a Enquete.</span>
-            <button id="btnOpenLoginFromAudit" type="button" class="primary" style="padding:6px 14px;font-size:12px;white-space:nowrap;">
+            <button id="btnOpenLoginFromAudit" type="button" class="btn btn-primary btn-sm">
               🔑 Conectar Sessão G-Click
             </button>
           </div>
@@ -651,7 +651,7 @@
             </div>
             <!-- BOTÃO DE BUSCA MANUAL SOB-DEMANDA -->
             <div class="audit-actions">
-              <button id="runAudit" type="button" class="primary btn-demand">
+              <button id="runAudit" type="button" class="btn btn-primary btn-md btn-demand">
                 <span class="btn-icon">🔍</span> Buscar & Conferir na Enquete (Sob Demanda)
               </button>
             </div>
@@ -786,10 +786,10 @@
               <p class="sub-hint" style="margin:0;">Filtre e visualize as obrigações cadastradas e seus canais de disparo automático.</p>
             </div>
             <div style="display:flex;gap:10px;flex-wrap:wrap;">
-              <button id="btnOpenObrigTemplates" type="button" class="ghost" style="padding:8px 14px;font-size:13px;display:flex;align-items:center;gap:6px;">
+              <button id="btnOpenObrigTemplates" type="button" class="btn btn-secondary btn-md">
                 <span>⚙️</span> Modelos Flexíveis de Mensagem
               </button>
-              <button id="btnSyncObrigacoes" type="button" class="primary" style="padding:8px 16px;font-size:13px;display:flex;align-items:center;gap:6px;">
+              <button id="btnSyncObrigacoes" type="button" class="btn btn-primary btn-md">
                 <span>🔄</span> Sincronizar com G-Click
               </button>
             </div>
@@ -843,11 +843,11 @@
             </span>
           </div>
           <div style="display:flex;gap:10px;align-items:center;">
-            <button id="btnClearBatchSelection" type="button" class="ghost" style="padding:6px 12px;font-size:12px;" disabled>Limpar Seleção</button>
-            <button id="btnOpenBatchEmailModal" type="button" class="ghost" style="padding:7px 16px;font-size:12.5px;display:inline-flex;align-items:center;gap:6px;border:1px solid #184f59;color:#184f59;" disabled>
+            <button id="btnClearBatchSelection" type="button" class="btn btn-ghost btn-sm" disabled>Limpar Seleção</button>
+            <button id="btnOpenBatchEmailModal" type="button" class="btn btn-secondary btn-sm" disabled>
               <span>✉️</span> Configurar E-mail em Massa
             </button>
-            <button id="btnOpenBatchWhatsappModal" type="button" class="primary" style="padding:7px 16px;font-size:12.5px;display:inline-flex;align-items:center;gap:6px;" disabled>
+            <button id="btnOpenBatchWhatsappModal" type="button" class="btn btn-primary btn-sm" disabled>
               <span>💬</span> Criar WhatsApp em Massa
             </button>
           </div>
@@ -1069,8 +1069,8 @@
 
               <!-- BOTÕES DO MODAL -->
               <div style="display:flex;justify-content:flex-end;gap:10px;">
-                <button id="btnCancelFixEmail" type="button" class="ghost" style="padding:8px 16px;font-size:13px;">Cancelar</button>
-                <button id="btnSubmitFixEmail" type="button" class="primary" style="padding:8px 20px;font-size:13px;display:flex;align-items:center;gap:6px;">
+                <button id="btnCancelFixEmail" type="button" class="btn btn-ghost btn-md">Cancelar</button>
+                <button id="btnSubmitFixEmail" type="button" class="btn btn-primary btn-md">
                   <span>💾</span> Gravar Configuração no G-Click
                 </button>
               </div>
@@ -1189,8 +1189,8 @@ Atenciosamente,</textarea>
 
               <!-- BOTÕES DO MODAL EM MASSA -->
               <div style="display:flex;justify-content:flex-end;gap:10px;">
-                <button id="btnCancelBatchEmail" type="button" class="ghost" style="padding:8px 16px;font-size:13px;">Cancelar</button>
-                <button id="btnSubmitBatchEmail" type="button" class="primary" style="padding:8px 20px;font-size:13px;display:flex;align-items:center;gap:6px;">
+                <button id="btnCancelBatchEmail" type="button" class="btn btn-ghost btn-md">Cancelar</button>
+                <button id="btnSubmitBatchEmail" type="button" class="btn btn-primary btn-md">
                   <span>🚀</span> Iniciar Configuração em Massa
                 </button>
               </div>
@@ -1317,8 +1317,8 @@ Atenciosamente,</textarea>
 
               <!-- BOTÕES DO MODAL -->
               <div style="display:flex;justify-content:flex-end;gap:10px;">
-                <button id="btnCancelCreateWhatsapp" type="button" class="ghost" style="padding:8px 16px;font-size:13px;">Cancelar</button>
-                <button id="btnSubmitCreateWhatsapp" type="button" class="primary" style="padding:8px 20px;font-size:13px;display:flex;align-items:center;gap:6px;">
+                <button id="btnCancelCreateWhatsapp" type="button" class="btn btn-ghost btn-md">Cancelar</button>
+                <button id="btnSubmitCreateWhatsapp" type="button" class="btn btn-primary btn-md">
                   <span>💾</span> Criar e Gravar WhatsApp no G-Click
                 </button>
               </div>
@@ -1454,8 +1454,8 @@ Atenciosamente,</textarea>
 
               <!-- BOTÕES DO MODAL EM MASSA -->
               <div style="display:flex;justify-content:flex-end;gap:10px;">
-                <button id="btnCancelBatchWhatsapp" type="button" class="ghost" style="padding:8px 16px;font-size:13px;">Cancelar</button>
-                <button id="btnSubmitBatchWhatsapp" type="button" class="primary" style="padding:8px 20px;font-size:13px;display:flex;align-items:center;gap:6px;">
+                <button id="btnCancelBatchWhatsapp" type="button" class="btn btn-ghost btn-md">Cancelar</button>
+                <button id="btnSubmitBatchWhatsapp" type="button" class="btn btn-primary btn-md">
                   <span>🚀</span> Iniciar Criação de WhatsApp em Massa
                 </button>
               </div>
@@ -1548,8 +1548,8 @@ Atenciosamente,</textarea>
         </div>
         <div id="formUserError" class="alert bad" style="margin-top:12px" hidden></div>
         <div class="modal-footer" style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px">
-          <button type="button" id="btnCancelUser" class="secondary">Cancelar</button>
-          <button type="submit" id="btnSaveUser" class="primary" style="background:#197f73;color:#fff;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;font-weight:600">Salvar Usuário</button>
+          <button type="button" id="btnCancelUser" class="btn btn-secondary btn-md">Cancelar</button>
+          <button type="submit" id="btnSaveUser" class="btn btn-primary btn-md">Salvar Usuário</button>
         </div>
       </form>
     </div>
@@ -1589,7 +1589,7 @@ Atenciosamente,</textarea>
         </div>
       </div>
       <div class="modal-footer" style="display:flex;justify-content:flex-end;padding:12px 16px">
-        <button type="button" id="btnCloseOverrides" class="primary" style="background:#197f73;color:#fff;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;font-weight:600">Concluir</button>
+        <button type="button" id="btnCloseOverrides" class="btn btn-primary btn-md">Concluir</button>
       </div>
     </div>
   </div>
@@ -1626,8 +1626,8 @@ Atenciosamente,</textarea>
         </p>
       </div>
       <div class="modal-footer" style="display:flex;justify-content:flex-end;gap:10px;padding:12px 16px">
-        <button type="button" id="btnDismissCancel" class="secondary">Continuar Operação</button>
-        <button type="button" id="btnConfirmAbort" class="primary" style="background:#dc2626;color:#fff;border:none">Sim, Interromper (Esc)</button>
+        <button type="button" id="btnDismissCancel" class="btn btn-secondary btn-md">Continuar Operação</button>
+        <button type="button" id="btnConfirmAbort" class="btn btn-danger btn-md">Sim, Interromper (Esc)</button>
       </div>
     </div>
   </div>
@@ -1650,7 +1650,7 @@ Atenciosamente,</textarea>
           <input type="password" id="loginPassword" required placeholder="••••••••" autocomplete="current-password" style="width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:6px;font-size:14px">
         </div>
         <div id="loginError" class="alert bad" style="margin-bottom:14px;padding:8px 12px;font-size:13px;background:#fef2f2;border:1px solid #fecaca;color:#991b1b;border-radius:6px" hidden></div>
-        <button type="submit" id="btnLoginSubmit" class="primary" style="width:100%;padding:11px;font-size:15px;font-weight:700;background:#197f73;color:#fff;border:none;border-radius:6px;cursor:pointer">Entrar no Sistema</button>
+        <button type="submit" id="btnLoginSubmit" class="btn btn-primary btn-lg btn-block">Entrar no Sistema</button>
       </form>
       <div style="margin-top:16px;text-align:center;font-size:11px;color:#64748b">
         Primeiro acesso? Use <code>admin@gclick.local</code> / <code>Admin@123456</code>

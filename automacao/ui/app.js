@@ -380,7 +380,7 @@ function updateTopAccountDisplay(accountId, empresaNome = undefined, sessionStat
   if (sessionStatus !== undefined) currentSessionStatus = sessionStatus;
 
   if (accountId && /^\d+$/.test(accountId)) {
-    if ($('accountId') && $('accountId').value !== accountId) {
+    if ($('accountId') && !$('accountId').value) {
       $('accountId').value = accountId;
     }
     try { localStorage.setItem(ACCOUNT_KEY, accountId); } catch {}
@@ -429,15 +429,21 @@ function startLoginPoll() {
       if (res.ok) {
         const result = await res.json().catch(() => null);
         if (result && result.browserStatus) {
-          const detectedAccount = result.currentEmpresaId || result.activeAccountId || currentAcc;
-          updateTopAccountDisplay(detectedAccount, result.activeEmpresaNome, result.gclickAuthStatus);
+          const selectedAcc = currentAccount();
+          const effectiveAccount = selectedAcc || result.currentEmpresaId || result.activeAccountId;
+          let empresaNome = result.activeEmpresaNome;
+          if (result.availableEmpresas && Array.isArray(result.availableEmpresas)) {
+            const match = result.availableEmpresas.find(e => String(e.id) === String(effectiveAccount));
+            if (match?.nome) empresaNome = match.nome;
+          }
+          updateTopAccountDisplay(effectiveAccount, empresaNome, result.gclickAuthStatus);
 
           if (result.gclickAuthStatus === 'login_detected') {
-            status(`Login detectado no G-Click pela URL da aba. Conta: ${detectedAccount}${result.activeEmpresaNome ? ` (${result.activeEmpresaNome})` : ''}. Para ler perguntas e respostas da Enquete, abra Enquete -> Mapeamento e clique em Buscar Perguntas e Respostas (Sob Demanda).`, 'ok');
+            status(`Login detectado no G-Click pela URL da aba. Conta: ${effectiveAccount}${empresaNome ? ` (${empresaNome})` : ''}. Para ler perguntas e respostas da Enquete, abra Enquete -> Mapeamento e clique em Buscar Perguntas e Respostas (Sob Demanda).`, 'ok');
             stopLoginPoll();
             return;
           } else if (result.onEmpresas) {
-            status(`Login realizado. Selecione a empresa no G-Click (conta ${detectedAccount}) para continuar.`);
+            status(`Login realizado. Selecione a empresa no G-Click (conta ${effectiveAccount}) para continuar.`);
             return;
           } else if (result.message) {
             status(result.message);
@@ -3352,8 +3358,14 @@ $('btnSyncObrigacoes')?.addEventListener('click', async () => {
         const sessData = await sessRes.json();
         if (sessData?.gclickAuthStatus === 'login_detected' || sessData?.browserStatus === 'open') {
           isLive = true;
-          const detectedAccount = sessData.currentEmpresaId || sessData.activeAccountId || accountId;
-          updateTopAccountDisplay(detectedAccount, sessData.activeEmpresaNome, sessData.gclickAuthStatus);
+          const selectedAcc = currentAccount() || accountId;
+          const detectedAccount = selectedAcc || sessData.currentEmpresaId || sessData.activeAccountId;
+          let resolvedNome = sessData.activeEmpresaNome;
+          if (sessData.availableEmpresas && Array.isArray(sessData.availableEmpresas)) {
+            const match = sessData.availableEmpresas.find(e => String(e.id) === String(detectedAccount));
+            if (match?.nome) resolvedNome = match.nome;
+          }
+          updateTopAccountDisplay(detectedAccount, resolvedNome, sessData.gclickAuthStatus);
         }
       }
     } catch {}

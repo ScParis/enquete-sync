@@ -250,6 +250,18 @@ export async function openQuestion(page, rules) {
   await page.locator(`${radioSelector(rules)}, input[type="checkbox"][id^="cb."]`).first().waitFor({ state: 'attached', timeout: 15000 });
   const lengthSelect = page.locator('select[name$=\"_length\"]');
   if (await lengthSelect.count() === 1 && await lengthSelect.locator('option[value=\"-1\"]').count()) await lengthSelect.selectOption('-1');
+  const inscricaoSelect = page.locator('select').filter({
+    has: page.locator('option').filter({ hasText: /Todos os Clientes/i })
+  });
+  if (await inscricaoSelect.count() > 0) {
+    const currentVal = await inscricaoSelect.first().inputValue().catch(() => '');
+    const allOpt = inscricaoSelect.first().locator('option').filter({ hasText: /Todos os Clientes/i }).first();
+    const targetVal = await allOpt.getAttribute('value').catch(() => null);
+    if (targetVal !== null && currentVal !== targetVal) {
+      await inscricaoSelect.first().selectOption(targetVal).catch(() => {});
+      await page.waitForTimeout(500);
+    }
+  }
   const activeNext = page.locator('.dataTables_paginate:visible .next:not(.disabled)');
   if (await activeNext.count()) throw new Error('A tabela da pergunta continua paginada; leitura incompleta dos CNPJs. Nenhum cliente foi classificado como ausente.');
   const answerValue = rules.answerValue ? String(rules.answerValue) : await resolveColumnValue(page, rules);
@@ -296,28 +308,35 @@ function escapeRegex(s) {
   return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function rowFor(page, item) {
+export function rowFor(page, item) {
   if (item.cnpj && validCnpj(item.cnpj)) {
     return page.locator('tr').filter({ hasText: formatCnpj(item.cnpj) });
   }
   const id = String(item.empId ?? item.cod ?? '').trim();
   if (id && id !== '-') {
-    const idAtEnd = new RegExp(`(?:^|\\s)${escapeRegex(id)}\\s*$`);
+    const idPattern = new RegExp(`(?:^|\\s)${escapeRegex(id)}\\s*(?:[↗\\u2197]|\\s*$|\\s*\\n)`);
     if (item.empresa) {
-      const firstWord = item.empresa
+      const cleanEmp = item.empresa
+        .replace(/[&]/g, 'E')
         .replace(/^(ASSOC|CLINICA|INSTITUTO|SOCIEDADE|FARMACIA|CENTRO|COMERCIO)\s+/i, '')
-        .trim().split(/\s+/)[0];
+        .trim();
+      const firstWord = cleanEmp.split(/\s+/)[0];
       if (firstWord && firstWord.length >= 3) {
         return page.locator('tr')
           .filter({ hasText: new RegExp(escapeRegex(firstWord), 'i') })
-          .filter({ has: page.locator('a, td').filter({ hasText: idAtEnd }) });
+          .filter({ has: page.locator('a, td').filter({ hasText: idPattern }) });
       }
     }
     return page.locator('tr').filter({
-      has: page.locator('a, td').filter({ hasText: idAtEnd })
+      has: page.locator('a, td').filter({ hasText: idPattern })
     });
   }
   if (item.empresa) {
+    const cleanEmp = item.empresa.replace(/[&]/g, 'E').trim();
+    const firstTwo = cleanEmp.split(/\s+/).slice(0, 2).join(' ');
+    if (firstTwo.length >= 4) {
+      return page.locator('tr').filter({ hasText: new RegExp(escapeRegex(firstTwo), 'i') });
+    }
     return page.locator('tr').filter({ hasText: item.empresa });
   }
   return page.locator('tr').filter({ hasText: String(item.cnpj || '') });
@@ -326,20 +345,28 @@ export async function inspectClient(page, item, rules) {
   let matches = rowFor(page, item);
   let count = await matches.count();
   const id = String(item.empId ?? item.cod ?? '').trim();
-  const idAtEnd = id && id !== '-' ? new RegExp(`(?:^|\\s)${escapeRegex(id)}\\s*$`) : null;
-  if (count === 0 && idAtEnd) {
+  const idPattern = id && id !== '-' ? new RegExp(`(?:^|\\s)${escapeRegex(id)}\\s*(?:[↗\\u2197]|\\s*$|\\s*\\n)`) : null;
+  if (count === 0 && idPattern) {
     matches = page.locator('tr').filter({
-      has: page.locator('a, td').filter({ hasText: idAtEnd })
+      has: page.locator('a, td').filter({ hasText: idPattern })
     });
     count = await matches.count();
   }
   if (count === 0 && item.empresa) {
     matches = page.locator('tr').filter({ hasText: item.empresa });
     count = await matches.count();
+    if (count === 0) {
+      const cleanEmp = item.empresa.replace(/[&]/g, 'E').trim();
+      const firstTwo = cleanEmp.split(/\s+/).slice(0, 2).join(' ');
+      if (firstTwo.length >= 4) {
+        matches = page.locator('tr').filter({ hasText: new RegExp(escapeRegex(firstTwo), 'i') });
+        count = await matches.count();
+      }
+    }
   }
-  if (count > 1 && idAtEnd) {
+  if (count > 1 && idPattern) {
     const refined = matches.filter({
-      has: page.locator('a').filter({ hasText: idAtEnd })
+      has: page.locator('a, td').filter({ hasText: idPattern })
     });
     const refinedCount = await refined.count();
     if (refinedCount === 1) {
@@ -358,11 +385,24 @@ export async function inspectClient(page, item, rules) {
   } else if (cnpjs.length === 1 && (!item.cnpj || !validCnpj(item.cnpj))) {
     item.cnpj = formatCnpj(cnpjs[0]);
   }
-  const links = await row.locator('a').allInnerTexts();
-  let foundEmpId = links.find(t => /^\d+$/.test(t.trim()))?.trim() ?? null;
+  const links = await row.locator('a').all();
+  const linkTexts = [];
+  const linkHrefs = [];
+  for (const l of links) {
+    linkTexts.push(await l.innerText().catch(() => ''));
+    linkHrefs.push(await l.getAttribute('href').catch(() => ''));
+  }
+  let foundEmpId = linkTexts.find(t => /^\d+$/.test(t.replace(/[↗\u2197]/g, '').trim()))?.replace(/[↗\u2197]/g, '').trim() ?? null;
   if (!foundEmpId) {
-    for (const t of links) {
-      const m = t.trim().match(/(?:^|\s)(\d+)\s*$/);
+    for (const t of linkTexts) {
+      const clean = t.replace(/[↗\u2197]/g, '').trim();
+      const m = clean.match(/(?:^|\s)(\d+)\s*$/);
+      if (m) { foundEmpId = m[1]; break; }
+    }
+  }
+  if (!foundEmpId) {
+    for (const h of linkHrefs) {
+      const m = h?.match(/abrirEmpresa\s*\(\s*\d+\s*,\s*(\d+)\s*\)/) || h?.match(/[?&]empId=(\d+)/);
       if (m) { foundEmpId = m[1]; break; }
     }
   }
