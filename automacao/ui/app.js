@@ -1712,6 +1712,11 @@ function switchSection(sectionId) {
   $('sidebar')?.classList.remove('open');
   updateSidebarBadges();
 
+  // Sincroniza estado visual do pipeline stepper
+  document.querySelectorAll('.pipeline-step').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.step === target);
+  });
+
   try {
     localStorage.setItem(SECTION_STORAGE_KEY, target);
   } catch { /* sem preferência local */ }
@@ -1722,14 +1727,23 @@ function updateSidebarBadges() {
   const accText = acc ? `Conta: ${acc}` : 'Conta: —';
   if ($('topAccountId')) $('topAccountId').textContent = acc || '—';
   if ($('sidebarAccountDisplay')) $('sidebarAccountDisplay').textContent = accText;
+  if ($('kpiAccountDisplay')) $('kpiAccountDisplay').textContent = acc || '—';
 
   const isOnline = Boolean(catalogLive && (liveCatalog ? (!acc || String(liveCatalog.accountId) === String(acc)) : true));
   const isEntering = Boolean(config?.loginOpen && !isOnline);
   if ($('sidebarStatusDot')) {
     $('sidebarStatusDot').className = `status-dot ${isOnline ? 'active' : ''}`;
   }
+  const sessionText = isOnline ? 'Enquete conectada' : isEntering ? 'Entrando…' : 'Sessão desconectada';
   if ($('sidebarSessionDisplay')) {
-    $('sidebarSessionDisplay').textContent = isOnline ? 'Enquete conectada' : isEntering ? 'Entrando…' : 'Sessão desconectada';
+    $('sidebarSessionDisplay').textContent = sessionText;
+  }
+  if ($('kpiSessionStatus')) {
+    $('kpiSessionStatus').textContent = sessionText;
+    $('kpiSessionStatus').style.color = isOnline ? '#059669' : isEntering ? '#d97706' : '#94a3b8';
+  }
+  if ($('stepMetaConnection')) {
+    $('stepMetaConnection').textContent = isOnline ? 'Sessão ativa' : acc ? `Conta ${acc}` : 'Aguardando login';
   }
 
   const badgeConn = $('navBadgeConnection');
@@ -1741,6 +1755,12 @@ function updateSidebarBadges() {
   }
 
   const badgeSource = $('navBadgeSource');
+  const rowCount = importedTable?.rows?.length || 0;
+  const currentFileName = $('downloadFile')?.value || '';
+  if ($('kpiRowsCount')) $('kpiRowsCount').textContent = rowCount;
+  if ($('kpiSourceFile')) $('kpiSourceFile').textContent = currentFileName || (rowCount ? `${rowCount} linhas lidas` : 'Nenhum CSV carregado');
+  if ($('stepMetaSource')) $('stepMetaSource').textContent = rowCount ? `${rowCount} registros` : 'Selecionar dados';
+
   if (badgeSource) {
     if (taskCatalog.length) { badgeSource.textContent = `${taskCatalog.length} tarefas`; badgeSource.className = 'nav-badge badge-ok'; }
     else if (importedTable) { badgeSource.textContent = `${importedTable.rows.length} linhas`; badgeSource.className = 'nav-badge badge-ok'; }
@@ -1757,10 +1777,22 @@ function updateSidebarBadges() {
     }
   }
 
+  const mappedCount = taskCatalog.length || (importedTable?.tasks?.length || 0);
+  if ($('kpiMappedTasks')) $('kpiMappedTasks').textContent = mappedCount;
+  if ($('kpiCatalogStatus')) {
+    $('kpiCatalogStatus').textContent = liveCatalog?.questionCount ? `${liveCatalog.questionCount} perguntas ativas` : 'Catálogo offline';
+  }
+  if ($('stepMetaMapping')) {
+    $('stepMetaMapping').textContent = mappedCount ? `${mappedCount} tarefas mapeadas` : 'Definir regras';
+  }
+
   const badgeAudit = $('navBadgeAudit');
+  const pendingMarks = lastReport?.toWrite ?? 0;
+  if ($('stepMetaAudit')) {
+    $('stepMetaAudit').textContent = lastReport ? `${pendingMarks} divergência(s)` : 'Auditar divergências';
+  }
   if (badgeAudit) {
     if (lastReport) {
-      const pendingMarks = lastReport.toWrite ?? 0;
       if (pendingMarks > 0) { badgeAudit.textContent = `${pendingMarks} a marcar`; badgeAudit.className = 'nav-badge badge-warn'; }
       else { badgeAudit.textContent = 'Conferido'; badgeAudit.className = 'nav-badge badge-ok'; }
     } else {
@@ -1769,6 +1801,9 @@ function updateSidebarBadges() {
   }
 
   const badgeApply = $('navBadgeApply');
+  if ($('stepMetaApply')) {
+    $('stepMetaApply').textContent = lastReport?.mode === 'mapping_apply' ? 'Gravado no G-Click' : pendingMarks > 0 ? `${pendingMarks} prontas` : 'Executar robô';
+  }
   if (badgeApply) {
     const toWrite = lastReport?.toWrite ?? 0;
     if (toWrite > 0) { badgeApply.textContent = `${toWrite} pronta(s)`; badgeApply.className = 'nav-badge badge-warn'; }
@@ -1777,10 +1812,17 @@ function updateSidebarBadges() {
   }
 
   const badgeWriter = $('navBadgeWriter');
+  const isWriterConfigured = Boolean($('writerUrl')?.value?.trim());
+  if ($('kpiSheetStatus')) {
+    $('kpiSheetStatus').textContent = isWriterConfigured ? 'Integrada (Ativa)' : 'Não configurada';
+    $('kpiSheetStatus').style.color = isWriterConfigured ? '#059669' : '#64748b';
+  }
+  if ($('kpiSheetPending')) {
+    $('kpiSheetPending').textContent = `${pendingMarks} marcações pendentes`;
+  }
   if (badgeWriter) {
-    const isConfigured = Boolean($('writerUrl')?.value?.trim());
-    badgeWriter.textContent = isConfigured ? 'Ativo' : 'Pendente';
-    badgeWriter.className = `nav-badge ${isConfigured ? 'badge-ok' : 'badge-neutral'}`;
+    badgeWriter.textContent = isWriterConfigured ? 'Ativo' : 'Pendente';
+    badgeWriter.className = `nav-badge ${isWriterConfigured ? 'badge-ok' : 'badge-neutral'}`;
   }
 
   const badgeCatalog = $('navBadgeCatalog');
@@ -3338,6 +3380,9 @@ $('btnSyncObrigacoes')?.addEventListener('click', async () => {
 
 for (const btn of document.querySelectorAll('#sidebarNav .nav-btn')) {
   btn.addEventListener('click', () => switchSection(btn.dataset.section));
+}
+for (const stepBtn of document.querySelectorAll('.pipeline-step')) {
+  stepBtn.addEventListener('click', () => switchSection(stepBtn.dataset.step));
 }
 $('sidebarToggle')?.addEventListener('click', () => {
   $('sidebar')?.classList.toggle('open');

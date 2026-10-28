@@ -181,9 +181,76 @@
       </div>
     </aside>
 
-    <!-- CONTEÚDO PRINCIPAL COM AS SEÇÕES -->
+    <!-- CONTEÚDO PRINCIPAL COM AS SEÇÕES (WORKBENCH GRID) -->
     <main class="main-content">
       <p id="nextStep" class="next-step" hidden></p>
+
+      <!-- WORKBENCH PIPELINE STEPPER INTERATIVO -->
+      <nav class="workbench-pipeline" aria-label="Pipeline de trabalho">
+        <button type="button" class="pipeline-step active" data-step="connection" id="stepConnection">
+          <span class="step-num">1</span>
+          <div class="step-meta">
+            <strong>Conexão G-Click</strong>
+            <span id="stepMetaConnection">Aguardando login</span>
+          </div>
+        </button>
+        <span class="pipeline-arrow">➔</span>
+        <button type="button" class="pipeline-step" data-step="source" id="stepSource">
+          <span class="step-num">2</span>
+          <div class="step-meta">
+            <strong>Fonte & Planilha</strong>
+            <span id="stepMetaSource">Selecionar dados</span>
+          </div>
+        </button>
+        <span class="pipeline-arrow">➔</span>
+        <button type="button" class="pipeline-step" data-step="mapping" id="stepMapping">
+          <span class="step-num">3</span>
+          <div class="step-meta">
+            <strong>Mapeamento</strong>
+            <span id="stepMetaMapping">Definir regras</span>
+          </div>
+        </button>
+        <span class="pipeline-arrow">➔</span>
+        <button type="button" class="pipeline-step" data-step="audit" id="stepAudit">
+          <span class="step-num">4</span>
+          <div class="step-meta">
+            <strong>Conferência</strong>
+            <span id="stepMetaAudit">Auditar divergências</span>
+          </div>
+        </button>
+        <span class="pipeline-arrow">➔</span>
+        <button type="button" class="pipeline-step" data-step="apply" id="stepApply">
+          <span class="step-num">5</span>
+          <div class="step-meta">
+            <strong>Gravação</strong>
+            <span id="stepMetaApply">Executar robô</span>
+          </div>
+        </button>
+      </nav>
+
+      <!-- FAIXA DE MÉTRICAS & TELEMETRIA EM TEMPO REAL -->
+      <section class="workbench-kpis" aria-label="Indicadores operacionais">
+        <div class="kpi-card">
+          <span class="kpi-label">Conta Escritório</span>
+          <strong class="kpi-val tabular-mono" id="kpiAccountDisplay">—</strong>
+          <span class="kpi-sub" id="kpiSessionStatus">Desconectado</span>
+        </div>
+        <div class="kpi-card">
+          <span class="kpi-label">Linhas da Planilha</span>
+          <strong class="kpi-val tabular-mono" id="kpiRowsCount">0</strong>
+          <span class="kpi-sub" id="kpiSourceFile">Nenhum CSV carregado</span>
+        </div>
+        <div class="kpi-card">
+          <span class="kpi-label">Obrigações na Enquete</span>
+          <strong class="kpi-val tabular-mono" id="kpiMappedTasks">0</strong>
+          <span class="kpi-sub" id="kpiCatalogStatus">Catálogo não lido</span>
+        </div>
+        <div class="kpi-card">
+          <span class="kpi-label">Status da Planilha</span>
+          <strong class="kpi-val" id="kpiSheetStatus" style="font-size:14px;margin-top:4px">Não configurada</strong>
+          <span class="kpi-sub" id="kpiSheetPending">0 marcações pendentes</span>
+        </div>
+      </section>
 
       <!-- SEÇÃO 1: CONEXÃO & CONTA G-CLICK -->
       <div id="section-connection" class="app-section">

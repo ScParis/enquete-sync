@@ -180,7 +180,7 @@ button:disabled {
 }
 
 .sidebar {
-  width: 290px;
+  width: 240px;
   flex-shrink: 0;
   background: var(--gclick-sidebar);
   color: #fff;
@@ -321,11 +321,11 @@ button:disabled {
   text-overflow: ellipsis;
 }
 
-/* ESTRUTURA DE ÁRVORE VISUAL (|_ SUBMENUS) */
+/* HIERARQUIA MODERNA (INDENTAÇÃO LIMPA SEM CARACTERES DE ÁRVORE) */
 .nav-tree-branch {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
   margin-top: 2px;
 }
 
@@ -333,37 +333,23 @@ button:disabled {
   position: relative;
 }
 
-.tree-line {
-  display: inline-block;
-  width: 8px;
-  height: 12px;
-  border-left: 2px solid #2a5862;
-  border-bottom: 2px solid #2a5862;
-  margin-right: -2px;
-  border-bottom-left-radius: 3px;
-  flex-shrink: 0;
+.tree-line,
+.tree-subline {
+  display: none !important;
 }
 
 .nav-nested-branch {
   display: flex;
   flex-direction: column;
-  padding-left: 14px;
+  padding-left: 10px;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  margin-left: 16px;
+  margin-top: 2px;
 }
 
 .nav-nested-item {
-  padding-left: 10px;
-  font-size: 12px;
-}
-
-.tree-subline {
-  display: inline-block;
-  width: 10px;
-  height: 12px;
-  border-left: 2px solid #234b53;
-  border-bottom: 2px solid #234b53;
-  margin-right: -2px;
-  border-bottom-left-radius: 3px;
-  flex-shrink: 0;
+  padding-left: 8px;
+  font-size: 11.5px;
 }
 
 /* BADGES DE STATUS NO SIDEBAR */
@@ -451,16 +437,138 @@ button:disabled {
   text-overflow: ellipsis;
 }
 
-/* CONTEÚDO PRINCIPAL */
+/* CONTEÚDO PRINCIPAL (WORKBENCH GRID) */
 .main-content {
   flex: 1;
-  padding: 28px 36px 60px;
+  padding: 20px 28px 60px;
   min-width: 0;
-  max-width: 1320px;
-  margin: 0 auto;
+  width: 100%;
+  max-width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 22px;
+  gap: 20px;
+}
+
+/* WORKBENCH PIPELINE STEPPER INTERATIVO */
+.workbench-pipeline {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #ffffff;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  padding: 8px 16px;
+  box-shadow: var(--shadow-sm);
+  overflow-x: auto;
+}
+
+.pipeline-step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: none;
+  border: 1px solid transparent;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.pipeline-step:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+.pipeline-step.active {
+  background: #e6f5f2;
+  border-color: var(--gclick-primary);
+}
+
+.step-num {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #e2e8f0;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.pipeline-step.active .step-num {
+  background: var(--gclick-primary);
+  color: #ffffff;
+}
+
+.pipeline-step.completed .step-num {
+  background: var(--color-success);
+  color: #ffffff;
+}
+
+.step-meta {
+  display: flex;
+  flex-direction: column;
+}
+
+.step-meta strong {
+  font-size: 12px;
+  color: #0f172a;
+}
+
+.step-meta span {
+  font-size: 10.5px;
+  color: #64748b;
+}
+
+.pipeline-arrow {
+  color: #94a3b8;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+/* FAIXA DE MÉTRICAS & TELEMETRIA EM TEMPO REAL */
+.workbench-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
+  width: 100%;
+}
+
+.kpi-card {
+  background: #ffffff;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  padding: 14px 18px;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+}
+
+.kpi-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #64748b;
+  margin-bottom: 4px;
+}
+
+.kpi-val {
+  font-size: 22px;
+  font-weight: 800;
+  color: #0f172a;
+  line-height: 1.2;
+}
+
+.kpi-sub {
+  font-size: 11px;
+  color: #94a3b8;
+  margin-top: 4px;
 }
 
 .app-section {
