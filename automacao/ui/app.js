@@ -557,7 +557,7 @@ async function loadTasks(profileParam) {
     const p = await payload('tasks');
     if (profileParam || currentProfile) p.profile = profileParam || currentProfile;
     const result = await api('tasks', p);
-    if (result.profile && !currentProfile) {
+    if (result.profile) {
       currentProfile = result.profile;
       if ($('profileVersionBadge')) $('profileVersionBadge').textContent = currentProfile.version ? `Perfil: v${currentProfile.version}` : 'Perfil: Sugerido';
     }

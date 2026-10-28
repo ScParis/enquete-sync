@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>G-Click · Automação & Enquetes</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23152f36'/%3E%3Ctext x='32' y='45' text-anchor='middle' font-size='38' fill='white'%3EG%3C/text%3E%3C/svg%3E">
+  <link rel="icon" href="/ui/jb-logo.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/ui/style.css">
   <script type="module" src="/ui/app.js"></script>
   <style>
@@ -30,10 +30,12 @@
   <header class="topbar">
     <div class="topbar-left">
       <button type="button" id="sidebarToggle" class="sidebar-toggle" aria-label="Alternar menu">☰</button>
-      <span class="brand">G-CLICK</span>
+      <div class="brand">
+        <img src="/ui/jb-logo.svg" alt="JB Consultoria" class="brand-logo-img">
+      </div>
       <span class="top-sep"></span>
       <strong class="top-title">Automação de Enquetes & Obrigações</strong>
-      <span class="top-sub">Painel local</span>
+      <span class="top-sub">Painel Integrado</span>
     </div>
     <div class="topbar-right">
       <div class="account-pill" id="topAccountPill">Conta: <strong id="topAccountId">—</strong> <span id="topAccountNome" style="color:var(--text-dimmed);margin-left:4px;font-weight:normal"></span> <span id="topSessionBadge" class="tag-pill" style="display:none;margin-left:6px;font-size:11px"></span></div>
@@ -293,7 +295,7 @@
               <label style="flex:2">
                 Objetivo do Mapeamento / Modelo de Destino
                 <select id="targetModelSelect" style="margin-top:4px">
-                  <option value="enquete_automacao">Automação da Enquete G-Click (exige tarefas/obrigações e clientes)</option>
+                  <option value="enquete_automacao">Automação da Enquete G-Click (tarefas e clientes por CNPJ/ID)</option>
                   <option value="cliente_identificacao">Cadastro de Clientes (sem tarefas/obrigações)</option>
                   <option value="generico_consulta">Importação Geral (Visualização / Consulta)</option>
                 </select>
@@ -1509,8 +1511,8 @@ Atenciosamente,</textarea>
   <div id="loginScreen" class="login-backdrop" hidden>
     <div class="login-card">
       <div class="login-brand">
-        <span class="login-logo-icon">⚡</span>
-        <h2>G-Click Enquete Sync</h2>
+        <img src="/ui/jb-logo.svg" alt="JB Consultoria" class="login-brand-logo">
+        <h2>Automação G-Click</h2>
         <p>Acesso Restrito · Autentique-se para continuar</p>
       </div>
       <form id="formLogin">

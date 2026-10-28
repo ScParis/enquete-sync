@@ -458,6 +458,7 @@ async function route(req, res) {
   if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/login')) return send(res, 200, await fs.readFile(path.join(root, 'ui/index.html'), 'utf8'), 'text/html; charset=utf-8');
   if (req.method === 'GET' && url.pathname === '/ui/app.js') return send(res, 200, await fs.readFile(path.join(root, 'ui/app.js'), 'utf8'), 'text/javascript; charset=utf-8');
   if (req.method === 'GET' && url.pathname === '/ui/style.css') return send(res, 200, await fs.readFile(path.join(root, 'ui/style.css'), 'utf8'), 'text/css; charset=utf-8');
+  if (req.method === 'GET' && url.pathname === '/ui/jb-logo.svg') return send(res, 200, await fs.readFile(path.join(root, 'ui/jb-logo.svg'), 'utf8'), 'image/svg+xml; charset=utf-8');
 
   // Rotas de Autenticação Públicas / Sessão
   if (req.method === 'GET' && url.pathname === '/api/auth/me') {
@@ -1393,7 +1394,10 @@ async function route(req, res) {
     const sheetUrl = accountSettings[accountId]?.sheetUrl;
     if (!sheetUrl) throw new Error('Salve antes o link da aba da planilha desta conta');
     const writers = await readWriters();
-    if (!writers[accountId]?.token) throw new Error('Copie o script primeiro: ele contém a chave desta conta');
+    if (!writers[accountId]?.token) {
+      writers[accountId] = { ...writers[accountId], token: crypto.randomBytes(24).toString('hex') };
+      await saveWriters(writers);
+    }
     const scriptUrl = validScriptUrl(payload.url);
     const tested = await testSheetWriter({ url: scriptUrl, token: writers[accountId].token, gid: parseSheetUrl(sheetUrl).gid });
     writers[accountId] = { ...writers[accountId], url: scriptUrl, aba: tested.aba, testedAt: new Date().toISOString() };
@@ -1427,7 +1431,29 @@ async function route(req, res) {
     const saved = savedMappings.find(x => x.accountId === accountId && x.task === task);
     if (!saved) throw new Error('Tarefa sem mapeamento salvo nesta conta');
     const source = await loadSource(payload);
-    const rows = parseCsv(source.csv);
+    const sheetId = String(payload.sheetName ?? payload.sheetId ?? source.label);
+    const structure = parseHeaderAndSample(source.csv, { headerRow: payload.headerRow ?? 1 });
+    let profile = payload.profile ?? savedProfiles.find(p => p.accountId === accountId && (p.sourceFingerprint === source.label || p.sheetIdentifier === sheetId));
+    if (profile) {
+      const val = validateProfileAgainstStructure(profile, structure);
+      if (!val.valid) {
+        const suggested = createSuggestedProfile(accountId, source.label, sheetId, structure, 'enquete_automacao');
+        const valSug = validateProfileAgainstStructure(suggested, structure);
+        if (valSug.valid) profile = suggested;
+      }
+    } else {
+      const suggested = createSuggestedProfile(accountId, source.label, sheetId, structure, 'enquete_automacao');
+      const valSug = validateProfileAgainstStructure(suggested, structure);
+      if (valSug.valid) profile = suggested;
+    }
+    let rows;
+    if (profile) {
+      const table = parseCsvTable(source.csv);
+      const normResult = normalizeTable(table, profile);
+      rows = normResult.normalizedRows;
+    } else {
+      rows = parseCsv(source.csv);
+    }
     const derived = scopeFromEligible(rows, { allowedTasks: [task], excludedTasks: [] });
     const plan = derived.scope.length ? makePlan(rows, derived.scope, { allowedTasks: [task], excludedTasks: [] }) : [];
     const ledger = await readLedger(accountId);
@@ -1443,14 +1469,21 @@ async function route(req, res) {
     const table = parseCsvTable(source.csv);
     const accountId = payload.accountId ? String(payload.accountId).trim() : '';
     const sheetId = String(payload.sheetName ?? payload.sheetId ?? source.label);
+    const structure = parseHeaderAndSample(source.csv, { headerRow: payload.headerRow ?? 1 });
     let profile = payload.profile ?? savedProfiles.find(p => p.accountId === accountId && (p.sourceFingerprint === source.label || p.sheetIdentifier === sheetId));
     let normalized = null;
     let audit = null;
     let isEligible = true;
     let missingForAutomation = [];
 
-    if (!profile) {
-      const structure = parseHeaderAndSample(source.csv, { headerRow: payload.headerRow ?? 1 });
+    if (profile) {
+      const val = validateProfileAgainstStructure(profile, structure);
+      if (!val.valid) {
+        const suggested = createSuggestedProfile(accountId, source.label, sheetId, structure, 'enquete_automacao');
+        const valSug = validateProfileAgainstStructure(suggested, structure);
+        if (valSug.valid) profile = suggested;
+      }
+    } else {
       const suggested = createSuggestedProfile(accountId, source.label, sheetId, structure, 'enquete_automacao');
       const val = validateProfileAgainstStructure(suggested, structure);
       if (val.valid) profile = suggested;
@@ -1467,7 +1500,6 @@ async function route(req, res) {
         const mappedFields = new Set(profile.columns?.filter(c => c.action === 'map').map(c => c.targetField));
         const missing = [];
         if (!mappedFields.has('tarefa')) missing.push('Obrigação / Tarefa');
-        if (!mappedFields.has('empresa')) missing.push('Empresa');
         if (!mappedFields.has('cnpj') && !mappedFields.has('empId') && !mappedFields.has('cod')) {
           missing.push('Identificador do Cliente (CNPJ ou Cod./EmpID)');
         }
@@ -1475,8 +1507,12 @@ async function route(req, res) {
         if (missingForAutomation.length) isEligible = false;
       }
     } else {
-      const required = ['Obrigação / Tarefa', 'Empresa', 'EmpID', 'CNPJ'];
-      missingForAutomation = required.filter(column => !table.columns.includes(column));
+      const hasTask = ['Obrigação / Tarefa', 'Obrigação', 'Tarefa', 'tarefa'].some(col => table.columns.includes(col));
+      const hasId = ['CNPJ', 'EmpID', 'Cod.', 'Código', 'cnpj', 'empId', 'cod'].some(col => table.columns.includes(col));
+      const missing = [];
+      if (!hasTask) missing.push('Obrigação / Tarefa');
+      if (!hasId) missing.push('Identificador do Cliente (CNPJ ou Cod./EmpID)');
+      missingForAutomation = missing;
       if (missingForAutomation.length) isEligible = false;
     }
 
@@ -1491,12 +1527,12 @@ async function route(req, res) {
     const rows = normalized ?? parseCsv(source.csv);
     const counts = new Map();
     for (const row of rows) {
-      const name = String(row._norm?.tarefa ?? row['Obrigação / Tarefa'] ?? '').trim();
+      const name = String(row._norm?.tarefa ?? row['Obrigação / Tarefa'] ?? row['Obrigação'] ?? row['Tarefa'] ?? '').trim();
       if (!name) continue;
       const item = counts.get(name) ?? { name, count: 0, clients: new Set(), invalidCnpjs: 0 };
       item.count++;
-      const cnpjVal = row._norm?.cnpj ?? row.CNPJ;
-      const idVal = row._norm?.empId ?? row._norm?.cod ?? row.EmpID ?? row['Cod.'];
+      const cnpjVal = row._norm?.cnpj ?? row.CNPJ ?? row.cnpj;
+      const idVal = row._norm?.empId ?? row._norm?.cod ?? row.EmpID ?? row['Cod.'] ?? row.cod ?? row.empId;
       if (validCnpj(cnpjVal)) item.clients.add(normalizeCnpj(cnpjVal));
       else if (idVal && String(idVal).trim() && String(idVal).trim() !== '-') item.clients.add(`id:${String(idVal).trim()}`);
       else item.invalidCnpjs++;
@@ -1568,9 +1604,16 @@ async function route(req, res) {
     const source = await loadSource(payload);
     const table = parseCsvTable(source.csv);
     const sheetId = String(payload.sheetName ?? payload.sheetId ?? source.label);
+    const structure = parseHeaderAndSample(source.csv, { headerRow: payload.headerRow ?? 1 });
     let profile = payload.profile ?? savedProfiles.find(p => p.accountId === accountId && (p.sourceFingerprint === source.label || p.sheetIdentifier === sheetId));
-    if (!profile) {
-      const structure = parseHeaderAndSample(source.csv, { headerRow: payload.headerRow ?? 1 });
+    if (profile) {
+      const val = validateProfileAgainstStructure(profile, structure);
+      if (!val.valid) {
+        const suggested = createSuggestedProfile(accountId, source.label, sheetId, structure, 'enquete_automacao');
+        const valSug = validateProfileAgainstStructure(suggested, structure);
+        if (valSug.valid) profile = suggested;
+      }
+    } else {
       const suggested = createSuggestedProfile(accountId, source.label, sheetId, structure, 'enquete_automacao');
       const val = validateProfileAgainstStructure(suggested, structure);
       if (val.valid) profile = suggested;
@@ -1582,16 +1625,18 @@ async function route(req, res) {
       }
       const normResult = normalizeTable(table, profile);
       rows = normResult.normalizedRows;
-      if (!rows.length || !rows[0]._norm.tarefa) throw new Error('Planilha sem coluna Obrigação / Tarefa mapeada');
-      if (!('empresa' in rows[0]._norm)) throw new Error('Planilha sem coluna Empresa / Razão Social mapeada');
-      const hasId = ['empId', 'cod', 'cnpj'].some(col => col in rows[0]._norm);
+      const hasTask = rows.some(r => Boolean(r._norm?.tarefa));
+      if (!rows.length || !hasTask) throw new Error('Planilha sem coluna Obrigação / Tarefa mapeada');
+      const hasId = rows.some(r => Boolean(r._norm?.empId || r._norm?.cod || r._norm?.cnpj));
       if (!hasId) throw new Error('Planilha sem colunas de identificação (CNPJ, EmpID ou Cod.) mapeadas');
     } else {
       rows = parseCsv(source.csv);
-      if (!rows.length || !('Obrigação / Tarefa' in rows[0])) throw new Error('Planilha sem coluna Obrigação / Tarefa');
-      if (['Empresa', 'EmpID', 'CNPJ'].some(column => !(column in rows[0]))) throw new Error('Planilha sem colunas Empresa, EmpID ou CNPJ');
+      const hasTask = rows.length && ['Obrigação / Tarefa', 'Obrigação', 'Tarefa', 'tarefa'].some(col => col in rows[0]);
+      if (!hasTask) throw new Error('Planilha sem coluna Obrigação / Tarefa');
+      const hasId = rows.length && ['EmpID', 'Cod.', 'CNPJ', 'empId', 'cod', 'cnpj'].some(col => col in rows[0]);
+      if (!hasId) throw new Error('Planilha sem colunas de identificação (CNPJ, EmpID ou Cod.)');
     }
-    const sourceTasks = new Set(rows.map(row => String(row._norm?.tarefa ?? row['Obrigação / Tarefa'] ?? '').trim()).filter(Boolean));
+    const sourceTasks = new Set(rows.map(row => String(row._norm?.tarefa ?? row['Obrigação / Tarefa'] ?? row['Obrigação'] ?? row['Tarefa'] ?? '').trim()).filter(Boolean));
     const filterTask = typeof payload.filterTask === 'string' && payload.filterTask.trim() ? payload.filterTask.trim() : null;
     if (filterTask && !sourceTasks.has(filterTask)) throw new Error(`Obrigação "${filterTask}" não encontrada na planilha`);
     const autoAudit = payload.autoAudit === true;
@@ -1605,7 +1650,7 @@ async function route(req, res) {
     for (const task of taskNames) {
       let saved = savedMappings.find(x => x.accountId === accountId && x.task === task);
       if (!saved && catalogState?.questions) {
-        const taskRows = rows.filter(item => String(item._norm?.tarefa ?? item['Obrigação / Tarefa'] ?? '').trim() === task);
+        const taskRows = rows.filter(item => String(item._norm?.tarefa ?? item['Obrigação / Tarefa'] ?? item['Obrigação'] ?? item['Tarefa'] ?? '').trim() === task);
         const match = findAutoMatch(task, taskRows, catalogState);
         if (match) {
           saved = {
@@ -1632,10 +1677,10 @@ async function route(req, res) {
     if (autoAudit) {
       for (const task of pending) {
         const seen = new Set();
-        for (const row of rows.filter(item => String(item._norm?.tarefa ?? item['Obrigação / Tarefa'] ?? '').trim() === task)) {
-          const cnpjVal = row._norm?.cnpj ?? row.CNPJ;
-          const empVal = row._norm?.empresa ?? row.Empresa;
-          const idVal = row._norm?.empId ?? row._norm?.cod ?? row.EmpID ?? row['Cod.'];
+        for (const row of rows.filter(item => String(item._norm?.tarefa ?? item['Obrigação / Tarefa'] ?? item['Obrigação'] ?? item['Tarefa'] ?? '').trim() === task)) {
+          const cnpjVal = row._norm?.cnpj ?? row.CNPJ ?? row.cnpj;
+          const empVal = row._norm?.empresa ?? row.Empresa ?? row.empresa ?? (validCnpj(cnpjVal) ? formatCnpj(cnpjVal) : '-');
+          const idVal = row._norm?.empId ?? row._norm?.cod ?? row.EmpID ?? row['Cod.'] ?? row.empId ?? row.cod;
           const hasCnpj = validCnpj(cnpjVal);
           const hasId = Boolean(idVal && String(idVal).trim() && String(idVal).trim() !== '-');
           if (!hasCnpj && !hasId) { invalidSource.push({ row: row._row, cnpj: cnpjVal || '-', empresa: empVal, task, reason: 'CNPJ e ID do cliente (Cod.) ausentes' }); continue; }

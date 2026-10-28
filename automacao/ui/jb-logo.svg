@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 64" fill="none">
+  <defs>
+    <!-- Gradiente do Símbolo JB -->
+    <linearGradient id="jbGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00D2A0"/>
+      <stop offset="50%" stop-color="#14B8A6"/>
+      <stop offset="100%" stop-color="#0E7490"/>
+    </linearGradient>
+    <!-- Gradiente de Brilho Sutil -->
+    <linearGradient id="jbGlow" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#38BDF8"/>
+      <stop offset="100%" stop-color="#34D399"/>
+    </linearGradient>
+    <!-- Sombra do Escudo / Ícone -->
+    <filter id="jbShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#00D2A0" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+
+  <!-- Símbolo / Ícone (Escudo Moderno com Monograma JB Integrado) -->
+  <g transform="translate(6, 6)" filter="url(#jbShadow)">
+    <!-- Base geométrica em hexágono suave arredondado -->
+    <rect x="0" y="0" width="52" height="52" rx="14" fill="#0A2228" stroke="#164E59" stroke-width="1.5"/>
+    
+    <!-- Traçado Estilizado 'J' -->
+    <path d="M 18 14 
+             L 24 14 
+             L 24 33 
+             C 24 38 19 40 15 37 
+             C 13.5 35.8 13.2 34 13.2 34" 
+          stroke="url(#jbGrad)" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+
+    <!-- Traçado Estilizado 'B' integrado -->
+    <path d="M 24 14 
+             L 34 14 
+             C 38.5 14 41.5 17 41.5 21 
+             C 41.5 24.5 39 26.5 36 27 
+             C 40 27.5 43 30 43 34.5 
+             C 43 39 39 41.5 33 41.5 
+             L 24 41.5" 
+          stroke="url(#jbGrad)" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+
+    <!-- Ponto de Conexão / Inovação Tecnológica -->
+    <circle cx="36" cy="27" r="2.2" fill="#52DBA6"/>
+  </g>
+
+  <!-- Tipografia: JB CONSULTORIA -->
+  <g transform="translate(70, 0)">
+    <!-- Letras 'JB' em Destaque Forte -->
+    <text x="0" y="32" font-family="Inter, system-ui, -apple-system, sans-serif" font-size="23" font-weight="900" fill="#FFFFFF" letter-spacing="0.04em">
+      JB
+    </text>
+    <!-- Separador ou 'CONSULTORIA' alinhado -->
+    <text x="40" y="32" font-family="Inter, system-ui, -apple-system, sans-serif" font-size="20" font-weight="700" fill="url(#jbGlow)" letter-spacing="0.08em">
+      CONSULTORIA
+    </text>
+    
+    <!-- Tagline / Subtítulo Institucional -->
+    <text x="1" y="47" font-family="Inter, system-ui, -apple-system, sans-serif" font-size="9" font-weight="600" fill="#7FA9B0" letter-spacing="0.22em">
+      GESTÃO · ESTRATÉGIA · AUTOMAÇÃO
+    </text>
+  </g>
+</svg>

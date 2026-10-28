@@ -66,3 +66,25 @@ test('mapping-engine: normaliza tabela Clientes.csv preservando dados brutos e g
   assert.equal(first._norm.cod, '5');
   assert.equal(first._raw['Cliente'], 'FLORIR COSMETICOS E PERFUMES LTDA');
 });
+
+test('mapping-engine: aceita planilha com apenas CNPJ e Obrigação (sem coluna Empresa) para enquete_automacao', () => {
+  const csv = `CNPJ,Obrigação\n62.671.979/0001-87,DIPAM\n53.635.272/0001-24,DIPAM`;
+  const structure = parseHeaderAndSample(csv);
+  const profile = createSuggestedProfile('4556', 'dipam.csv', 'Aba1', structure, 'enquete_automacao');
+
+  assert.equal(profile.columns.length, 2);
+  assert.equal(profile.columns[0].targetField, 'cnpj');
+  assert.equal(profile.columns[1].targetField, 'tarefa');
+
+  const val = validateProfileAgainstStructure(profile, structure);
+  assert.equal(val.valid, true);
+  assert.equal(val.errors.length, 0);
+
+  const table = parseCsvTable(csv);
+  const result = normalizeTable(table, profile);
+  assert.equal(result.totalRows, 2);
+  assert.equal(result.audit.isEligibleForEnquete, true);
+  assert.equal(result.normalizedRows[0]._norm.tarefa, 'DIPAM');
+  assert.equal(result.normalizedRows[0]._norm.cnpj, '62671979000187');
+});
+

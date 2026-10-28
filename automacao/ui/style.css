@@ -113,16 +113,22 @@ button:disabled {
 }
 
 .brand {
-  font-weight: 850;
-  letter-spacing: .14em;
-  font-size: 13px;
-  color: #ffffff;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brand-logo-img {
+  height: 38px;
+  width: auto;
+  display: block;
+  object-fit: contain;
 }
 
 .top-sep {
-  height: 22px;
+  height: 24px;
   width: 1px;
-  background: #395c63;
+  background: #27525b;
 }
 
 .top-title {
@@ -1567,6 +1573,13 @@ td {
   margin-bottom: 24px;
 }
 
+.login-brand-logo {
+  max-width: 220px;
+  height: auto;
+  margin: 0 auto 14px auto;
+  display: block;
+}
+
 .login-logo-icon {
   display: inline-flex;
   align-items: center;
@@ -1582,8 +1595,9 @@ td {
 
 .login-brand h2 {
   margin: 0 0 6px 0;
-  font-size: 20px;
+  font-size: 19px;
   color: var(--gclick-dark);
+  font-weight: 700;
 }
 
 .login-brand p {
