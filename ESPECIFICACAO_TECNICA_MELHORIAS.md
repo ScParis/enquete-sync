@@ -2,133 +2,149 @@
 
 **Data:** 28 de Outubro de 2026
 **Autor:** Jules (Software Engineer)
-**Versão:** 2.0.0 (Design System Enterprise Maduro & Arquitetura de Produção)
-**Status:** Proposta Técnica / Análise de Arquitetura, UX & Feedback Loops
+**Versão:** 3.0.0 (Crítica Visual de Produção & Redesign Workbench / Cockpit)
+**Status:** Especificação Técnica de Arquitetura & UX
 
 ---
 
 ## 1. Visão Geral e Objetivos
 
-Este documento apresenta um diagnóstico aprofundado e uma especificação técnica detalhada de melhorias para a plataforma **Enquete Sync** (G-Click Automação), alinhando a interface e a arquitetura aos padrões de sistemas **Enterprise Maduros e Profissionais** (inspiração em suítes corporativas de alta densidade como Stripe Dashboard, Vercel Enterprise e Tailwind UI Pro).
+Este documento apresenta uma revisão crítica minuciosa de **Layout, UX/UI e Arquitetura de Software** para a plataforma **Enquete Sync** (G-Click Automação), com base no diagnóstico direto do sistema em execução (conforme screenshot `image.png` fornecido) e nas funcionalidades trazidas pelo PR #1.
 
-O estudo abrange:
-1. **Design System & UX Enterprise Maduro** (foco em máxima clareza, ergonomia de trabalho, densidade de dados e eliminação de elementos puramente decorativos ou alternância trivial de temas).
-2. **Ciclo de Ações e Sistema de Feedback ao Usuário (UX Feedback Loops)** (respostas assíncronas determinísticas, estados de carregamento corporativos e acompanhamento de rotinas em lote).
-3. **Revisão de Backend, Funções e Qualidade de Código** (arquitetura modular, separação em Routers/Services, concorrência, resiliência e aderência aos princípios SOLID/SoC do `AGENTS.md`).
+### O Diagnóstico Central
+A interface atual peca por ser **excessivamente simplista, previsível e passiva**. O layout comporta-se como um formulário administrativo web dos anos 2010: um card branco isolado no centro de uma imensa área cinza sem uso, com uma árvore de navegação lateral rudimentar (usando caracteres como `└` e textos cortados).
 
-Em conformidade com a instrução do projeto (*"Não code nada. Ao final gere um documento de especificação técnica de melhorias que encontrar"*), nenhuma alteração de código foi aplicada à base de código nesta etapa.
+A proposta descrita nesta especificação eleva o sistema ao patamar de um **Workbench / Cockpit de Alta Produtividade** (padrão Vercel, Linear, Supabase e Retool), otimizado para a rotina intensa de escritórios de contabilidade e consultorias fiscais.
 
----
-
-## 2. Análise de Layout & Design System Enterprise Maduro
-
-### 2.1 Diagnóstico do Estado Atual (`automacao/ui/`)
-- **Visual Administrativo Legado & Ruído de Navegação:**
-  - O layout atual utiliza um esquema de cores heterogêneo (`--gclick-dark: #0d282e`, `--bg-app: #f4f7f6`) e uma navegação lateral profunda com múltiplos subníveis em árvore (`nav-tree-branch`, `nav-nested-branch`).
-  - Essa estrutura em árvore dificulta a alternância rápida entre operações e polui a área de trabalho do operador contábil.
-- **Subaproveitamento da Densidade Informacional:**
-  - Formulários verticais muito espaçados e cards com grandes margens internas reduzem o número de clientes/obrigações visíveis por tela, exigindo rolagem constante durante conferências em lote.
-- **Falta de Padronização Tipográfica Tabular:**
-  - A exibição de dados numéricos (CNPJs, códigos de obrigações, valores monetários, horários e totalizadores) não utiliza fontes monoespaçadas tabulares dedicadas, o que gera desalinhamentos na leitura e *layout shift*.
-
-### 2.2 Proposta de Design System Enterprise (Sóbrio, Maduro & Funcional)
-
-Em vez de focar em customizações por "temas" ou apelos estéticos decorativos, a nova proposta adota uma linguagem visual **Enterprise madura, sóbria e focada em produtividade operacional**:
-
-- **1. Arquitetura da Informação em Cockpit Plano (Flat Navigation):**
-  - Substituir a árvore de navegação aninhada por uma **Sidebar Slim Fixa (`220px`)** estruturada por módulos funcionais claros:
-    - *Visão Geral / Cockpit*
-    - *Automação de Enquetes*
-    - *Gestão de Obrigações (Canais WhatsApp & E-mail)*
-    - *Conciliação & Auditoria*
-    - *Configurações & Contas*
-  - Utilizar **Tabs de Segmento Horizontais (`Segmented Controls`)** dentro dos painéis para alternar visualizações secundárias.
-- **2. Paleta de Cores Enterprise Sóbria (Slate / Zinc Neutral Palette):**
-  - Fundo fosco neutro e limpo (`Slate 900` `#0F172A` para modo escuro profissional ou `Slate 50` `#F8FAFC` para modo claro corporativo).
-  - Cores funcionais estritas e de alto contraste (WCAG AAA):
-    - **Azul Corporativo / Indigo (`#3B82F6` / `#4F46E5`):** Ações primárias e seleção ativa.
-    - **Verde Esmeralda (`#10B981`):** Indicador de conciliação concluída, paridade confirmada e nuvem ativa.
-    - **Âmbar / Amarelo (`#F59E0B`):** Conflitos cadastrais, divergências e ações que exigem revisão do operador soberano.
-    - **Vermelho Neutro (`#EF4444`):** Erros de validação e falhas de conexão.
-- **3. Tipografia Tabular Funcional:**
-  - **Inter / Plus Jakarta Sans:** Para títulos, rótulos de navegação e diálogos de confirmação.
-  - **JetBrains Mono / SF Mono:** Obrigatoriamente acionada na camada de dados (CNPJs, códigos de obrigações, progresso em lote e timestamps).
-- **4. Componentes de Alta Densidade (Data-Dense Tables & Compact Cards):**
-  - Tabelas de conciliação compactas com altura de linha reduzida (`36px` - `40px`), ordenação rápida por coluna, seleção múltipla e ações de linha acessíveis por teclado.
+Em estrita conformidade com a instrução do projeto (*"Não code nada. Ao final gere um documento de especificação técnica de melhorias que encontrar"*), nenhuma alteração foi aplicada ao código da aplicação nesta etapa.
 
 ---
 
-## 3. Análise do Ciclo de Ações e Sistema de Feedback ao Usuário (UX Feedback Loops)
+## 2. Crítica Detalhada de Layout & UX/UI (Análise da Tela Real - `image.png`)
 
-### 3.1 Diagnóstico de Resposta e Feedback ao Operador
-Durante tarefas críticas e assíncronas (abertura de navegador, raspagem de dados no G-Click, envio de mensagens WhatsApp e gravação em lote), **a falta de feedback imediato e claro é um dos principais fatores de insegurança do usuário**:
+### 2.1 Problemas Específicos Identificados na Interface Atual
 
-1. **Ausência de Feedback em Botões (Missing Button Loading States):**
-   - Ao acionar "Abrir navegador", "Configurar WhatsApp" ou "Marcar respostas", o botão permanece estático sem spinner visual de carregamento ou transição para estado desabilitado (`disabled`).
-2. **Falta de Indicador de Progresso Determinístico em Lote:**
-   - Nas rotinas de gravação/conferência de dezenas de clientes, a interface não fornece uma barra de progresso determinística com indicador percentual real-time (`Cliente 14 de 150 - 9.3%`) e botão de pausa segura.
-3. **Dependência de Diálogos Estáticos ou Mensagens Discretas:**
-   - Erros ou alertas dependem de popups bloqueantes (`alert()`) ou textos discretos de rodapé. Falta um **Sistema de Toasts Corporativo** com níveis de severidade (`Success`, `Warning`, `Error`, `Info`).
-4. **Ausência de Skeleton Screens:**
-   - Durante a leitura de catálogos e planilhas, as tabelas somem ou ficam em branco abruptamente, sem estados visuais temporários de estrutura (*Skeleton Loading*).
-
-### 3.2 Especificação Padrão do Sistema de Feedback
-
-- **Toasts Notificações Enterprise (Toast Manager):**
-  - Posicionamento discreto no canto superior direito com auto-dismiss (5s), barra de progresso interna e ação rápida de histórico/log.
-- **Estados de Carga em Botões (`.btn-loading`):**
-  - Todo botão acionado desabilita automaticamente e exibe spinner vetorial embutido com rótulo no gerúndio (ex: *"Acessando G-Click..."*, *"Conferindo lote..."*).
-- **Barra de Progresso Real-Time via Server-Sent Events (SSE):**
-  - Painel de acompanhamento de automação em lote com porcentagem exata, CNPJ/Obrigação sob processamento e controle do operador soberano.
+1. **Desperdício Massivo de Área Útil (Vasto Espaço Vazio):**
+   - Na tela atual, mais de **70% do viewport** é um fundo cinza inerte (`#f4f7f6`). Apenas um card branco centralizado de `600px` ocupa o centro da tela, forçando o operador a rolar verticalmente enquanto perde a visão do status global.
+2. **Navegação Lateral Antiquada e Poluída:**
+   - A sidebar esquerda tenta emular uma árvore de diretórios com prefixos de linha `└` renderizados manualmente e pequenos badges arredondados que se sobrepõem e cortam o texto do botão (ex: `Conexão & Conta ...`).
+   - A densidade de opções na sidebar gera poluição visual sem oferecer atalhos práticos.
+3. **Stepper Passivo e Sem Inteligência de Fluxo:**
+   - O indicador da etapa ativa aparece como uma pílula estática `01` no topo do formulário. Ele não informa graficamente o progresso geral do processo (ex: *1. Conexão -> 2. Planilha -> 3. Mapeamento -> 4. Conferência -> 5. Gravação*), não permite navegação rápida e não reage visualmente aos estados concluídos.
+4. **Ausência de Métricas, KPIs e Telemetria do Sistema:**
+   - Não há resumo de quantos clientes foram processados, taxa de paridade das enquetes, status das integrações (Google Sheets / G-Click / WhatsApp) ou histórico recente de auditoria no painel principal.
+5. **Hierarquia Visual Fraca e Ações Pobremente Destacadas:**
+   - O campo de entrada de texto e os botões (*"Abrir janela de login"*, *"Verificar login no G-Click"*) estão desalinhados, com estilos genéricos de contorno fino sem hierarquia de ação primária/secundária bem definida.
+6. **Incoerência no Topbar e Rodapé da Sidebar:**
+   - O topbar possui textos estáticos e espaçamento desproporcional. O rodapé da sidebar mistura dados do usuário com um selo solto `Conta: 4966 - Sessão desconectada` que poderia estar integrado ao card de status da conexão.
 
 ---
 
-## 4. Revisão de Backend, Funções e Qualidade de Código
+## 3. Especificação do Novo Design System & Arquitetura Visual (Workbench / Cockpit)
 
-### 4.1 Diagnóstico da Arquitetura do Backend (`automacao/server.mjs` & `automacao/lib/`)
+### 3.1 Conceito: Cockpit de Produtividade & Split Workbench
+A nova interface migra do modelo *"Formulário Centralizado em Tela Vazia"* para uma **Plataforma Cockpit Integrada**:
 
-#### A. Servidor HTTP Monolítico (`server.mjs` - 1.600 linhas)
-- **Problema:** Concentra rotas HTTP, autenticação RBAC, manipulação de arquivos de configuração, concorrência e chamadas diretas às bibliotecas de automação.
-- **Impacto:** Violação do Princípio da Responsabilidade Única (SRP), dificultando manutenção e testes de isolamento.
+```
++-------------------------------------------------------------------------------------------------------------------+
+|  [Logo JB Consultoria]  G-CLICK ENQUETE SYNC v3.2     [⌘K Command Palette]   (●) G-Click Online | (●) Sheets Sync   |
++-------------------------------------------------------------------------------------------------------------------+
+| PIPELINE DE TRABALHO: [✓ 1. Conexão] ---> [● 2. Fonte (CSV/Sheets)] ---> [3. Mapeamento] ---> [4. Conferência]    |
++----------------------------------+--------------------------------------------------------------------------------+
+| SIDEBAR SLIM (220px)             | PAINEL PRINCIPAL (WORKBENCH GRID - 100% UTILIZAÇÃO DO VIEWPORT)                |
+|                                  |                                                                                |
+| 📊 Cockpit / Visão Geral         | [ METRICS BAR: 152 Clientes | 8 Enquetes Mapeadas | 94% Elegíveis | R$ 12.4k Total] |
+| 🔑 Conexão G-Click   (Conta OK)  | +------------------------------------------------------------------------------+
+| 📥 Fonte & Planilha (65 tarefas) | | PAINEL DE CONEXÃO & SESSÃO (Ativo)                                           |
+| 📋 Mapeamento        (8 perguntas)| | Empresa / Escritório: [ 4966 - JB CONSULTORIA FISCAL      [v] ]              |
+| 🔍 Conferência       (65 pend.)  | | Sessão G-Click:       [● SESSÃO ATIVA - Token Expira em 04h 12m]               |
+| ⚡ Gravação          (Aguardando)| | [ Ações Rápidas: ( Reabrir Navegador )  ( Testar Conexão ) ( Sincronizar ) ]  |
+| 💬 Obrigações & WA   (Ativo)     | +------------------------------------------------------------------------------+
+| ⚙️ Configurações & RBAC          | | TABELA DE CONCILIAÇÃO / PREVIEW EM TEMPO REAL (High-density Grid)            |
+|                                  | | CNPJ              | RAZÃO SOCIAL      | TAREFA PLANILHA | STATUS       | AÇÕES |
+|                                  | | 12.345.678/0001-90| Mestre Distrib.   | DAS Simples     | ✓ Já Correto | [Edit]|
+|                                  | | 98.765.432/0001-10| Alfa Logística    | DESTDA          | ⚡ A Gravar  | [Edit]|
++----------------------------------+--------------------------------------------------------------------------------+
+| STATUS: Sessão Operador: Admin   | LOG DE OPERAÇÃO EM TEMPO REAL (Stream Terminal Bottom Bar)                    |
++----------------------------------+--------------------------------------------------------------------------------+
+```
 
-#### B. Módulo de Obrigações Massivo (`obrigacoes.mjs` - 2.346 linhas)
-- **Problema:** O arquivo `obrigacoes.mjs` agrupa scraping de DOM do G-Click, Playwright, automação de WhatsApp/E-mail, manipulação de modal e regras de paridade.
-- **Impacto:** Forte acoplamento da lógica de navegação da página com a regra de negócio do domínio contábil.
+### 3.2 Componentes e Padrões de Layout Propostos
 
-#### C. Tratamento de Exceções Silenciosas
-- **Problema:** Uso recorrente de capturas silenciosas como `try { ... } catch {}` e `page.close().catch(() => {})`.
-- **Impacto:** Ocorrência de exceções ocultas em falhas de rede ou mudanças de DOM sem log estruturado de auditoria técnica.
+#### 1. Pipeline de Etapas Interativo (Interactive Workflow Bar)
+No topo da área de trabalho, um indicador de progresso horizontal (`Stepper`) guiará a jornada do operador:
+- **Etapa 1:** Conexão & Sessão G-Click (Status de login).
+- **Etapa 2:** Carregamento de Fonte (Planilha Google Sheets ou arquivo CSV/XLSX).
+- **Etapa 3:** Mapeamento de Perguntas e Respostas (Regras de de/para).
+- **Etapa 4:** Conferência Automática (Análise de divergências e paridades).
+- **Etapa 5:** Gravação Supervisionada (Execução e confirmação pelo operador).
+*Cada etapa exibe o estado dinâmico (`Concluído`, `Em Andamento`, `Pendente` ou `Atenção`) e permite navegação direta ao ser clicada.*
+
+#### 2. Command Palette Global (`⌘K` / `Ctrl+K`)
+Inclusão de uma paleta de comandos rápida ativada por teclado (`⌘K`) permitindo:
+- Buscar clientes instantaneamente por CNPJ ou Razão Social.
+- Alternar a conta do escritório sem precisar navegar por menus.
+- Disparar ações diretas (*"Conferir lote"*, *"Exportar auditoria CSV"*, *"Abrir janela G-Click"*).
+
+#### 3. Painel de Métricas & Telemetria em Tempo Real (KPI Grid)
+Substituir cartões estáticos por uma faixa de indicadores de desempenho antes da tabela de trabalho:
+- **Total de Clientes na Planilha:** Contagem absoluta.
+- **Respostas Elegíveis a Gravar:** Quantidade real de tarefas prontas para atualização.
+- **Divergências / Conflitos:** Destaque em âmbar para tarefas conflitantes que exigem decisão.
+- **Última Sincronização Sheets:** Timestamp exato com status da integração via Apps Script.
+
+#### 4. Tabela de Conciliação de Alta Densidade (High-Density Data Grid)
+- Utilizar tabela com linhas compactas (`36px`), tipografia monoespaçada `JetBrains Mono` para CNPJs e valores, filtros rápidos no cabeçalho de cada coluna e badges de status nítidos:
+  - `Já Correto` (Verde Esmeralda + Ícone Check)
+  - `A Gravar` (Azul/Violeta + Ícone Raio)
+  - `Divergente` (Âmbar + Ícone Alerta)
+  - `Não Localizado` (Cinza + Ícone Busca)
 
 ---
 
-## 5. Plano de Ação e Especificação Técnica de Melhorias
+## 4. Análise do Ciclo de Ações e Sistema de Feedback ao Usuário (UX Feedback Loops)
 
-### FASE 1: Reestruturação Arquitetural Backend (Modular Routers & Services)
+### 4.1 Requisitos de Resposta e Feedback Imediato
 
-1. **Separação das Rotas HTTP (`automacao/src/routes/`):**
-   - `auth.routes.mjs`: Autenticação e gestão de permissões.
-   - `gclick.routes.mjs`: Integração e enquetes do G-Click.
-   - `obrigacoes.routes.mjs`: Gestão de obrigações, WhatsApp e E-mail.
-   - `sheets.routes.mjs`: Sincronização Google Sheets.
-2. **Separação da Camada de Automação (Service Pattern):**
-   - Extrair Playwright para `AutomationDriver.mjs` e parsers puros de DOM para `ObrigacaoParser.mjs`.
-
-### FASE 2: Sistema de Feedback e Resposta ao Operador (UX/UI)
-
-1. **Implementação do Toast Manager & Button Loading States:**
-   - Módulo unificado para toasts de notificação e utilitários de estado em botões.
-2. **Streaming de Progresso Real-Time:**
-   - Emissão de Server-Sent Events (SSE) do backend durante execuções em lote.
-
-### FASE 3: Redesign Enterprise Maduro (UI Componentization)
-
-1. **Design System Enterprise Neutro:**
-   - Refatoração do `style.css` para a paleta de cores corporativa neutra (`Slate/Zinc`) de alta densidade.
-2. **Componentização ES6 do Frontend (`app.js`):**
-   - Modularizar a interface em componentes desacoplados (`UI/Sidebar.js`, `UI/Toast.js`, `UI/DataTable.js`).
+1. **Button Loading States em Toda Ação Assíncrona:**
+   - Qualquer ação (abrir navegador, verificar sessão, importar CSV, executar gravação) desabilita o botão, exibe um spinner vetorial fluido e altera o texto para o gerúndio (ex: *"Verificando login..."*).
+2. **Sistema de Toasts Enterprise (`ToastManager`):**
+   - Notificações flutuantes no canto superior direito com 4 categorias cromaticas (`Success`, `Warning`, `Danger`, `Info`), fechamento automático em 5s e histórico acessível.
+3. **Barra de Progresso Determinística em Execuções em Lote:**
+   - Durante a marcação de enquetes ou configuração de passos do WhatsApp, exibir progresso percentual exato (`Obrigação 18 de 65 - 27%`) com o nome do cliente atual e botão de pausa/cancelamento seguro.
+4. **Skeleton Screens durante Carregamentos de Dados:**
+   - Trocar telas brancas ou relâmpagos visuais por estruturas placeholder animadas enquanto catálogos e planilhas são lidos do backend.
 
 ---
 
-## 6. Resumo e Conclusão
+## 5. Revisão do Backend, Arquitetura de Código & Resiliência
 
-A especificação técnica garante que o **Enquete Sync** evolua para um software **Enterprise maduro, sóbrio e eficiente**, combinando alta densidade de dados com feedback claro para o operador, arquitetura modular resiliente e rigoroso cumprimento da privacidade local (LGPD).
+### 5.1 Diagnóstico de Código
+
+1. **Decomposição do Servidor Monolítico (`automacao/server.mjs` - 1.600 linhas):**
+   - Dividir em roteadores modulares (`auth.routes.mjs`, `gclick.routes.mjs`, `mapping.routes.mjs`, `obrigacoes.routes.mjs`, `sheets.routes.mjs`).
+2. **Modularização de `obrigacoes.mjs` (2.346 linhas):**
+   - Separar em `AutomationDriver` (gerenciamento Playwright), `ObrigacaoParser` (extrator puro de DOM) e `ObrigacaoService` (regras de negócio de WhatsApp/E-mail/G-Click).
+3. **Tratamento de Exceções e Auditoria:**
+   - Eliminar blocos `catch {}` silenciosos por um sistema de logging técnico rotativo (`registros/system.log`).
+
+---
+
+## 6. Plano de Ação e Fases de Implementação
+
+### FASE 1: Redesign e Arquitetura Frontend (Workbench Cockpit)
+- Implementar o novo layout sem áreas vazias, com barra de pipeline superior, sidebar slim e tabela de alta densidade.
+- Adicionar a Command Palette (`⌘K`) e o sistema de Toasts.
+
+### FASE 2: Sistema de Feedback & Streaming de Progresso
+- Implementar Server-Sent Events (SSE) no backend para streaming do progresso de automação do Playwright para o frontend em tempo real.
+- Inserir estados de carregamento em 100% dos botões de ação.
+
+### FASE 3: Refatoração do Backend (Routers & Services)
+- Modularizar `server.mjs` e `obrigacoes.mjs`, garantindo isolamento total, tratamento robusto de locks de processo e cobertura completa de testes.
+
+---
+
+## 7. Conclusão
+
+A especificação técnica 3.0 transforma o **Enquete Sync** em uma plataforma **Enterprise de alta densidade e performance visual**. Ao eliminar a interface simplista e passiva de formulário único, o sistema passa a oferecer uma experiência moderna, previsível e segura para operadores e consultores fiscais, preservando integralmente a privacidade local (LGPD).
