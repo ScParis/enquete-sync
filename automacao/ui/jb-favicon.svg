@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <!-- Gradiente Oficial JB Consultoria -->
+    <linearGradient id="jbFavGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00D2A0"/>
+      <stop offset="50%" stop-color="#14B8A6"/>
+      <stop offset="100%" stop-color="#0E7490"/>
+    </linearGradient>
+    <filter id="jbFavGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#00D2A0" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+
+  <!-- Fundo do Escudo Geométrico Moderno -->
+  <rect x="3" y="3" width="58" height="58" rx="16" fill="#0A2228" stroke="#164E59" stroke-width="2"/>
+
+  <!-- Monograma Integrado JB -->
+  <g filter="url(#jbFavGlow)" transform="translate(1, 1)">
+    <!-- Letra J -->
+    <path d="M 21 16 
+             L 28 16 
+             L 28 36 
+             C 28 41.5 22.5 44 18 40.5 
+             C 16.2 39 15.8 37 15.8 37" 
+          stroke="url(#jbFavGrad)" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+
+    <!-- Letra B -->
+    <path d="M 28 16 
+             L 38 16 
+             C 43.5 16 47 19.5 47 24 
+             C 47 28 44 30.5 40.5 31 
+             C 45 31.5 48.5 34.5 48.5 39.5 
+             C 48.5 44.5 44 47 37 47 
+             L 28 47" 
+          stroke="url(#jbFavGrad)" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+
+    <!-- Ponto Tecnológico de Conexão -->
+    <circle cx="40.5" cy="31" r="2.8" fill="#52DBA6"/>
+  </g>
+</svg>

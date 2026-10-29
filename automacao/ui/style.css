@@ -334,12 +334,109 @@ button:disabled {
   font-size: 11px;
   font-weight: 800;
   letter-spacing: .08em;
-  color: #7da5aa;
+  color: #64748b;
   text-transform: uppercase;
 }
 
 .nav-module-title .module-icon {
   font-size: 13px;
+}
+
+/* SUB-MÓDULOS INTERATIVOS */
+.nav-submodule {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 4px;
+  background: rgba(255, 255, 255, 0.015);
+  border-radius: var(--radius-sm);
+  padding: 4px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.nav-submodule-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.15s ease;
+}
+
+.nav-submodule-header:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.nav-submodule-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.nav-submodule-icon {
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.nav-submodule-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #cbd5e1;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nav-submodule-badge {
+  font-size: 9px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #94a3b8;
+  margin-right: 4px;
+}
+
+.nav-submodule-chevron {
+  font-size: 10px;
+  color: #64748b;
+  transition: transform 0.2s ease;
+  line-height: 1;
+}
+
+.nav-submodule.collapsed .nav-submodule-chevron {
+  transform: rotate(-90deg);
+}
+
+.nav-submodule.collapsed .nav-submodule-content {
+  display: none !important;
+}
+
+.nav-action-indicator {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #64748b;
+  margin-right: 2px;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+}
+
+.nav-btn.active .nav-action-indicator {
+  background: var(--gclick-accent);
+  box-shadow: 0 0 6px rgba(16, 185, 129, 0.8);
+}
+
+.nav-action-item {
+  padding-left: 10px;
+  font-size: 12px;
+  min-height: 34px;
 }
 
 .tag-pill {

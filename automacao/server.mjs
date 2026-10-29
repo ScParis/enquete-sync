@@ -494,6 +494,7 @@ async function route(req, res) {
   if (req.method === 'GET' && url.pathname === '/ui/toast.js') return send(res, 200, await fs.readFile(path.join(root, 'ui/toast.js'), 'utf8'), 'text/javascript; charset=utf-8');
   if (req.method === 'GET' && url.pathname === '/ui/style.css') return send(res, 200, await fs.readFile(path.join(root, 'ui/style.css'), 'utf8'), 'text/css; charset=utf-8');
   if (req.method === 'GET' && url.pathname === '/ui/jb-logo.svg') return send(res, 200, await fs.readFile(path.join(root, 'ui/jb-logo.svg'), 'utf8'), 'image/svg+xml; charset=utf-8');
+  if (req.method === 'GET' && (url.pathname === '/ui/jb-favicon.svg' || url.pathname === '/favicon.ico')) return send(res, 200, await fs.readFile(path.join(root, 'ui/jb-favicon.svg'), 'utf8'), 'image/svg+xml; charset=utf-8');
 
   // Rotas de Autenticação Públicas / Sessão
   const authHandled = await handleAuthRoutes(req, res, { url, currentUser: getAuthUser(req), authService, body, send, sendCookie, getCookie });

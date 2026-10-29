@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>G-Click · Automação & Enquetes</title>
-  <link rel="icon" href="/ui/jb-logo.svg" type="image/svg+xml">
+  <title>JB Consultoria · Automação de Enquetes & Obrigações</title>
+  <link rel="icon" href="/ui/jb-favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -92,44 +92,86 @@
           </div>
         </div>
 
-        <!-- 3. AUTOMAÇÕES -->
+        <!-- 3. AUTOMAÇÕES (COM SUB-MÓDULOS E AÇÕES) -->
         <div class="nav-module">
           <div class="nav-module-title">
             <span class="module-icon">⚡</span>
             <span>Automações</span>
           </div>
-          <div class="nav-sub-list">
-            <!-- ENQUETE G-CLICK -->
-            <button type="button" class="nav-btn nav-sub-item" data-section="catalog" id="navCatalog" title="Catálogo de Perguntas da Enquete">
-              <span class="nav-icon">📑</span>
-              <span class="nav-text">Catálogo de Perguntas</span>
-              <span class="nav-badge" id="navBadgeCatalog">0 perguntas</span>
-            </button>
 
-            <button type="button" class="nav-btn nav-sub-item" data-section="mapping" id="navMapping" title="Associação de Tarefas & Mapeamento">
-              <span class="nav-icon">🔀</span>
-              <span class="nav-text">Mapeamento de Regras</span>
-              <span class="nav-badge" id="navBadgeMapping">0</span>
-            </button>
+          <!-- SUB-MÓDULO 1: ENQUETE G-CLICK -->
+          <div class="nav-submodule" id="submoduleEnquete">
+            <div class="nav-submodule-header" id="headerSubmoduleEnquete" role="button" tabindex="0" title="Alternar visualização do sub-módulo Enquete">
+              <div class="nav-submodule-title-wrap">
+                <span class="nav-submodule-icon">📑</span>
+                <span class="nav-submodule-title">Enquete G-Click</span>
+              </div>
+              <span class="nav-submodule-badge">4 ações</span>
+              <span class="nav-submodule-chevron">▾</span>
+            </div>
+            <div class="nav-sub-list nav-submodule-content" id="contentSubmoduleEnquete">
+              <!-- Ação 1: Catálogo de Perguntas -->
+              <button type="button" class="nav-btn nav-sub-item nav-action-item" data-section="catalog" id="navCatalog" title="Catálogo de Perguntas da Enquete">
+                <span class="nav-action-indicator"></span>
+                <span class="nav-text">Catálogo de Perguntas</span>
+                <span class="nav-badge" id="navBadgeCatalog">0 perguntas</span>
+              </button>
 
-            <button type="button" class="nav-btn nav-sub-item" data-section="audit" id="navAudit" title="Auditoria & Conferência ao Vivo">
-              <span class="nav-icon">🔍</span>
-              <span class="nav-text">Auditoria & Conferência</span>
-              <span class="nav-badge" id="navBadgeAudit">0</span>
-            </button>
+              <!-- Ação 2: Mapeamento de Regras -->
+              <button type="button" class="nav-btn nav-sub-item nav-action-item" data-section="mapping" id="navMapping" title="Associação de Tarefas & Mapeamento">
+                <span class="nav-action-indicator"></span>
+                <span class="nav-text">Mapeamento de Regras</span>
+                <span class="nav-badge" id="navBadgeMapping">0</span>
+              </button>
 
-            <button type="button" class="nav-btn nav-sub-item" data-section="apply" id="navApply" title="Execução de Gravação na Enquete">
-              <span class="nav-icon">🚀</span>
-              <span class="nav-text">Gravação no G-Click</span>
-              <span class="nav-badge" id="navBadgeApply">Aguardando</span>
-            </button>
+              <!-- Ação 3: Auditoria & Conferência -->
+              <button type="button" class="nav-btn nav-sub-item nav-action-item" data-section="audit" id="navAudit" title="Auditoria & Conferência ao Vivo">
+                <span class="nav-action-indicator"></span>
+                <span class="nav-text">Auditoria & Conferência</span>
+                <span class="nav-badge" id="navBadgeAudit">0</span>
+              </button>
 
-            <!-- OBRIGAÇÕES & WHATSAPP -->
-            <button type="button" class="nav-btn nav-sub-item" data-section="obrigacoes" id="navObrigacoes" title="Gestão de Obrigações, WhatsApp e E-mail">
-              <span class="nav-icon">💬</span>
-              <span class="nav-text">Obrigações & WhatsApp</span>
-              <span class="nav-badge" id="navBadgeObrigacoes">Obrigações</span>
-            </button>
+              <!-- Ação 4: Gravação no G-Click -->
+              <button type="button" class="nav-btn nav-sub-item nav-action-item" data-section="apply" id="navApply" title="Execução de Gravação na Enquete">
+                <span class="nav-action-indicator"></span>
+                <span class="nav-text">Gravação no G-Click</span>
+                <span class="nav-badge" id="navBadgeApply">Aguardando</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- SUB-MÓDULO 2: OBRIGAÇÕES, WHATSAPP & E-MAIL -->
+          <div class="nav-submodule" id="submoduleObrigacoes">
+            <div class="nav-submodule-header" id="headerSubmoduleObrigacoes" role="button" tabindex="0" title="Alternar visualização do sub-módulo Obrigações">
+              <div class="nav-submodule-title-wrap">
+                <span class="nav-submodule-icon">💬</span>
+                <span class="nav-submodule-title">Obrigações & Canais</span>
+              </div>
+              <span class="nav-submodule-badge">3 ações</span>
+              <span class="nav-submodule-chevron">▾</span>
+            </div>
+            <div class="nav-sub-list nav-submodule-content" id="contentSubmoduleObrigacoes">
+              <!-- Ação 1: Catálogo & Paridade -->
+              <button type="button" class="nav-btn nav-sub-item nav-action-item" data-section="obrigacoes" id="navObrigacoes" title="Gestão de Obrigações, WhatsApp e E-mail">
+                <span class="nav-action-indicator"></span>
+                <span class="nav-text">Catálogo & Paridade</span>
+                <span class="nav-badge" id="navBadgeObrigacoes">Obrigações</span>
+              </button>
+
+              <!-- Ação 2: Configuração em Massa -->
+              <button type="button" class="nav-btn nav-sub-item nav-action-item" data-action="obrig-batch" id="navObrigBatch" title="Atalho rápido: Ir para Configuração em Massa (E-mail / WhatsApp)">
+                <span class="nav-action-indicator"></span>
+                <span class="nav-text">Configuração em Massa</span>
+                <span class="nav-badge badge-info">Lote</span>
+              </button>
+
+              <!-- Ação 3: Modelos Flexíveis de Mensagem -->
+              <button type="button" class="nav-btn nav-sub-item nav-action-item" data-action="obrig-templates" id="navObrigTemplates" title="Atalho rápido: Abrir Modelos Flexíveis de Mensagem">
+                <span class="nav-action-indicator"></span>
+                <span class="nav-text">Modelos de Mensagem</span>
+                <span class="nav-badge badge-new">Templates</span>
+              </button>
+            </div>
           </div>
         </div>
 

@@ -1738,6 +1738,13 @@ function switchSection(sectionId) {
     btn.classList.toggle('active', btn.dataset.step === target);
   });
 
+  // Auto-expande sub-módulo se a ação ativa estiver dentro dele
+  if (['catalog', 'mapping', 'audit', 'apply'].includes(target)) {
+    $('submoduleEnquete')?.classList.remove('collapsed');
+  } else if (['obrigacoes'].includes(target)) {
+    $('submoduleObrigacoes')?.classList.remove('collapsed');
+  }
+
   try {
     localStorage.setItem(SECTION_STORAGE_KEY, target);
   } catch { /* sem preferência local */ }
@@ -3406,8 +3413,55 @@ $('btnSyncObrigacoes')?.addEventListener('click', async () => {
 });
 
 for (const btn of document.querySelectorAll('#sidebarNav .nav-btn')) {
-  btn.addEventListener('click', () => switchSection(btn.dataset.section));
+  btn.addEventListener('click', () => {
+    if (btn.dataset.action === 'obrig-batch') {
+      switchSection('obrigacoes');
+      const batchBar = $('obrigBatchBar');
+      if (batchBar) {
+        batchBar.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        batchBar.style.boxShadow = '0 0 0 3px rgba(16, 185, 129, 0.4)';
+        setTimeout(() => { batchBar.style.boxShadow = ''; }, 1600);
+      }
+      return;
+    }
+    if (btn.dataset.action === 'obrig-templates') {
+      switchSection('obrigacoes');
+      $('btnOpenObrigTemplates')?.click();
+      return;
+    }
+    if (btn.dataset.section) {
+      switchSection(btn.dataset.section);
+    }
+  });
 }
+
+// Configuração de sub-módulos interativos (acordeões retráteis)
+function setupSubmoduleToggles() {
+  const submodules = [
+    { headerId: 'headerSubmoduleEnquete', containerId: 'submoduleEnquete', storageKey: 'submodule_enquete_collapsed' },
+    { headerId: 'headerSubmoduleObrigacoes', containerId: 'submoduleObrigacoes', storageKey: 'submodule_obrigacoes_collapsed' }
+  ];
+
+  submodules.forEach(({ headerId, containerId, storageKey }) => {
+    const header = $(headerId);
+    const container = $(containerId);
+    if (!header || !container) return;
+
+    try {
+      const isCollapsed = localStorage.getItem(`enqueteSync_${storageKey}`) === 'true';
+      if (isCollapsed) container.classList.add('collapsed');
+    } catch { /* sem localStorage */ }
+
+    header.addEventListener('click', () => {
+      container.classList.toggle('collapsed');
+      try {
+        localStorage.setItem(`enqueteSync_${storageKey}`, String(container.classList.contains('collapsed')));
+      } catch { /* sem localStorage */ }
+    });
+  });
+}
+setupSubmoduleToggles();
+
 for (const stepBtn of document.querySelectorAll('.pipeline-step')) {
   stepBtn.addEventListener('click', () => switchSection(stepBtn.dataset.step));
 }
