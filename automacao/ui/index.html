@@ -56,6 +56,9 @@
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-header">
         <span class="sidebar-header-badge">Módulos</span>
+        <button type="button" id="btnCollapseSidebar" class="sidebar-collapse-btn" title="Minimizar menu lateral (somente ícones)" aria-label="Minimizar menu lateral">
+          <span id="collapseIcon" class="collapse-icon">◀</span>
+        </button>
       </div>
 
       <nav class="sidebar-nav" id="sidebarNav">
@@ -112,28 +115,28 @@
             <div class="nav-sub-list nav-submodule-content" id="contentSubmoduleEnquete">
               <!-- Ação 1: Catálogo de Perguntas -->
               <button type="button" class="nav-btn nav-sub-item nav-action-item" data-section="catalog" id="navCatalog" title="Catálogo de Perguntas da Enquete">
-                <span class="nav-action-indicator"></span>
+                <span class="nav-icon">📑</span>
                 <span class="nav-text">Catálogo de Perguntas</span>
                 <span class="nav-badge" id="navBadgeCatalog">0 perguntas</span>
               </button>
 
               <!-- Ação 2: Mapeamento de Regras -->
               <button type="button" class="nav-btn nav-sub-item nav-action-item" data-section="mapping" id="navMapping" title="Associação de Tarefas & Mapeamento">
-                <span class="nav-action-indicator"></span>
+                <span class="nav-icon">🔀</span>
                 <span class="nav-text">Mapeamento de Regras</span>
                 <span class="nav-badge" id="navBadgeMapping">0</span>
               </button>
 
               <!-- Ação 3: Auditoria & Conferência -->
               <button type="button" class="nav-btn nav-sub-item nav-action-item" data-section="audit" id="navAudit" title="Auditoria & Conferência ao Vivo">
-                <span class="nav-action-indicator"></span>
+                <span class="nav-icon">🔍</span>
                 <span class="nav-text">Auditoria & Conferência</span>
                 <span class="nav-badge" id="navBadgeAudit">0</span>
               </button>
 
               <!-- Ação 4: Gravação no G-Click -->
               <button type="button" class="nav-btn nav-sub-item nav-action-item" data-section="apply" id="navApply" title="Execução de Gravação na Enquete">
-                <span class="nav-action-indicator"></span>
+                <span class="nav-icon">🚀</span>
                 <span class="nav-text">Gravação no G-Click</span>
                 <span class="nav-badge" id="navBadgeApply">Aguardando</span>
               </button>
@@ -153,21 +156,21 @@
             <div class="nav-sub-list nav-submodule-content" id="contentSubmoduleObrigacoes">
               <!-- Ação 1: Catálogo & Paridade -->
               <button type="button" class="nav-btn nav-sub-item nav-action-item" data-section="obrigacoes" id="navObrigacoes" title="Gestão de Obrigações, WhatsApp e E-mail">
-                <span class="nav-action-indicator"></span>
+                <span class="nav-icon">📋</span>
                 <span class="nav-text">Catálogo & Paridade</span>
                 <span class="nav-badge" id="navBadgeObrigacoes">Obrigações</span>
               </button>
 
               <!-- Ação 2: Configuração em Massa -->
               <button type="button" class="nav-btn nav-sub-item nav-action-item" data-action="obrig-batch" id="navObrigBatch" title="Atalho rápido: Ir para Configuração em Massa (E-mail / WhatsApp)">
-                <span class="nav-action-indicator"></span>
+                <span class="nav-icon">⚡</span>
                 <span class="nav-text">Configuração em Massa</span>
                 <span class="nav-badge badge-info">Lote</span>
               </button>
 
               <!-- Ação 3: Modelos Flexíveis de Mensagem -->
               <button type="button" class="nav-btn nav-sub-item nav-action-item" data-action="obrig-templates" id="navObrigTemplates" title="Atalho rápido: Abrir Modelos Flexíveis de Mensagem">
-                <span class="nav-action-indicator"></span>
+                <span class="nav-icon">⚙️</span>
                 <span class="nav-text">Modelos de Mensagem</span>
                 <span class="nav-badge badge-new">Templates</span>
               </button>

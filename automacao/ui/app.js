@@ -3462,6 +3462,43 @@ function setupSubmoduleToggles() {
 }
 setupSubmoduleToggles();
 
+// Toggle e persistência de minimização do menu lateral (modo ícones)
+function setupSidebarCollapse() {
+  const sidebar = $('sidebar');
+  const btnCollapse = $('btnCollapseSidebar');
+  const icon = $('collapseIcon');
+  if (!sidebar || !btnCollapse) return;
+
+  const setCollapsedState = (collapsed) => {
+    if (collapsed) {
+      sidebar.classList.add('collapsed');
+      if (icon) icon.textContent = '▶';
+      btnCollapse.title = 'Expandir menu lateral';
+      btnCollapse.setAttribute('aria-label', 'Expandir menu lateral');
+    } else {
+      sidebar.classList.remove('collapsed');
+      if (icon) icon.textContent = '◀';
+      btnCollapse.title = 'Minimizar menu lateral (somente ícones)';
+      btnCollapse.setAttribute('aria-label', 'Minimizar menu lateral');
+    }
+  };
+
+  try {
+    const isCollapsed = localStorage.getItem('enqueteSync_sidebarCollapsed') === 'true';
+    if (isCollapsed) setCollapsedState(true);
+  } catch { /* sem localStorage */ }
+
+  btnCollapse.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const willCollapse = !sidebar.classList.contains('collapsed');
+    setCollapsedState(willCollapse);
+    try {
+      localStorage.setItem('enqueteSync_sidebarCollapsed', String(willCollapse));
+    } catch { /* sem localStorage */ }
+  });
+}
+setupSidebarCollapse();
+
 for (const stepBtn of document.querySelectorAll('.pipeline-step')) {
   stepBtn.addEventListener('click', () => switchSection(stepBtn.dataset.step));
 }

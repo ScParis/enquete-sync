@@ -289,18 +289,162 @@ button:disabled {
 }
 
 .sidebar-header {
-  padding: 16px 20px 8px;
+  padding: 14px 16px 8px;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  min-height: 44px;
+  box-sizing: border-box;
 }
 
 .sidebar-header-badge {
   font-size: 10px;
   font-weight: 800;
   letter-spacing: .12em;
-  color: #649197;
+  color: #64748b;
   text-transform: uppercase;
+}
+
+.sidebar-collapse-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #94a3b8;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  font-size: 11px;
+  transition: all 0.18s ease;
+}
+
+.sidebar-collapse-btn:hover {
+  background: rgba(16, 185, 129, 0.15);
+  border-color: rgba(16, 185, 129, 0.4);
+  color: #10b981;
+}
+
+.sidebar-collapse-btn .collapse-icon {
+  line-height: 1;
+}
+
+/* ==========================================================================
+   SIDEBAR MINIMIZADA (MODO SOMENTE ÍCONES)
+   ========================================================================== */
+.sidebar.collapsed {
+  width: 68px;
+}
+
+.sidebar.collapsed .sidebar-header {
+  padding: 14px 8px 8px;
+  justify-content: center;
+}
+
+.sidebar.collapsed .sidebar-header-badge {
+  display: none !important;
+}
+
+.sidebar.collapsed .sidebar-collapse-btn {
+  width: 32px;
+  height: 32px;
+  font-size: 12px;
+}
+
+.sidebar.collapsed .sidebar-nav {
+  padding: 6px 6px 24px;
+}
+
+.sidebar.collapsed .nav-module {
+  padding: 6px 2px;
+  align-items: center;
+}
+
+.sidebar.collapsed .nav-module-title {
+  padding: 4px 0 6px;
+  justify-content: center;
+}
+
+.sidebar.collapsed .nav-module-title span:not(.module-icon) {
+  display: none !important;
+}
+
+.sidebar.collapsed .nav-submodule {
+  padding: 2px 0;
+  border: none;
+  background: transparent;
+  width: 100%;
+}
+
+.sidebar.collapsed .nav-submodule-header {
+  display: none !important;
+}
+
+.sidebar.collapsed .nav-submodule-content,
+.sidebar.collapsed .nav-submodule.collapsed .nav-submodule-content {
+  display: flex !important;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sidebar.collapsed .nav-btn {
+  justify-content: center;
+  padding: 8px 0 !important;
+  min-height: 40px;
+  width: 100%;
+  border-radius: 8px;
+}
+
+.sidebar.collapsed .nav-btn .nav-text,
+.sidebar.collapsed .nav-btn .nav-badge,
+.sidebar.collapsed .nav-btn .nav-action-indicator,
+.sidebar.collapsed .nav-btn .tag-pill {
+  display: none !important;
+}
+
+.sidebar.collapsed .nav-btn .nav-icon {
+  font-size: 17px;
+  margin: 0;
+  width: auto;
+}
+
+.sidebar.collapsed .sidebar-footer {
+  padding: 12px 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.sidebar.collapsed .sidebar-user-box {
+  padding: 6px 2px !important;
+  margin-bottom: 6px !important;
+  width: 100%;
+  box-sizing: border-box;
+  text-align: center;
+}
+
+.sidebar.collapsed #sidebarUserName,
+.sidebar.collapsed #sidebarUserRole,
+.sidebar.collapsed #sidebarUserEmail {
+  display: none !important;
+}
+
+.sidebar.collapsed #btnLogout {
+  margin: 0 auto;
+  padding: 4px 6px !important;
+  font-size: 10px !important;
+  display: block;
+}
+
+.sidebar.collapsed .sidebar-status-box {
+  justify-content: center;
+}
+
+.sidebar.collapsed .sidebar-status-box .status-info {
+  display: none !important;
 }
 
 .sidebar-nav {
@@ -1976,17 +2120,38 @@ code, .tabular-mono, .cnpj-cell, .id-cell {
   .sidebar-toggle {
     display: inline-block;
   }
-  .sidebar {
+  #btnCollapseSidebar {
+    display: none !important;
+  }
+  .sidebar,
+  .sidebar.collapsed {
     position: fixed;
-    top: 64px;
+    top: 58px;
     left: 0;
     bottom: 0;
+    width: 260px !important;
     z-index: 100;
     transform: translateX(-100%);
     transition: transform .2s ease-in-out;
   }
-  .sidebar.open {
+  .sidebar.open,
+  .sidebar.collapsed.open {
     transform: translateX(0);
+  }
+  .sidebar.collapsed .sidebar-header-badge,
+  .sidebar.collapsed .nav-module-title span:not(.module-icon),
+  .sidebar.collapsed .nav-submodule-header,
+  .sidebar.collapsed .nav-btn .nav-text,
+  .sidebar.collapsed .nav-btn .nav-badge,
+  .sidebar.collapsed #sidebarUserName,
+  .sidebar.collapsed #sidebarUserRole,
+  .sidebar.collapsed #sidebarUserEmail,
+  .sidebar.collapsed .sidebar-status-box .status-info {
+    display: initial !important;
+  }
+  .sidebar.collapsed .nav-btn {
+    justify-content: flex-start !important;
+    padding: 8px 10px !important;
   }
   .main-content {
     padding: 20px 16px 40px;
