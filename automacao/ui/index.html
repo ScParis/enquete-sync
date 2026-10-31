@@ -24,10 +24,13 @@
 </head>
 <body>
   <div id="fileModeNotice" role="alert">
-    <h1>Abra a interface pelo servidor local</h1>
-    <p>Este arquivo é uma cópia da tela. A automação precisa do servidor em execução para carregar planilha, Enquete e relatórios.</p>
-    <a href="http://127.0.0.1:8766/">Abrir automação G-Click</a>
-    <p style="margin-top:18px;font-size:13px">Se o endereço não abrir, inicie o aplicativo com <code>npm start</code> na pasta do projeto.</p>
+    <h1>Abra a interface pelo servidor da automação</h1>
+    <p>Este arquivo é uma cópia estática. A automação precisa do servidor em execução para carregar planilhas, conexões e relatórios.</p>
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+      <a href="http://app.jb-consultoria.com/">Acessar app.jb-consultoria.com</a>
+      <a href="http://127.0.0.1:8766/" style="background:#4b5563">Acesso de contingência (127.0.0.1)</a>
+    </div>
+    <p style="margin-top:18px;font-size:13px">Se o endereço não abrir, verifique se o servidor está em execução com <code>npm start</code> na pasta do projeto.</p>
   </div>
 
   <header class="topbar">
@@ -37,17 +40,25 @@
         <img src="/ui/jb-logo.svg" alt="JB Consultoria" class="brand-logo-img">
       </div>
       <span class="top-sep"></span>
-      <strong class="top-title">Automação de Enquetes & Obrigações</strong>
-      <span class="top-sub">Painel Integrado</span>
+      <strong class="top-title">Automação G-Click</strong>
     </div>
     <div class="topbar-right">
-      <button type="button" id="btnOpenCommandPalette" class="topbar-cmd-btn" title="Buscar ações ou seções (Atalho: ⌘K ou Ctrl+K)">
-        <span class="cmd-icon">🔍</span>
-        <span class="cmd-text">Buscar / Comandos…</span>
-        <kbd class="cmd-kbd">⌘K</kbd>
+      <button type="button" id="btnOpenCommandPalette" class="topbar-cmd-btn" title="Buscar ações ou seções (Ctrl+K ou ⌘K)">
+        <svg class="cmd-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <span class="cmd-text">Buscar</span>
+        <kbd class="cmd-kbd">Ctrl K</kbd>
       </button>
-      <div class="account-pill" id="topAccountPill">Conta: <strong id="topAccountId">—</strong> <span id="topAccountNome" style="color:var(--text-dimmed);margin-left:4px;font-weight:normal"></span> <span id="topSessionBadge" class="tag-pill" style="display:none;margin-left:6px;font-size:11px"></span></div>
-      <div class="local-badge"><span></span> Executando neste computador (8766)</div>
+      <button type="button" class="account-chip" id="topAccountPill" data-state="idle" title="Abrir Conexão G-Click">
+        <span class="account-avatar" aria-hidden="true">
+          <img id="topAccountFoto" alt="" hidden>
+          <span id="topAccountInitials" class="account-initials"></span>
+          <span class="account-avatar-dot"></span>
+        </span>
+        <span class="account-chip-text">
+          <strong id="topAccountNome">Nenhuma conta selecionada</strong>
+          <span class="account-chip-sub"><span id="topAccountIdWrap">Conta <span id="topAccountId">—</span></span><span id="topSessionBadge" class="nav-badge" hidden></span></span>
+        </span>
+      </button>
     </div>
   </header>
 
@@ -55,147 +66,120 @@
     <!-- SIDEBAR COM MÓDULOS, MENUS E SUBMENUS -->
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-header">
-        <span class="sidebar-header-badge">Módulos</span>
+        <span class="sidebar-header-badge">Menu</span>
         <button type="button" id="btnCollapseSidebar" class="sidebar-collapse-btn" title="Minimizar menu lateral (somente ícones)" aria-label="Minimizar menu lateral">
           <span id="collapseIcon" class="collapse-icon">◀</span>
         </button>
       </div>
 
       <nav class="sidebar-nav" id="sidebarNav">
-        <!-- 1. COCKPIT / VISÃO GERAL -->
-        <button type="button" class="nav-btn nav-overview active" data-section="all" id="navAll" title="Dashboard Geral do Escritório">
-          <span class="nav-icon">📊</span>
+        <button type="button" class="nav-btn nav-overview active" data-section="all" id="navAll" title="Dashboard Geral do escritório">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></span>
           <span class="nav-text">Dashboard Geral</span>
         </button>
 
-        <!-- 2. DADOS & INTEGRAÇÃO -->
-        <div class="nav-module">
-          <div class="nav-module-title">
-            <span class="module-icon">📥</span>
-            <span>Dados & Integração</span>
-          </div>
-          <div class="nav-sub-list">
-            <button type="button" class="nav-btn nav-sub-item" data-section="connection" id="navConnection" title="Conexão & Conta G-Click">
-              <span class="nav-icon">🔑</span>
-              <span class="nav-text">Conexão & Sessão</span>
-              <span class="nav-badge" id="navBadgeConnection">Aguardando</span>
+        <!-- PREPARAÇÃO: pré-requisitos de todos os módulos -->
+        <div class="nav-group">
+          <div class="nav-group-title"><span class="nav-group-label">Preparação</span></div>
+          <div class="nav-group-items">
+            <button type="button" class="nav-btn nav-sub-item" data-section="connection" id="navConnection" title="Conexão com a conta do escritório no G-Click">
+              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2v6M15 2v6M6 8h12v4a6 6 0 0 1-12 0zM12 18v4"/></svg></span>
+              <span class="nav-text">Conexão G-Click</span>
+              <span class="nav-badge" id="navBadgeConnection"></span>
             </button>
-
-            <button type="button" class="nav-btn nav-sub-item" data-section="source" id="navSource" title="Fonte & Importação de Arquivos">
-              <span class="nav-icon">📁</span>
-              <span class="nav-text">Importação de Planilha</span>
-              <span class="nav-badge" id="navBadgeSource">Pendente</span>
-            </button>
-
-            <button type="button" class="nav-btn nav-sub-item" data-section="writer" id="navWriter" title="Sincronização com Google Sheets">
-              <span class="nav-icon">🔄</span>
-              <span class="nav-text">Sincronização Sheets</span>
-              <span class="nav-badge" id="navBadgeWriter">Sync</span>
+            <button type="button" class="nav-btn nav-sub-item" data-section="source" id="navSource" title="Planilhas de cada uso (Enquete e Carteira) com DE/PARA de colunas">
+              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/></svg></span>
+              <span class="nav-text">Planilhas</span>
+              <span class="nav-badge" id="navBadgeSource"></span>
             </button>
           </div>
         </div>
 
-        <!-- 3. AUTOMAÇÕES (COM SUB-MÓDULOS E AÇÕES) -->
-        <div class="nav-module">
-          <div class="nav-module-title">
-            <span class="module-icon">⚡</span>
-            <span>Automações</span>
+        <!-- ENQUETE G-CLICK -->
+        <div class="nav-group nav-submodule" id="submoduleEnquete">
+          <div class="nav-group-title nav-submodule-header" id="headerSubmoduleEnquete" role="button" tabindex="0" title="Mostrar ou esconder Enquete G-Click">
+            <span class="nav-group-label">Enquete G-Click</span>
+            <span class="nav-submodule-chevron" aria-hidden="true">▾</span>
           </div>
-
-          <!-- SUB-MÓDULO 1: ENQUETE G-CLICK -->
-          <div class="nav-submodule" id="submoduleEnquete">
-            <div class="nav-submodule-header" id="headerSubmoduleEnquete" role="button" tabindex="0" title="Alternar visualização do sub-módulo Enquete">
-              <div class="nav-submodule-title-wrap">
-                <span class="nav-submodule-icon">📑</span>
-                <span class="nav-submodule-title">Enquete G-Click</span>
-              </div>
-              <span class="nav-submodule-badge">4 ações</span>
-              <span class="nav-submodule-chevron">▾</span>
-            </div>
-            <div class="nav-sub-list nav-submodule-content" id="contentSubmoduleEnquete">
-              <!-- Ação 1: Catálogo de Perguntas -->
-              <button type="button" class="nav-btn nav-sub-item nav-action-item" data-section="catalog" id="navCatalog" title="Catálogo de Perguntas da Enquete">
-                <span class="nav-icon">📑</span>
-                <span class="nav-text">Catálogo de Perguntas</span>
-                <span class="nav-badge" id="navBadgeCatalog">0 perguntas</span>
-              </button>
-
-              <!-- Ação 2: Mapeamento de Regras -->
-              <button type="button" class="nav-btn nav-sub-item nav-action-item" data-section="mapping" id="navMapping" title="Associação de Tarefas & Mapeamento">
-                <span class="nav-icon">🔀</span>
-                <span class="nav-text">Mapeamento de Regras</span>
-                <span class="nav-badge" id="navBadgeMapping">0</span>
-              </button>
-
-              <!-- Ação 3: Auditoria & Conferência -->
-              <button type="button" class="nav-btn nav-sub-item nav-action-item" data-section="audit" id="navAudit" title="Auditoria & Conferência ao Vivo">
-                <span class="nav-icon">🔍</span>
-                <span class="nav-text">Auditoria & Conferência</span>
-                <span class="nav-badge" id="navBadgeAudit">0</span>
-              </button>
-
-              <!-- Ação 4: Gravação no G-Click -->
-              <button type="button" class="nav-btn nav-sub-item nav-action-item" data-section="apply" id="navApply" title="Execução de Gravação na Enquete">
-                <span class="nav-icon">🚀</span>
-                <span class="nav-text">Gravação no G-Click</span>
-                <span class="nav-badge" id="navBadgeApply">Aguardando</span>
-              </button>
-            </div>
-          </div>
-
-          <!-- SUB-MÓDULO 2: OBRIGAÇÕES, WHATSAPP & E-MAIL -->
-          <div class="nav-submodule" id="submoduleObrigacoes">
-            <div class="nav-submodule-header" id="headerSubmoduleObrigacoes" role="button" tabindex="0" title="Alternar visualização do sub-módulo Obrigações">
-              <div class="nav-submodule-title-wrap">
-                <span class="nav-submodule-icon">💬</span>
-                <span class="nav-submodule-title">Obrigações & Canais</span>
-              </div>
-              <span class="nav-submodule-badge">3 ações</span>
-              <span class="nav-submodule-chevron">▾</span>
-            </div>
-            <div class="nav-sub-list nav-submodule-content" id="contentSubmoduleObrigacoes">
-              <!-- Ação 1: Catálogo & Paridade -->
-              <button type="button" class="nav-btn nav-sub-item nav-action-item" data-section="obrigacoes" id="navObrigacoes" title="Gestão de Obrigações, WhatsApp e E-mail">
-                <span class="nav-icon">📋</span>
-                <span class="nav-text">Catálogo & Paridade</span>
-                <span class="nav-badge" id="navBadgeObrigacoes">Obrigações</span>
-              </button>
-
-              <!-- Ação 2: Configuração em Massa -->
-              <button type="button" class="nav-btn nav-sub-item nav-action-item" data-action="obrig-batch" id="navObrigBatch" title="Atalho rápido: Ir para Configuração em Massa (E-mail / WhatsApp)">
-                <span class="nav-icon">⚡</span>
-                <span class="nav-text">Configuração em Massa</span>
-                <span class="nav-badge badge-info">Lote</span>
-              </button>
-
-              <!-- Ação 3: Modelos Flexíveis de Mensagem -->
-              <button type="button" class="nav-btn nav-sub-item nav-action-item" data-action="obrig-templates" id="navObrigTemplates" title="Atalho rápido: Abrir Modelos Flexíveis de Mensagem">
-                <span class="nav-icon">⚙️</span>
-                <span class="nav-text">Modelos de Mensagem</span>
-                <span class="nav-badge badge-new">Templates</span>
-              </button>
-            </div>
+          <div class="nav-group-items nav-submodule-content" id="contentSubmoduleEnquete">
+            <button type="button" class="nav-btn nav-sub-item" data-section="catalog" id="navCatalog" title="Perguntas e respostas da Enquete do escritório">
+              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5zM4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/></svg></span>
+              <span class="nav-text">Catálogo de Perguntas</span>
+              <span class="nav-badge" id="navBadgeCatalog"></span>
+            </button>
+            <button type="button" class="nav-btn nav-sub-item" data-section="mapping" id="navMapping" title="Associação das tarefas da planilha às respostas da Enquete">
+              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg></span>
+              <span class="nav-text">Mapeamento de Tarefas</span>
+              <span class="nav-badge" id="navBadgeMapping"></span>
+            </button>
+            <button type="button" class="nav-btn nav-sub-item" data-section="audit" id="navAudit" title="Conferência ao vivo na Enquete">
+              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg></span>
+              <span class="nav-text">Conferência</span>
+              <span class="nav-badge" id="navBadgeAudit"></span>
+            </button>
+            <button type="button" class="nav-btn nav-sub-item" data-section="apply" id="navApply" title="Gravação das respostas na Enquete">
+              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m9 11 3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></span>
+              <span class="nav-text">Gravação no G-Click</span>
+              <span class="nav-badge" id="navBadgeApply"></span>
+            </button>
+            <button type="button" class="nav-btn nav-sub-item" data-section="writer" id="navWriter" title="Devolve à planilha o que foi gravado">
+              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16M3 12a9 9 0 0 1 15.5-6.2L21 8M21 3v5h-5M3 21v-5h5"/></svg></span>
+              <span class="nav-text">Sincronização com Sheets</span>
+              <span class="nav-badge" id="navBadgeWriter"></span>
+            </button>
           </div>
         </div>
 
-        <!-- 4. GOVERNANÇA & ACESSOS -->
-        <div class="nav-module" id="navModuleAdmin" hidden>
-          <div class="nav-module-title">
-            <span class="module-icon">🛡️</span>
-            <span>Governança</span>
+        <!-- OBRIGAÇÕES & CANAIS -->
+        <div class="nav-group nav-submodule" id="submoduleObrigacoes">
+          <div class="nav-group-title nav-submodule-header" id="headerSubmoduleObrigacoes" role="button" tabindex="0" title="Mostrar ou esconder Obrigações & Canais">
+            <span class="nav-group-label">Obrigações & Canais</span>
+            <span class="nav-submodule-chevron" aria-hidden="true">▾</span>
           </div>
-          <div class="nav-sub-list">
-            <button type="button" class="nav-btn nav-sub-item" data-section="users" id="navUsers" title="Gestão de Usuários & Permissões">
-              <span class="nav-icon">👥</span>
+          <div class="nav-group-items nav-submodule-content" id="contentSubmoduleObrigacoes">
+            <button type="button" class="nav-btn nav-sub-item" data-section="obrigacoes" id="navObrigacoes" title="Obrigações, WhatsApp e e-mail">
+              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></span>
+              <span class="nav-text">Catálogo & Paridade</span>
+              <span class="nav-badge" id="navBadgeObrigacoes"></span>
+            </button>
+            <button type="button" class="nav-btn nav-sub-item" data-action="obrig-batch" id="navObrigBatch" title="Atalho: configuração em massa de e-mail e WhatsApp">
+              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m12 2 10 5-10 5L2 7z"/><path d="m2 17 10 5 10-5M2 12l10 5 10-5"/></svg></span>
+              <span class="nav-text">Configuração em Massa</span>
+            </button>
+            <button type="button" class="nav-btn nav-sub-item" data-action="obrig-templates" id="navObrigTemplates" title="Atalho: modelos de mensagem">
+              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
+              <span class="nav-text">Modelos de Mensagem</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- CARTEIRA DE CLIENTES -->
+        <div class="nav-group" id="submoduleCarteira">
+          <div class="nav-group-title"><span class="nav-group-label">Carteira de Clientes</span></div>
+          <div class="nav-group-items">
+            <button type="button" class="nav-btn nav-sub-item" data-section="carteira" id="navCarteira" title="Conferência e vínculo de empresas aos responsáveis no G-Click">
+              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/></svg></span>
+              <span class="nav-text">Carteira por Usuário</span>
+              <span class="nav-badge" id="navBadgeCarteira"></span>
+            </button>
+          </div>
+        </div>
+
+        <!-- GOVERNANÇA -->
+        <div class="nav-group" id="navModuleAdmin" hidden>
+          <div class="nav-group-title"><span class="nav-group-label">Governança</span></div>
+          <div class="nav-group-items">
+            <button type="button" class="nav-btn nav-sub-item" data-section="users" id="navUsers" title="Usuários do painel e permissões por conta">
+              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span>
               <span class="nav-text">Usuários & Permissões</span>
-              <span class="nav-badge" id="navBadgeUsers">RBAC</span>
             </button>
           </div>
         </div>
       </nav>
 
       <div class="sidebar-footer">
-        <div class="sidebar-user-box" id="sidebarUserBox" style="margin-bottom:12px;padding:8px 10px;background:rgba(255,255,255,0.06);border-radius:8px">
+        <p class="sidebar-local" id="sidebarLocal" title="O painel e o robô rodam neste computador">Servidor local · porta 8766</p>
+        <div class="sidebar-user-box" id="sidebarUserBox" style="padding:8px 10px;background:rgba(255,255,255,0.06);border-radius:8px">
           <div style="display:flex;align-items:center;justify-content:space-between">
             <strong id="sidebarUserName" style="font-size:12px;color:#fff">Usuário</strong>
             <button type="button" id="btnLogout" class="ghost" style="font-size:11px;color:#fca5a5;padding:2px 6px;cursor:pointer;border:1px solid rgba(239,68,68,0.3);border-radius:4px" title="Encerrar sessão">Sair</button>
@@ -203,13 +187,6 @@
           <div style="display:flex;align-items:center;gap:6px;margin-top:4px">
             <span id="sidebarUserRole" class="tag-pill" style="font-size:10px;background:#164e63;color:#a5f3fc">admin</span>
             <span id="sidebarUserEmail" style="font-size:11px;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">admin@gclick.local</span>
-          </div>
-        </div>
-        <div class="sidebar-status-box">
-          <div class="status-dot" id="sidebarStatusDot"></div>
-          <div class="status-info">
-            <strong id="sidebarAccountDisplay">Conta: —</strong>
-            <span id="sidebarSessionDisplay">Sessão desconectada</span>
           </div>
         </div>
       </div>
@@ -235,7 +212,7 @@
       </div>
 
       <!-- WORKBENCH PIPELINE STEPPER INTERATIVO -->
-      <nav class="workbench-pipeline" aria-label="Pipeline de trabalho">
+      <nav class="workbench-pipeline" id="enquetePipeline" aria-label="Fluxo da Enquete">
         <button type="button" class="pipeline-step active" data-step="connection" id="stepConnection">
           <span class="step-num">1</span>
           <div class="step-meta">
@@ -247,7 +224,7 @@
         <button type="button" class="pipeline-step" data-step="source" id="stepSource">
           <span class="step-num">2</span>
           <div class="step-meta">
-            <strong>Fonte & Planilha</strong>
+            <strong>Planilha</strong>
             <span id="stepMetaSource">Selecionar dados</span>
           </div>
         </button>
@@ -255,7 +232,7 @@
         <button type="button" class="pipeline-step" data-step="mapping" id="stepMapping">
           <span class="step-num">3</span>
           <div class="step-meta">
-            <strong>Mapeamento</strong>
+            <strong>Mapeamento de Tarefas</strong>
             <span id="stepMetaMapping">Definir regras</span>
           </div>
         </button>
@@ -271,102 +248,107 @@
         <button type="button" class="pipeline-step" data-step="apply" id="stepApply">
           <span class="step-num">5</span>
           <div class="step-meta">
-            <strong>Gravação</strong>
+            <strong>Gravação no G-Click</strong>
             <span id="stepMetaApply">Executar robô</span>
           </div>
         </button>
       </nav>
 
-      <!-- FAIXA DE MÉTRICAS & TELEMETRIA EM TEMPO REAL -->
-      <section class="workbench-kpis" aria-label="Indicadores operacionais">
-        <div class="kpi-card">
-          <span class="kpi-label">Conta Escritório</span>
-          <strong class="kpi-val tabular-mono" id="kpiAccountDisplay">—</strong>
-          <span class="kpi-sub" id="kpiSessionStatus">Desconectado</span>
-        </div>
-        <div class="kpi-card">
-          <span class="kpi-label">Linhas da Planilha</span>
-          <strong class="kpi-val tabular-mono" id="kpiRowsCount">0</strong>
-          <span class="kpi-sub" id="kpiSourceFile">Nenhum CSV carregado</span>
-        </div>
-        <div class="kpi-card">
-          <span class="kpi-label">Obrigações na Enquete</span>
-          <strong class="kpi-val tabular-mono" id="kpiMappedTasks">0</strong>
-          <span class="kpi-sub" id="kpiCatalogStatus">Catálogo não lido</span>
-        </div>
-        <div class="kpi-card">
-          <span class="kpi-label">Status da Planilha</span>
-          <strong class="kpi-val" id="kpiSheetStatus" style="font-size:14px;margin-top:4px">Não configurada</strong>
-          <span class="kpi-sub" id="kpiSheetPending">0 marcações pendentes</span>
-        </div>
-      </section>
 
       <!-- SEÇÃO 1: CONEXÃO & CONTA G-CLICK -->
       <div id="section-connection" class="app-section">
         <div class="section-banner">
-          <nav class="breadcrumbs">
-            <span>Configuração de Conexão</span>
-            <span class="sep">›</span>
-            <strong>Conexão & Conta G-Click</strong>
-          </nav>
           <div class="section-title-wrap">
             <span class="step">01</span>
             <div>
-              <h2>Conexão & Conta G-Click</h2>
-              <p>Autentique e conecte a conta do escritório no G-Click para habilitar as operações da Enquete.</p>
+              <h2>Conexão G-Click</h2>
+              <p>Conecte o robô à conta do escritório no G-Click. Os módulos de automação só ficam liberados com a conta certa ativa.</p>
             </div>
           </div>
         </div>
 
-        <section class="card">
+        <section class="card conn-card" id="connectionCard" data-state="idle">
           <div class="card-headline">
-            <h3>Autenticação e Sessão</h3>
-            <span class="sub-hint">Informe o identificador do escritório e abra a sessão integrada</span>
+            <div>
+              <h3>Conexão & Contas G-Click</h3>
+              <span class="sub-hint">Abra a janela de login e entre no G-Click. As empresas e escritórios disponíveis são listados abaixo para alternar com 1 clique.</span>
+            </div>
           </div>
-          <label>
-            Conta G-Click <small>(empId do escritório)</small>
-            <input id="accountId" inputmode="numeric" list="accountList" placeholder="Ex.: 6581" autocomplete="off">
-          </label>
-          <datalist id="accountList"></datalist>
-          <div class="row" style="margin-top:14px">
+
+          <div class="conn-form">
+            <label class="conn-field">
+              Conta G-Click <small>(empId do escritório)</small>
+              <input id="accountId" inputmode="numeric" list="accountList" placeholder="Ex.: 6581" autocomplete="off">
+            </label>
             <button id="openLogin" type="button" class="btn btn-primary btn-md">Abrir janela de login</button>
-            <button id="closeLogin" type="button" class="btn btn-secondary btn-md">Verificar login no G-Click</button>
           </div>
-          <p class="hint">Basta entrar no G-Click na janela da automação. Após o login ser detectado, acesse o módulo <strong>Enquete → Mapeamento</strong> e clique em <strong>Buscar Perguntas e Respostas (Sob Demanda)</strong> para carregar o catálogo.</p>
+          <datalist id="accountList"></datalist>
+
+          <div class="conn-status" id="connStatus" role="status" aria-live="polite">
+            <span class="conn-status-dot" aria-hidden="true"></span>
+            <div class="conn-status-text">
+              <strong id="connStatusTitle">Não conectado</strong>
+              <span id="connStatusDetail">Informe a conta do escritório ou clique no cartão abaixo.</span>
+            </div>
+            <div class="conn-status-actions">
+              <button id="btnSwitchEmpresa" type="button" class="btn btn-primary btn-sm" hidden>Alternar conta</button>
+              <button id="closeLogin" type="button" class="btn btn-secondary btn-sm">Verificar conexão</button>
+            </div>
+          </div>
+
+          <div class="empresa-grid-section" id="empresaGridSection">
+            <div class="empresa-grid-header">
+              <div class="empresa-grid-title">
+                <h4>Empresas Disponíveis no G-Click</h4>
+                <span class="sub-hint">Clique no cartão da empresa para conectar e alternar no G-Click instantaneamente.</span>
+              </div>
+              <div class="empresa-grid-controls">
+                <input id="empresaGridSearch" type="search" placeholder="Filtrar por nome, apelido, CNPJ ou ID…" class="empresa-search-input" autocomplete="off">
+              </div>
+            </div>
+
+            <div class="empresa-cards-grid" id="empresaCardsGrid">
+              <div class="empresa-grid-empty" id="empresaGridEmpty">
+                <div class="empty-icon">🏢</div>
+                <p>Nenhuma conta sincronizada no momento. Clique em <strong>Abrir janela de login</strong> para conectar sua sessão do G-Click.</p>
+              </div>
+            </div>
+          </div>
         </section>
       </div>
 
       <!-- SEÇÃO 2: FONTE (IMPORTAÇÃO) -->
       <div id="section-source" class="app-section">
         <div class="section-banner">
-          <nav class="breadcrumbs">
-            <span>Configuração de Conexão</span>
-            <span class="sep">›</span>
-            <strong>Fonte (importação)</strong>
-          </nav>
           <div class="section-title-wrap">
             <span class="step">02</span>
             <div>
-              <h2>Fonte (importação)</h2>
-              <p>Importe uma aba completa por arquivo, navegador integrado ou link da API. A tabela mostra todas as colunas e linhas recebidas.</p>
+              <h2>Planilhas</h2>
+              <p>Traga a planilha de cada uso do escritório. O DE/PARA de colunas de cada planilha fica salvo e é aplicado nas próximas leituras.</p>
             </div>
           </div>
         </div>
 
         <section class="card">
+          <div class="source-use">
+            <span class="field-label">Para que serve esta planilha?</span>
+            <div class="segmented">
+              <label><input type="radio" name="sourceUse" value="enquete" checked><span>Enquete (obrigações)</span></label>
+              <label><input type="radio" name="sourceUse" value="carteira"><span>Carteira por Usuário (responsável × empresa)</span></label>
+            </div>
+          </div>
           <div class="segmented">
-            <label><input type="radio" name="sourceType" value="file"><span>Arquivo</span></label>
-            <label><input type="radio" name="sourceType" value="url"><span>Link público / API</span></label>
-            <label><input type="radio" name="sourceType" value="recent" checked><span>Navegador integrado</span></label>
+            <label><input type="radio" name="sourceType" value="url" checked><span>Link do Google Sheets</span></label>
+            <label><input type="radio" name="sourceType" value="file"><span>Arquivo CSV/XLSX</span></label>
+            <label><input type="radio" name="sourceType" value="recent"><span>CSV baixado do Sheets</span></label>
           </div>
           <div id="fileBox" hidden>
             <label class="field-label" for="file">Arquivo da planilha</label>
             <input id="file" type="file" accept=".csv,.xlsx">
             <label class="field-label" for="sheetName">Nome da aba no XLSX <small>(opcional; padrão: primeira aba)</small></label>
             <input id="sheetName" type="text" placeholder="Ex.: Obrigações">
-            <button id="loadFileTasks" type="button" class="btn btn-secondary btn-md" style="margin-top:10px">Importar arquivo selecionado</button>
           </div>
-          <div id="recentBox">
+          <div id="recentBox" hidden>
             <label class="field-label" for="recentSheetUrl">Link da aba no Google Sheets</label>
             <input id="recentSheetUrl" type="url" placeholder="Link da aba da planilha deste escritório">
             <p class="hint">Colar o link não carrega os dados. Baixe o CSV desta aba e confirme o arquivo abaixo; ao trocar o link, os dados anteriores são removidos.</p>
@@ -380,61 +362,68 @@
             <select id="downloadFile"><option value="">Atualize a lista após baixar</option></select>
             <p id="downloadHint" class="hint">O nome e o horário do arquivo aparecem aqui antes da análise.</p>
           </div>
-          <div id="urlBox" hidden>
-            <label class="field-label" for="sourceUrl">Link da aba</label>
-            <input id="sourceUrl" type="url" placeholder="Link da aba da planilha deste escritório">
-            <label class="field-label" for="serviceKey">Credencial de conta de serviço <small>(JSON, para planilha privada)</small></label>
-            <input id="serviceKey" type="file" accept=".json,application/json">
-            <p class="hint">A planilha deve ser compartilhada como Leitor com o e-mail da conta de serviço. A chave é usada somente nesta leitura e não entra no relatório.</p>
-            <button id="loadUrlTasks" type="button" class="btn btn-secondary btn-md" style="margin-top:10px">Ler tarefas do link</button>
+          <div id="urlBox">
+            <label class="field-label" for="sourceUrl">Link da planilha no Google Sheets</label>
+            <input id="sourceUrl" type="url" placeholder="https://docs.google.com/spreadsheets/d/…/edit?gid=…">
+            <input id="carteiraSourceUrl" type="url" placeholder="https://docs.google.com/spreadsheets/d/…/edit?gid=… (aba responsável × empresa)" hidden>
+            <p class="hint">A planilha precisa estar compartilhada como “Qualquer pessoa com o link pode ver”. Na leitura, o DE/PARA de colunas salvo para esta planilha é aplicado.</p>
+            <details class="source-private">
+              <summary>Planilha privada? Usar credencial de conta de serviço</summary>
+              <label class="field-label" for="serviceKey">Credencial de conta de serviço <small>(JSON)</small></label>
+              <input id="serviceKey" type="file" accept=".json,application/json">
+              <p class="hint">Compartilhe a planilha como Leitor com o e-mail da conta de serviço. A chave é usada somente nesta leitura e não entra no relatório.</p>
+            </details>
           </div>
-          <div class="row header-config-row" style="margin-top:14px;align-items:flex-end;gap:12px">
-            <label style="flex:1;max-width:200px">
-              Linha do cabeçalho
-              <input id="headerRowInput" type="number" min="1" max="100" value="1" style="margin-top:4px">
+          <div class="source-actions">
+            <label class="source-header-field">
+              Cabeçalho na linha
+              <input id="headerRowInput" type="number" min="1" max="100" value="1">
             </label>
-            <button id="inspectSourceBtn" type="button" class="btn btn-primary btn-md" style="margin-bottom:0">Conhecer estrutura da fonte</button>
+            <button id="loadSourceBtn" type="button" class="btn btn-primary btn-md">Ler planilha</button>
           </div>
-          <p id="sourceStatus" class="source-status" role="status" aria-live="polite">Selecione uma fonte para carregar os dados da aba.</p>
+          <div id="sourceStatusBox" class="source-status" role="status" aria-live="polite">
+            <p id="sourceStatus">Cole o link da planilha e clique em Ler planilha.</p>
+            <button id="btnSourceToCarteira" type="button" class="btn btn-secondary btn-sm" hidden>Ir para Carteira por Usuário</button>
+          </div>
 
           <!-- ETAPA 2: EDITOR DE MAPEAMENTO E PERFIL -->
           <section id="mappingEditorSection" class="mapping-editor-card" hidden style="margin-top:20px;border-top:1px solid #dce7e5;padding-top:16px">
             <div class="card-headline" style="display:flex;justify-content:space-between;align-items:flex-start">
               <div>
-                <h3 style="margin:0 0 4px">Editor de Mapeamento de Colunas</h3>
-                <span id="mappingEditorSubtitle" class="sub-hint">Associe as colunas de origem aos campos internos antes de carregar registros para a automação</span>
+                <h3 style="margin:0 0 4px">DE/PARA de colunas</h3>
+                <span id="mappingEditorSubtitle" class="sub-hint">Confira para qual campo vai cada coluna da planilha e salve; nas próximas leituras desta planilha o DE/PARA é aplicado sozinho</span>
               </div>
-              <div class="account-pill" id="profileVersionBadge" style="margin:0">Perfil: Não salvo</div>
+              <span class="nav-badge badge-neutral" id="profileVersionBadge">Não salvo</span>
             </div>
 
             <div class="row mapping-config-bar" style="margin:14px 0 16px;gap:12px;align-items:flex-end">
-              <label style="flex:2">
-                Objetivo do Mapeamento / Modelo de Destino
-                <select id="targetModelSelect" style="margin-top:4px">
-                  <option value="enquete_automacao">Automação da Enquete G-Click (tarefas e clientes por CNPJ/ID)</option>
-                  <option value="cliente_identificacao">Cadastro de Clientes (sem tarefas/obrigações)</option>
-                  <option value="generico_consulta">Importação Geral (Visualização / Consulta)</option>
-                </select>
-              </label>
+              <!-- O modelo de destino vem do uso escolhido no topo ("Para que serve esta planilha?"). -->
+              <select id="targetModelSelect" hidden>
+                <option value="enquete_automacao">Enquete</option>
+                <option value="carteira_responsaveis">Carteira por Usuário</option>
+                <option value="cliente_identificacao">Cadastro de Clientes</option>
+                <option value="generico_consulta">Importação Geral</option>
+              </select>
+              <span class="sub-hint" style="flex:2">Campos obrigatórios: <strong id="requiredFieldsHint">Obrigação / Tarefa e CNPJ ou código</strong></span>
               <div style="flex:1;display:flex;gap:8px">
-                <button id="saveProfileBtn" type="button" class="btn btn-secondary btn-md" style="flex:1">Salvar perfil</button>
-                <button id="applyAndLoadBtn" type="button" class="btn btn-primary btn-md" style="flex:1">Validar & Carregar</button>
+                <button id="saveProfileBtn" type="button" class="btn btn-secondary btn-md" style="flex:1">Salvar DE/PARA</button>
+                <button id="applyAndLoadBtn" type="button" class="btn btn-primary btn-md" style="flex:1">Aplicar e ler de novo</button>
               </div>
             </div>
 
             <p id="mappingWarningBanner" class="queue-warning" hidden></p>
 
-            <div class="source-table-wrap" style="max-height:360px;overflow:auto;border:1px solid #dce7e5;border-radius:8px">
-              <table id="mappingColumnsTable" class="mapping-table" style="width:100%;border-collapse:collapse;font-size:13px">
+            <div class="table-wrap source-table-wrap" style="max-height:360px;">
+              <table id="mappingColumnsTable" class="app-table mapping-table">
                 <thead>
-                  <tr style="background:#eef4f3;text-align:left">
-                    <th style="padding:8px 10px;width:40px">#</th>
-                    <th style="padding:8px 10px">Coluna de Origem</th>
-                    <th style="padding:8px 10px">Amostra</th>
-                    <th style="padding:8px 10px;width:120px">Ação</th>
-                    <th style="padding:8px 10px;width:190px">Campo de Destino</th>
-                    <th style="padding:8px 10px;width:150px">Transformação</th>
-                    <th style="padding:8px 10px;width:90px;text-align:center">Confirmado</th>
+                  <tr>
+                    <th style="width:40px">#</th>
+                    <th>Coluna de Origem</th>
+                    <th>Amostra</th>
+                    <th style="width:120px">Ação</th>
+                    <th style="width:190px">Campo de Destino</th>
+                    <th style="width:150px">Transformação</th>
+                    <th style="width:90px;text-align:center">Confirmado</th>
                   </tr>
                 </thead>
                 <tbody id="mappingColumnsBody"></tbody>
@@ -443,67 +432,32 @@
           </section>
 
           <section id="sourcePreview" class="source-preview" hidden>
-            <h3>Dados importados</h3>
-            <p id="sourcePreviewInfo" class="hint"></p>
-            <div class="source-table-wrap"><table id="sourceTable"></table></div>
-            <div class="row source-pager">
-              <button id="sourcePrev" type="button" class="secondary">Anterior</button>
+            <div class="source-preview-head">
+              <div>
+                <h3>Dados importados</h3>
+                <p id="sourcePreviewInfo" class="hint"></p>
+              </div>
+              <button id="inspectSourceBtn" type="button" class="btn btn-secondary btn-sm">Ajustar DE/PARA</button>
+            </div>
+            <div class="table-wrap source-table-wrap"><table id="sourceTable" class="app-table"></table></div>
+            <div class="app-table-footer source-pager">
               <span id="sourcePageInfo"></span>
-              <button id="sourceNext" type="button" class="secondary">Próxima</button>
+              <div style="display:flex;gap:6px;">
+                <button id="sourcePrev" type="button" class="btn-table-action btn-action-ghost">Anterior</button>
+                <button id="sourceNext" type="button" class="btn-table-action btn-action-ghost">Próxima</button>
+              </div>
             </div>
           </section>
-        </section>
-      </div>
-
-      <!-- SEÇÃO 3: SINCRONIZAÇÃO COM GOOGLE SHEETS -->
-      <div id="section-writer" class="app-section">
-        <div class="section-banner">
-          <nav class="breadcrumbs">
-            <span>Configuração de Conexão</span>
-            <span class="sep">›</span>
-            <span>Fonte (importação)</span>
-            <span class="sep">›</span>
-            <strong>Sincronização com Google Sheets</strong>
-          </nav>
-          <div class="section-title-wrap">
-            <span class="step">🔄</span>
-            <div>
-              <h2>Sincronização com Google Sheets</h2>
-              <p>Preenchimento automático da coluna “Enquete G-Click” na planilha após cada lote gravado.</p>
-            </div>
-          </div>
-        </div>
-
-        <section class="card" id="writerCard">
-          <p id="writerStatus" class="hint" style="margin-top:0">Informe a conta para ver a configuração.</p>
-          <details id="writerSetup">
-            <summary>Configurar nesta planilha (uma vez)</summary>
-            <ol class="writer-steps">
-              <li><button id="copyScript" type="button" class="secondary">Copiar script</button> <span id="copyStatus" class="hint"></span></li>
-              <li>Na planilha: <strong>Extensões → Apps Script</strong>. Apague o conteúdo, cole o script e salve.</li>
-              <li><strong>Implantar → Nova implantação</strong> → tipo <strong>App da Web</strong>; Executar como: <strong>Eu</strong>; Quem pode acessar: <strong>Qualquer pessoa</strong>. Autorize o acesso.</li>
-              <li>Cole aqui o endereço do app da web:<input id="writerUrl" type="url" placeholder="https://script.google.com/macros/s/…/exec"><button id="saveWriter" type="button" class="primary">Salvar e testar</button></li>
-            </ol>
-            <textarea id="scriptFallback" rows="6" readonly hidden></textarea>
-          </details>
-          <div class="row" style="margin-top:14px">
-            <button id="resendMarks" type="button" class="ghost" hidden>Reenviar marcações pendentes</button>
-          </div>
         </section>
       </div>
 
       <!-- SEÇÃO 4: MAPEAMENTO DAS PERGUNTAS E RESPOSTAS DA ENQUETE -->
       <div id="section-catalog" class="app-section">
         <div class="section-banner">
-          <nav class="breadcrumbs">
-            <span>Enquete</span>
-            <span class="sep">›</span>
-            <strong>Mapeamento das perguntas e respostas da enquete</strong>
-          </nav>
           <div class="section-title-wrap">
             <span class="step">📑</span>
             <div>
-              <h2>Mapeamento das Perguntas e Respostas da Enquete</h2>
+              <h2>Catálogo de Perguntas</h2>
               <p>Consulte e explore o catálogo de perguntas e respostas cadastradas no G-Click para a conta selecionada.</p>
             </div>
           </div>
@@ -544,15 +498,10 @@
       <!-- SEÇÃO 5: TAREFAS E MAPEAMENTO DA ENQUETE -->
       <div id="section-mapping" class="app-section">
         <div class="section-banner">
-          <nav class="breadcrumbs">
-            <span>Enquete</span>
-            <span class="sep">›</span>
-            <strong>Tarefas e Mapeamento da Enquete</strong>
-          </nav>
           <div class="section-title-wrap">
             <span class="step">🔀</span>
             <div>
-              <h2>Tarefas e Mapeamento da Enquete</h2>
+              <h2>Mapeamento de Tarefas</h2>
               <p>Associe cada obrigação lida na planilha às perguntas e respostas da Enquete no G-Click.</p>
             </div>
           </div>
@@ -592,11 +541,6 @@
       <!-- SEÇÃO: GRAVAÇÃO NO G-CLICK -->
       <div id="section-apply" class="app-section">
         <div class="section-banner">
-          <nav class="breadcrumbs">
-            <span>Enquete</span>
-            <span class="sep">›</span>
-            <strong>Gravação no G-Click</strong>
-          </nav>
           <div class="section-title-wrap">
             <span class="step">⚡</span>
             <div>
@@ -630,15 +574,10 @@
       <!-- SEÇÃO: AUDITORIA & CONFERÊNCIA NA ENQUETE -->
       <div id="section-audit" class="app-section">
         <div class="section-banner">
-          <nav class="breadcrumbs">
-            <span>Enquete</span>
-            <span class="sep">›</span>
-            <strong>Auditoria & Conferência na Enquete</strong>
-          </nav>
           <div class="section-title-wrap">
             <span class="step">🔍</span>
             <div>
-              <h2>Auditoria & Conferência na Enquete</h2>
+              <h2>Conferência</h2>
               <p>Consulte o estado de cada CNPJ na Enquete: confira todas as tarefas ou filtre por uma obrigação específica.</p>
             </div>
           </div>
@@ -741,13 +680,13 @@
             </div>
           </div>
           <div class="table-wrap">
-            <table>
+            <table class="app-table">
               <thead>
                 <tr>
                   <th>CNPJ / empresa</th>
-                  <th>EmpID</th>
+                  <th style="width:75px;">EmpID</th>
                   <th>Tarefa elegível</th>
-                  <th>Estado</th>
+                  <th style="width:130px;">Estado</th>
                   <th>Detalhe</th>
                 </tr>
               </thead>
@@ -756,12 +695,43 @@
               </tbody>
             </table>
           </div>
-          <div id="resultsPager" class="results-pager" hidden>
+          <div id="resultsPager" class="results-pager app-table-footer" hidden>
             <span id="resultsPageInfo"></span>
-            <div class="row">
-              <button id="resultsPrev" type="button" class="ghost">Anterior</button>
-              <button id="resultsNext" type="button" class="ghost">Próxima</button>
+            <div style="display:flex;gap:6px;">
+              <button id="resultsPrev" type="button" class="btn-table-action btn-action-ghost">Anterior</button>
+              <button id="resultsNext" type="button" class="btn-table-action btn-action-ghost">Próxima</button>
             </div>
+          </div>
+        </section>
+      </div>
+
+
+      <!-- SEÇÃO 3: SINCRONIZAÇÃO COM GOOGLE SHEETS -->
+      <div id="section-writer" class="app-section">
+        <div class="section-banner">
+          <div class="section-title-wrap">
+            <span class="step">🔄</span>
+            <div>
+              <h2>Sincronização com Sheets</h2>
+              <p>Preenchimento automático da coluna “Enquete G-Click” na planilha após cada lote gravado.</p>
+            </div>
+          </div>
+        </div>
+
+        <section class="card" id="writerCard">
+          <p id="writerStatus" class="hint" style="margin-top:0">Informe a conta para ver a configuração.</p>
+          <details id="writerSetup">
+            <summary>Configurar nesta planilha (uma vez)</summary>
+            <ol class="writer-steps">
+              <li><button id="copyScript" type="button" class="secondary">Copiar script</button> <span id="copyStatus" class="hint"></span></li>
+              <li>Na planilha: <strong>Extensões → Apps Script</strong>. Apague o conteúdo, cole o script e salve.</li>
+              <li><strong>Implantar → Nova implantação</strong> → tipo <strong>App da Web</strong>; Executar como: <strong>Eu</strong>; Quem pode acessar: <strong>Qualquer pessoa</strong>. Autorize o acesso.</li>
+              <li>Cole aqui o endereço do app da web:<input id="writerUrl" type="url" placeholder="https://script.google.com/macros/s/…/exec"><button id="saveWriter" type="button" class="primary">Salvar e testar</button></li>
+            </ol>
+            <textarea id="scriptFallback" rows="6" readonly hidden></textarea>
+          </details>
+          <div class="row" style="margin-top:14px">
+            <button id="resendMarks" type="button" class="ghost" hidden>Reenviar marcações pendentes</button>
           </div>
         </section>
       </div>
@@ -769,22 +739,17 @@
       <!-- SEÇÃO 8: OBRIGAÇÕES (MÓDULO DE OBRIGAÇÕES & PARIDADE) -->
       <div id="section-obrigacoes" class="app-section" hidden>
         <div class="section-banner">
-          <nav class="breadcrumbs">
-            <span>Obrigações</span>
-            <span class="sep">›</span>
-            <strong>Catálogo & Paridade de Atividades</strong>
-          </nav>
           <div class="section-title-wrap">
             <span class="step">📁</span>
             <div>
-              <h2>Módulo de Obrigações</h2>
+              <h2>Obrigações</h2>
               <p>Gestão do catálogo de obrigações da conta, auditoria de paridade E-mail × WhatsApp e configuração de modelos dinâmicos de mensagem.</p>
             </div>
           </div>
         </div>
 
         <!-- CARDS DE ESTATÍSTICAS E MÉTRICAS -->
-        <div class="obrig-metrics-grid" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:14px;margin-bottom:20px;">
+        <div class="obrig-metrics-grid" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:12px;margin-bottom:12px;">
           <div class="metrics-kpi-card kpi-brand">
             <p class="eyebrow">TOTAL NO CATÁLOGO</p>
             <h3 id="obrigMetricTotal" class="metrics-kpi-val">--</h3>
@@ -808,38 +773,38 @@
         </div>
 
         <!-- BARRA DE CONTROLE, FILTROS E BUSCA -->
-        <section class="card" style="margin-bottom:20px;padding:18px 24px;">
-          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px;margin-bottom:16px;">
+        <section class="card" style="margin-bottom:10px;padding:14px 18px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:12px;">
             <div>
-              <h3 style="margin:0 0 4px;font-size:16px;color:#0f172a;">Catálogo de Obrigações</h3>
+              <h3 style="margin:0 0 2px;font-size:15px;color:#0f172a;">Catálogo de Obrigações</h3>
               <p class="sub-hint" style="margin:0;">Filtre e visualize as obrigações cadastradas e seus canais de disparo automático.</p>
             </div>
-            <div style="display:flex;gap:10px;flex-wrap:wrap;">
-              <button id="btnOpenObrigTemplates" type="button" class="btn btn-secondary btn-md">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <button id="btnOpenObrigTemplates" type="button" class="btn btn-secondary btn-sm">
                 <span>⚙️</span> Modelos Flexíveis de Mensagem
               </button>
-              <button id="btnSyncObrigacoes" type="button" class="btn btn-primary btn-md">
+              <button id="btnSyncObrigacoes" type="button" class="btn btn-primary btn-sm">
                 <span>🔄</span> Sincronizar com G-Click
               </button>
             </div>
           </div>
 
-          <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:12px;align-items:center;">
+          <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:10px;align-items:center;">
             <div>
-              <input id="obrigSearchInput" type="text" placeholder="Buscar por nome da obrigação, ID, órgão ou frequência..." style="width:100%;padding:9px 12px;font-size:13px;">
+              <input id="obrigSearchInput" type="text" placeholder="Buscar por nome da obrigação, ID, órgão ou frequência..." style="width:100%;padding:7px 10px;font-size:12.5px;">
             </div>
             <div>
-              <select id="obrigDeptoFilter" style="width:100%;padding:9px 12px;font-size:13px;">
+              <select id="obrigDeptoFilter" style="width:100%;padding:7px 10px;font-size:12.5px;">
                 <option value="">Todos os Departamentos</option>
               </select>
             </div>
             <div>
-              <select id="obrigFreqFilter" style="width:100%;padding:9px 12px;font-size:13px;">
+              <select id="obrigFreqFilter" style="width:100%;padding:7px 10px;font-size:12.5px;">
                 <option value="">Todas as Frequências</option>
               </select>
             </div>
             <div>
-              <select id="obrigParidadeFilter" style="width:100%;padding:9px 12px;font-size:13px;">
+              <select id="obrigParidadeFilter" style="width:100%;padding:7px 10px;font-size:12.5px;">
                 <option value="">Todas as Situações</option>
                 <option value="conforme">Em Conformidade (Alinhados / Canal E-mail)</option>
                 <option value="pendente_whatsapp">Pendente WhatsApp</option>
@@ -849,16 +814,16 @@
             </div>
           </div>
           <!-- STATUS VISUAL DEDICADO DO MÓDULO DE OBRIGAÇÕES COM BARRA DE PROGRESSO -->
-          <div id="obrigStatusAlert" style="display:none;margin-top:14px;padding:12px 16px;border-radius:8px;font-size:13px;flex-direction:column;gap:8px;">
+          <div id="obrigStatusAlert" style="display:none;margin-top:10px;padding:10px 14px;border-radius:6px;font-size:12.5px;flex-direction:column;gap:6px;">
             <div style="display:flex;align-items:center;justify-content:space-between;width:100%;">
               <div style="display:flex;align-items:center;gap:8px;">
-                <span id="obrigStatusIcon" style="font-size:16px;">ℹ️</span>
+                <span id="obrigStatusIcon" style="font-size:15px;">ℹ️</span>
                 <span id="obrigStatusText" style="font-weight:600;"></span>
               </div>
-              <span id="obrigProgressBadge" style="display:none;font-weight:700;font-size:12px;padding:2px 8px;border-radius:10px;background:rgba(0,0,0,0.06);">0%</span>
+              <span id="obrigProgressBadge" style="display:none;font-weight:700;font-size:11.5px;padding:2px 8px;border-radius:10px;background:rgba(0,0,0,0.06);">0%</span>
             </div>
-            <div id="obrigProgressBarContainer" style="display:none;width:100%;background:rgba(0,0,0,0.08);height:8px;border-radius:4px;overflow:hidden;margin-top:2px;">
-              <div id="obrigProgressBar" style="width:0%;height:100%;background:#0284c7;border-radius:4px;transition:width 0.3s ease;"></div>
+            <div id="obrigProgressBarContainer" style="display:none;width:100%;background:rgba(0,0,0,0.08);height:6px;border-radius:3px;overflow:hidden;margin-top:2px;">
+              <div id="obrigProgressBar" style="width:0%;height:100%;background:#0284c7;border-radius:3px;transition:width 0.3s ease;"></div>
             </div>
           </div>
         </section>
@@ -866,12 +831,12 @@
         <!-- BARRA DE AÇÃO EM MASSA -->
         <div id="obrigBatchBar" class="obrig-batch-bar">
           <div style="display:flex;align-items:center;gap:10px;">
-            <span style="font-size:13px;font-weight:700;color:#0f172a;" id="obrigBatchCountText">0 obrigações selecionadas</span>
+            <span style="font-size:12.5px;font-weight:700;color:#0f172a;" id="obrigBatchCountText">0 obrigações selecionadas</span>
             <span id="obrigBatchDeptoWarning" class="sub-hint" style="color:#d97706;font-weight:600;display:inline-flex;align-items:center;gap:4px;">
               ⚠️ Selecione um departamento no filtro acima para liberar a configuração em massa.
             </span>
           </div>
-          <div style="display:flex;gap:10px;align-items:center;">
+          <div style="display:flex;gap:8px;align-items:center;">
             <button id="btnClearBatchSelection" type="button" class="btn btn-ghost btn-sm" disabled>Limpar Seleção</button>
             <button id="btnOpenBatchEmailModal" type="button" class="btn btn-secondary btn-sm" disabled>
               <span>✉️</span> Configurar E-mail em Massa
@@ -883,24 +848,24 @@
         </div>
 
         <!-- TABELA DE OBRIGAÇÕES -->
-        <section class="card" style="padding:0;overflow:hidden;">
-          <div class="table-wrap" style="max-height:600px;overflow-y:auto;">
-            <table style="width:100%;border-collapse:collapse;">
+        <section class="card" style="padding:0;overflow:hidden;border:none;box-shadow:none;background:transparent;">
+          <div class="table-wrap">
+            <table class="app-table" id="obrigacoesTable">
               <thead>
-                <tr style="background:#f4f8f7;border-bottom:1px solid #dbe6e4;text-align:left;font-size:12px;color:#4a6560;">
-                  <th style="padding:12px 12px;width:36px;text-align:center;">
+                <tr>
+                  <th style="width:36px;text-align:center;">
                     <input type="checkbox" id="obrigSelectAll" title="Selecionar todas as obrigações filtradas" style="cursor:pointer;">
                   </th>
-                  <th style="padding:12px 14px;width:60px;">ID</th>
-                  <th style="padding:12px 16px;">Obrigação</th>
-                  <th style="padding:12px 16px;">Departamento</th>
-                  <th style="padding:12px 16px;">Frequência</th>
-                  <th style="padding:12px 16px;">Vencimento</th>
-                  <th style="padding:12px 16px;">Fato Gerador</th>
-                  <th style="padding:12px 16px;">Órgão</th>
-                  <th style="padding:12px 16px;text-align:center;">Paridade Canais</th>
-                  <th style="padding:12px 16px;text-align:center;" title="Quadro Kanban vinculado no G-Click">Quadro Kanban</th>
-                  <th style="padding:12px 16px;text-align:right;">Ações</th>
+                  <th style="width:55px;">ID</th>
+                  <th>Obrigação</th>
+                  <th>Departamento</th>
+                  <th>Frequência</th>
+                  <th>Vencimento</th>
+                  <th>Fato Gerador</th>
+                  <th>Órgão</th>
+                  <th style="text-align:center;">Paridade Canais</th>
+                  <th style="text-align:center;" title="Quadro Kanban vinculado no G-Click">Quadro Kanban</th>
+                  <th style="text-align:right;">Ações</th>
                 </tr>
               </thead>
               <tbody id="obrigacoesTableBody">
@@ -910,11 +875,11 @@
               </tbody>
             </table>
           </div>
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 20px;border-top:1px solid #edf3f2;background:#fafcfb;">
-            <span id="obrigPaginationInfo" style="font-size:12.5px;color:var(--text-muted);">Exibindo 0 de 0</span>
-            <div style="display:flex;gap:8px;">
-              <button id="obrigPrevPage" type="button" class="ghost" style="padding:5px 12px;font-size:12px;" disabled>Anterior</button>
-              <button id="obrigNextPage" type="button" class="ghost" style="padding:5px 12px;font-size:12px;" disabled>Próxima</button>
+          <div class="app-table-footer">
+            <span id="obrigPaginationInfo">Exibindo 0 de 0</span>
+            <div style="display:flex;gap:6px;">
+              <button id="obrigPrevPage" type="button" class="btn-table-action btn-action-ghost" disabled>Anterior</button>
+              <button id="obrigNextPage" type="button" class="btn-table-action btn-action-ghost" disabled>Próxima</button>
             </div>
           </div>
         </section>
@@ -1493,18 +1458,200 @@ Atenciosamente,</textarea>
         </div>
       </div>
 
+      <!-- SEÇÃO: CARTEIRA DE CLIENTES POR USUÁRIO -->
+      <div id="section-carteira" class="app-section" hidden>
+        <div class="section-banner">
+          <div class="section-title-wrap">
+            <span class="step">🗂️</span>
+            <div>
+              <h2>Carteira por Usuário</h2>
+              <p>Conferência e vinculação deliberada de empresas aos responsáveis no G-Click. Mapeia apelidos da planilha (ex.: ana.exito), aplica máscara de CNPJ e confere Minha Carteira, Clientes Disponíveis com o mesmo Cargo e Clientes Restantes Disponíveis.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- CARDS DE ESTATÍSTICAS E MÉTRICAS DA CARTEIRA -->
+        <div class="obrig-metrics-grid" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:14px;margin-bottom:20px;">
+          <div class="metrics-kpi-card kpi-brand">
+            <p class="eyebrow">USUÁRIOS PLANILHA</p>
+            <h3 id="carteiraMetricUsers" class="metrics-kpi-val">--</h3>
+            <span class="sub-hint" id="carteiraMetricUsersHint">Aguardando planilha</span>
+          </div>
+          <div class="metrics-kpi-card kpi-indigo">
+            <p class="eyebrow">EMPRESAS PLANILHA</p>
+            <h3 id="carteiraMetricTotalEmpresas" class="metrics-kpi-val">--</h3>
+            <span class="sub-hint">Total de linhas válidas</span>
+          </div>
+          <div class="metrics-kpi-card kpi-success">
+            <p class="eyebrow">JÁ VINCULADOS</p>
+            <h3 id="carteiraMetricJaVinculados" class="metrics-kpi-val">--</h3>
+            <span class="sub-hint">Consta em Minha Carteira</span>
+          </div>
+          <div class="metrics-kpi-card kpi-warning">
+            <p class="eyebrow">DISPONÍVEIS P/ VINCULAR</p>
+            <h3 id="carteiraMetricDisponiveis" class="metrics-kpi-val">--</h3>
+            <span class="sub-hint" id="carteiraMetricDisponiveisHint">Mesmo Cargo · Restantes</span>
+          </div>
+          <div class="metrics-kpi-card kpi-danger" style="background:#fff;border-left:4px solid var(--badge-danger-text);">
+            <p class="eyebrow" style="color:var(--badge-danger-text);">NÃO LOCALIZADOS</p>
+            <h3 id="carteiraMetricNaoLocalizados" class="metrics-kpi-val" style="color:var(--badge-danger-text);">--</h3>
+            <span class="sub-hint">Fora do G-Click</span>
+          </div>
+        </div>
+
+
+
+          <!-- RESUMO DA PLANILHA CARREGADA -->
+          <div class="carteira-sheet-summary" id="carteiraSheetSummary">
+            <div>
+              <strong id="carteiraSheetTitle">Planilha da Carteira não carregada</strong>
+              <span id="carteiraSheetDetail">Leia a planilha em Planilhas, escolhendo o uso "Carteira por Usuário".</span>
+            </div>
+            <button id="btnCarteiraChangeSheet" type="button" class="btn btn-secondary btn-md">Abrir Planilhas</button>
+          </div>
+
+          <!-- PAINEL OPERACIONAL UNIFICADO -->
+          <section class="card" id="carteiraControlCard" style="padding:18px 24px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px;margin-bottom:16px;">
+              <div>
+                <h3 style="margin:0 0 4px;font-size:16px;color:#0f172a;">Painel de Conferência &amp; Vínculo</h3>
+                <p class="sub-hint" style="margin:0;">Selecione o responsável (ou todos), confira no G-Click e vincule os clientes disponíveis.</p>
+              </div>
+              <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                <label class="carteira-origem" for="carteiraVincularOrigem" style="margin:0;">
+                  <span style="font-size:12px;font-weight:600;color:#475569;">Vincular de:</span>
+                  <select id="carteiraVincularOrigem" style="padding:6px 10px;font-size:13px;border-radius:6px;border:1px solid #cbd5e1;">
+                    <option value="restantes">Clientes Restantes Disponíveis</option>
+                    <option value="mesmo_cargo">Clientes Disponíveis com o mesmo Cargo</option>
+                  </select>
+                </label>
+                <button id="btnAuditCarteira" type="button" class="btn btn-primary btn-md">
+                  <span>🔍</span> Conferir Carteira
+                </button>
+                <button id="btnVincularCarteira" type="button" class="btn btn-primary btn-md" disabled>
+                  <span>🚀</span> Vincular Clientes Disponíveis
+                </button>
+                <button id="btnExportCarteiraCsv" type="button" class="btn btn-secondary btn-md" style="display:none;">
+                  <span>⬇️</span> Baixar CSV
+                </button>
+              </div>
+            </div>
+
+            <!-- SELETOR ÚNICO DE RESPONSÁVEL DA PLANILHA -->
+            <div id="carteiraUserSelectWrap" style="background:#f8fafc;padding:12px 16px;border-radius:8px;border:1px solid #e2e8f0;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+              <label for="carteiraSelectResponsavel" style="font-size:13px;font-weight:600;color:#1e293b;white-space:nowrap;">Filtrar Usuário para Conferência:</label>
+              <select id="carteiraSelectResponsavel" style="flex:1;min-width:280px;padding:8px 12px;font-size:13px;border-radius:6px;border:1px solid #cbd5e1;">
+                <option value="">Selecione um usuário...</option>
+              </select>
+            </div>
+          </section>
+
+          <!-- RESULTADOS DA AUDITORIA & TABELA -->
+          <section id="cardCarteiraAudit" class="card" style="padding:18px 24px;display:none;">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:14px;">
+              <div>
+                <h3 style="margin:0 0 4px;font-size:16px;color:#0f172a;">Resultados da Conferência</h3>
+                <p class="sub-hint" style="margin:0;">Classificação dos CNPJs na tela da Carteira do G-Click.</p>
+              </div>
+            </div>
+
+            <!-- FILTROS DA TABELA -->
+            <div style="display:grid;grid-template-columns:2fr 1fr;gap:12px;margin-bottom:14px;">
+              <input id="carteiraAuditSearch" type="text" placeholder="🔍 Buscar por usuário, empresa, CNPJ..." style="padding:8px 12px;font-size:13px;">
+              <select id="carteiraAuditStatusFilter" style="padding:8px 12px;font-size:13px;">
+                <option value="">Todas as Situações</option>
+                <option value="disponivel_para_vincular">Disponíveis para vincular (qualquer coluna)</option>
+                <option value="origem:restantes">Disponíveis em Clientes Restantes</option>
+                <option value="origem:mesmo_cargo">Disponíveis em Mesmo Cargo</option>
+                <option value="ja_vinculado">Já Vinculados (Minha Carteira)</option>
+                <option value="nao_localizado">Não Localizados no G-Click</option>
+                <option value="usuario_nao_localizado">Usuário Não Cadastrado no G-Click</option>
+              </select>
+              <!-- Filtro de usuário mantido sincronizado em segundo plano -->
+              <select id="carteiraAuditUserFilter" style="display:none;">
+                <option value="">Todos os Usuários / Responsáveis</option>
+              </select>
+            </div>
+
+            <!-- TABELA DE RESULTADOS -->
+            <div class="table-wrap">
+              <table id="carteiraAuditTable" class="app-table">
+                <thead>
+                  <tr>
+                    <th style="width:50px;">Linha</th>
+                    <th>Responsável (Planilha / G-Click)</th>
+                    <th>Empresa</th>
+                    <th>CNPJ (Máscara)</th>
+                    <th>Situação</th>
+                    <th>Coluna no G-Click</th>
+                    <th>Ação / Detalhe</th>
+                  </tr>
+                </thead>
+                <tbody id="carteiraAuditTableBody">
+                  <tr>
+                    <td colspan="7" style="padding:24px;text-align:center;color:#64748b;">Nenhuma conferência realizada. Selecione um usuário e clique em "Conferir Carteira".</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div id="carteiraAuditSummary" class="app-table-footer">
+              <span id="carteiraAuditSummaryText">Exibindo 0 registros</span>
+              <span id="carteiraAuditVincularHint" style="font-weight:600;color:#0f766e;"></span>
+            </div>
+          </section>
+
+          <!-- HISTÓRICO: VÍNCULOS E RETIRADAS DO ROBÔ -->
+          <section id="cardCarteiraOperacoes" class="card" style="padding:14px 18px;" hidden>
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:10px;">
+              <div>
+                <h3 style="margin:0 0 2px;font-size:15px;color:#0f172a;">Histórico de vínculos e retiradas</h3>
+                <p class="sub-hint" style="margin:0;">Cada escrita na Carteira do G-Click fica registrada aqui, inclusive as que deram erro.</p>
+              </div>
+              <span id="carteiraOperacoesResumo" class="sub-hint"></span>
+            </div>
+            <div class="table-wrap" style="max-height:340px;">
+              <table class="app-table carteira-ops-table">
+                <thead><tr><th>Quando</th><th>Ação</th><th>Usuário G-Click</th><th>CNPJs</th><th>Resultado</th><th>Operador</th></tr></thead>
+                <tbody id="carteiraOperacoesBody"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <!-- GESTÃO DE CARTEIRAS EXISTENTES & RETIRADAS -->
+          <section class="card" style="padding:14px 18px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+              <div>
+                <h3 style="margin:0 0 2px;font-size:15px;color:#0f172a;">Usuários e Carteiras Sincronizadas no G-Click</h3>
+                <p class="sub-hint" style="margin:0;">Atualiza o catálogo de usuários ativos e as empresas atualmente em <strong>Minha Carteira</strong> de cada um. Para retirar clientes, expanda o nome, marque as empresas e confirme.</p>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;">
+                <span id="carteiraUsersCountBadge" class="nav-badge badge-neutral" style="font-size:11.5px;padding:3px 8px;">0 usuários em cache</span>
+                <button id="btnSyncCarteiraUsers" type="button" class="btn btn-secondary btn-sm">
+                  <span>🔄</span> Sincronizar agora
+                </button>
+              </div>
+            </div>
+            <div id="carteiraUsersPreview" style="margin-top:10px;display:none;font-size:12.5px;color:#475569;background:#f8fafc;padding:8px 12px;border-radius:6px;border:1px solid #e2e8f0;">
+              <span id="carteiraUsersPreviewText"></span>
+            </div>
+            <div id="carteiraMinhaWrap" class="carteira-minha" hidden style="margin-top:14px;">
+              <div class="carteira-minha-head">
+                <strong>Minha Carteira por usuário</strong>
+                <span id="carteiraMinhaSyncedAt" class="sub-hint"></span>
+              </div>
+              <div class="carteira-minha-list" id="carteiraMinhaList"></div>
+            </div>
+          </section>
+        </div>
+
       <!-- SEÇÃO 7: ADMINISTRAÇÃO & USUÁRIOS (RBAC) -->
       <div id="section-users" class="app-section" hidden>
         <div class="section-banner">
-          <nav class="breadcrumbs">
-            <span>Administração</span>
-            <span class="sep">›</span>
-            <strong>Usuários & Permissões</strong>
-          </nav>
           <div class="section-title-wrap">
             <span class="step">07</span>
             <div>
-              <h2>Gestão de Usuários e Permissões (RBAC)</h2>
+              <h2>Usuários & Permissões</h2>
               <p>Gerencie operadores, cargos padrão e atribua exceções diretas de permissão por usuário.</p>
             </div>
           </div>
@@ -1520,7 +1667,7 @@ Atenciosamente,</textarea>
           </div>
 
           <div class="table-wrap">
-            <table>
+            <table class="app-table">
               <thead>
                 <tr>
                   <th>Nome</th>

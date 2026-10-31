@@ -28,6 +28,7 @@ test('sem login a tela não mostra perguntas nem permite mapear; mapeamentos sal
     await page.route('**/api/downloads', route => route.fulfill({ json: { files: [{ name: 'enquete.csv', modifiedAt: new Date().toISOString(), size: 100, stale: false }] } }));
     await page.route('**/api/tasks', route => route.fulfill({ json: { source: 'enquete.csv', rowCount: 2, tasks: [{ name: 'DeSTDA', count: 1, clients: 1 }, { name: 'DAC - Mensal', count: 1, clients: 1 }] } }));
     await page.goto(`http://127.0.0.1:${server.address().port}/`);
+    await page.getByRole('radio', { name: 'CSV baixado do Sheets' }).click(); // a tela abre em Link do Google Sheets
     await page.locator('#accountId').fill('6581');
     await page.locator('#accountId').dispatchEvent('change');
     await page.waitForFunction(() => document.querySelector('#queueSummary').textContent.includes('2 tarefas da planilha'));

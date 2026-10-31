@@ -1,10 +1,12 @@
 import { chromium } from 'playwright';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import { normalizeCnpj, validCnpj, formatCnpj } from './data.mjs';
 import { validateAnswerMapping } from './answer-map.mjs';
 import { buildCatalog } from './catalog.mjs';
 
 const BASE = 'https://app.gclick.com.br/Listar.do?obj=enqueteopen&tipo=0&empId=';
-export const LOGIN_URL = 'https://appp.gclick.com.br/autenticacao';
+export const LOGIN_URL = 'https://appp.gclick.com.br/empresas';
 function findEnquetePage(context, accountId) {
   return context.pages().find(page => {
     if (page.isClosed()) return false;
@@ -20,13 +22,35 @@ const checkboxSelector = rules => `input[type="checkbox"][value="${rules.answerV
 const targetSelector = rules => rules.inputType === 'checkbox' ? checkboxSelector(rules) : `${radioSelector(rules)}[value="${rules.answerValue}"]`;
 // Oscilações de rede (troca de Wi-Fi, VPN, DNS) não devem derrubar uma conferência inteira: tenta de novo antes de desistir.
 const TRANSIENT = /net::ERR_(NETWORK_CHANGED|INTERNET_DISCONNECTED|CONNECTION_RESET|CONNECTION_CLOSED|CONNECTION_REFUSED|TIMED_OUT|NAME_NOT_RESOLVED|ADDRESS_UNREACHABLE)|Timeout \d+ms exceeded/;
+// O legado (app.gclick.com.br) mantém UMA empresa por sessão: a troca só acontece pelo card em appp /empresas
+// (que faz o POST em g3login.do). Pedir outro empId pela URL devolve esta página em vez do módulo.
+export const LEGACY_WRONG_EMPRESA = /ocorreu mudan[çc]a de empresa/i;
+export class EmpresaSessionError extends Error {
+  constructor(accountId) {
+    super(`O G-Click está com a sessão aberta em outra empresa e recusou a conta ${accountId ?? 'solicitada'}. Alterne para a conta ${accountId ?? 'desejada'} em "Conexão & Conta G-Click" antes de continuar.`);
+    this.code = 'empresa_session_mismatch';
+    this.accountId = accountId ?? null;
+  }
+}
+export async function assertLegacyEmpresa(page) {
+  let u;
+  try { u = new URL(page.url()); } catch { return; }
+  if (u.hostname !== 'app.gclick.com.br') return;
+  let text = '';
+  try { text = await page.evaluate(() => document.body?.innerText ?? ''); } catch { /* página sem DOM legível: não há como afirmar a divergência */ }
+  if (LEGACY_WRONG_EMPRESA.test(text)) throw new EmpresaSessionError(u.searchParams.get('empId'));
+}
 export async function gotoWithRetry(page, url, { attempts = 3, delayMs = 3000 } = {}) {
   for (let attempt = 1; ; attempt++) {
-    try { return await page.goto(url, { waitUntil: 'domcontentloaded' }); }
+    let response;
+    try { response = await page.goto(url, { waitUntil: 'domcontentloaded' }); }
     catch (error) {
       if (attempt >= attempts || !TRANSIENT.test(error.message) || page.isClosed()) throw error;
       await new Promise(resolve => setTimeout(resolve, delayMs * attempt));
+      continue;
     }
+    await assertLegacyEmpresa(page);
+    return response;
   }
 }
 export async function getActiveEmpresa(page) {
@@ -51,53 +75,322 @@ export async function getAccessEmpresas(page) {
   } catch { return null; }
 }
 
+// Foto da empresa: o G-Click só a mostra nos cartões de "Minhas Empresas", em link temporário do S3
+// com o empId no caminho (…/gclick/empresa/<empId>/foto.jpg?X-Amz-…). Os links vistos ficam na memória
+// até serem baixados; a cópia em disco é o que o painel exibe, porque o link expira.
+const empresaFotoUrls = new Map();
+const FOTO_EXTS = ['jpg', 'png', 'webp'];
+const FOTO_MAX_BYTES = 2 * 1024 * 1024;
+
+export async function rememberEmpresaFotos(page) {
+  const found = await page.evaluate(() => Array.from(document.querySelectorAll('.empresa-card img'))
+    .map(img => img.currentSrc || img.src)
+    .map(src => ({ src, id: (src.match(/\/empresa\/(\d+)\//) || [])[1] }))
+    .filter(item => item.id)).catch(() => []);
+  for (const { id, src } of found) empresaFotoUrls.set(String(id), src);
+  return found.length;
+}
+
+async function findEmpresaFotoUrl(context, accountId) {
+  for (const page of context.pages()) {
+    if (page.isClosed()) continue;
+    let host = '';
+    try { host = new URL(page.url()).hostname; } catch { continue; }
+    if (!/(^|\.)gclick\.com\.br$/.test(host)) continue;
+    const src = await page.evaluate(id => {
+      const img = Array.from(document.images).find(item => (item.currentSrc || item.src).includes(`/empresa/${id}/`));
+      if (img) return img.currentSrc || img.src;
+      // Header do dashboard: a SPA guarda a empresa ativa no localStorage, às vezes com o link da imagem.
+      for (const key of ['g3CurrentEmpresa', 'g3AccessEmpresas']) {
+        let value;
+        try { value = JSON.parse(localStorage.getItem(key) || 'null'); } catch { continue; }
+        const list = Array.isArray(value) ? value : [value];
+        const empresa = list.find(item => item && String(item.id) === id);
+        const url = empresa && Object.values(empresa).find(field => typeof field === 'string' && /^https?:\/\/\S+\.(jpe?g|png|webp)(\?|$)/i.test(field));
+        if (url) return url;
+      }
+      return null;
+    }, String(accountId)).catch(() => null);
+    if (src) return src;
+  }
+  return empresaFotoUrls.get(String(accountId)) ?? null;
+}
+
+// Diagnóstico quando a foto não é achada: lista as imagens das páginas abertas, sem query string
+// (o link assinado não vai para o log), e os campos da empresa ativa no localStorage.
+export async function describeEmpresaFotoCandidates(context) {
+  const report = [];
+  for (const page of context?.pages() ?? []) {
+    if (page.isClosed()) continue;
+    let host = '';
+    try { host = new URL(page.url()).hostname; } catch { continue; }
+    if (!/(^|\.)gclick\.com\.br$/.test(host)) continue;
+    report.push(await page.evaluate(() => {
+      const clean = src => String(src || '').split('?')[0];
+      const images = Array.from(document.images).map(img => clean(img.currentSrc || img.src)).filter(Boolean);
+      const backgrounds = Array.from(document.querySelectorAll('header *, nav *, [class*="empresa"], [class*="logo"]'))
+        .map(el => getComputedStyle(el).backgroundImage).filter(bg => bg && bg !== 'none').map(clean);
+      let current = null;
+      try { current = JSON.parse(localStorage.getItem('g3CurrentEmpresa') || 'null'); } catch { /* sem empresa */ }
+      return { url: clean(location.href), images: [...new Set(images)].slice(0, 30), backgrounds: [...new Set(backgrounds)].slice(0, 10), currentEmpresaKeys: current ? Object.keys(current) : null };
+    }).catch(error => ({ url: page.url(), error: error.message })));
+  }
+  return report;
+}
+
+export function empresaFotoPath(dir, accountId, ext) {
+  if (!/^\d+$/.test(String(accountId))) throw new Error('Conta inválida');
+  return path.join(dir, `${accountId}.${ext}`);
+}
+
+export async function findSavedEmpresaFoto(dir, accountId) {
+  if (!/^\d+$/.test(String(accountId))) return null;
+  for (const ext of FOTO_EXTS) {
+    const file = empresaFotoPath(dir, accountId, ext);
+    try { await fs.access(file); return { file, ext }; } catch { /* tenta o próximo formato */ }
+  }
+  return null;
+}
+
+// Baixa e guarda a foto da empresa; devolve o caminho salvo ou null quando a foto não está ao alcance.
+export async function saveEmpresaFoto(context, accountId, dir) {
+  if (!context || !/^\d+$/.test(String(accountId))) return null;
+  const url = await findEmpresaFotoUrl(context, accountId);
+  if (!url) return null;
+  const response = await context.request.get(url, { timeout: 15000 }).catch(() => null);
+  if (!response?.ok()) return null;
+  const type = String(response.headers()['content-type'] ?? '');
+  if (!type.startsWith('image/')) return null;
+  const body = await response.body();
+  if (!body.length || body.length > FOTO_MAX_BYTES) return null;
+  const ext = type.includes('png') ? 'png' : type.includes('webp') ? 'webp' : 'jpg';
+  await fs.mkdir(dir, { recursive: true });
+  for (const other of FOTO_EXTS.filter(item => item !== ext)) await fs.rm(empresaFotoPath(dir, accountId, other), { force: true });
+  const file = empresaFotoPath(dir, accountId, ext);
+  await fs.writeFile(file, body);
+  empresaFotoUrls.delete(String(accountId));
+  return file;
+}
+
 export async function enterEmpresa(page, accountId) {
   if (!page || page.isClosed()) return { entered: false };
   let currentUrl;
   try { currentUrl = new URL(page.url()); } catch { return { entered: false }; }
 
-  // Se estiver na tela de empresas (/empresas)
-  if (currentUrl.hostname === 'appp.gclick.com.br' && currentUrl.pathname.includes('/empresas')) {
-    try {
-      await page.waitForSelector('.empresa-card', { timeout: 8000 });
-      const card = page.locator('.empresa-card').filter({
-        has: page.locator(`img[src*="/empresa/${accountId}/"]`)
-      }).first();
-      if (await card.count() > 0) {
-        await card.click();
-        await page.waitForURL(u => !u.pathname.endsWith('/empresas'), { timeout: 15000 });
-        await page.waitForTimeout(1500);
-        return { entered: true, accountId };
-      }
-    } catch {}
-    return { entered: false };
+  const isAppp = /(^|\.)gclick\.com\.br$/.test(currentUrl.hostname) || currentUrl.hostname === '127.0.0.1' || currentUrl.hostname === 'localhost';
+  if (!isAppp) return { entered: false };
+
+  // Se já está no painel ou outra tela autenticada, verifica se já é a empresa certa
+  const current = await getActiveEmpresa(page);
+  if (current && String(current.id) === String(accountId)) {
+    return { entered: true, accountId, empresaNome: current.nome };
   }
 
-  // Se já está no painel ou outra tela autenticada do appp
-  if (currentUrl.hostname === 'appp.gclick.com.br' && !currentUrl.pathname.startsWith('/autenticacao')) {
-    const current = await getActiveEmpresa(page);
-    if (current && String(current.id) === String(accountId)) {
-      return { entered: true, accountId };
-    }
+  // 1. Abre a tela de empresas se não estivermos vendo os cards
+  let hasCards = (await page.locator('.empresa-card:not(.disabled)').count()) > 0;
+  if (!hasCards) {
     try {
-      const switchBtn = page.locator('i[title="Minhas Empresas"]').last();
-      if (await switchBtn.count() > 0) {
-        await switchBtn.click();
-        await page.waitForURL(u => u.pathname.includes('/empresas'), { timeout: 10000 });
-        await page.waitForSelector('.empresa-card', { timeout: 8000 });
-        const card = page.locator('.empresa-card').filter({
-          has: page.locator(`img[src*="/empresa/${accountId}/"]`)
-        }).first();
-        if (await card.count() > 0) {
-          await card.click();
-          await page.waitForURL(u => !u.pathname.endsWith('/empresas'), { timeout: 15000 });
-          await page.waitForTimeout(1500);
-          return { entered: true, accountId };
-        }
+      const onGclick = currentUrl.hostname.includes('gclick.com.br');
+      if (onGclick && currentUrl.hostname !== 'appp.gclick.com.br') {
+        await page.goto('https://appp.gclick.com.br/dashboard', { waitUntil: 'domcontentloaded' }).catch(() => {});
       }
+      const switchBtn = page.locator('[title="Minhas Empresas"], [aria-label="Minhas Empresas"], a[href*="/empresas"]').last();
+      let clicked = false;
+      try {
+        await switchBtn.waitFor({ state: 'attached', timeout: 3000 });
+        if ((await switchBtn.count()) > 0) {
+          await switchBtn.click();
+          clicked = true;
+        }
+      } catch {}
+      if (!clicked) {
+        await page.goto(onGclick ? 'https://appp.gclick.com.br/empresas' : `${currentUrl.origin}/empresas`, { waitUntil: 'domcontentloaded' }).catch(() => {});
+      }
+      // Aguarda os cards aparecerem ou a URL mudar
+      await Promise.race([
+        page.waitForSelector('.empresa-card', { timeout: 12000 }).catch(() => {}),
+        page.waitForURL(u => u.pathname.includes('/empresas'), { timeout: 12000 }).catch(() => {})
+      ]);
     } catch {}
   }
-  return { entered: false };
+
+  // 2. Busca e clica no card da empresa solicitada
+  try {
+    await page.waitForSelector('.empresa-card', { timeout: 10000 });
+    await rememberEmpresaFotos(page);
+    const enabledCards = () => page.locator('.empresa-card:not(.disabled)');
+
+    const allAccess = await getAccessEmpresas(page) || [];
+    const targetEmp = allAccess.find(e => String(e.id) === String(accountId));
+    const targetNome = targetEmp?.nome || '';
+    const targetApelido = targetEmp?.apelido || '';
+
+    // 1. Procura por imagem com ID no src
+    let card = enabledCards().filter({
+      has: page.locator(`img[src*="/empresa/${accountId}/"], img[src*="/${accountId}/"]`)
+    }).first();
+
+    // 2. Procura por nome ou apelido
+    if ((await card.count()) === 0 && (targetNome || targetApelido)) {
+      if (targetNome) card = enabledCards().filter({ hasText: targetNome }).first();
+      if ((await card.count()) === 0 && targetApelido) card = enabledCards().filter({ hasText: targetApelido }).first();
+    }
+
+    // 3. Procura por texto contendo o ID
+    if ((await card.count()) === 0) {
+      card = enabledCards().filter({ hasText: String(accountId) }).first();
+    }
+
+    let clicked = false;
+    if ((await card.count()) > 0) {
+      try {
+        await card.scrollIntoViewIfNeeded({ timeout: 3000 }).catch(() => {});
+        await card.click({ timeout: 5000 });
+        clicked = true;
+      } catch {
+        clicked = await card.evaluate(el => { el.click(); return true; }).catch(() => false);
+      }
+    }
+
+    if (!clicked) {
+      // Fallback robusto via evaluate procurando em todos os cards
+      clicked = await page.evaluate((targetId) => {
+        const cards = Array.from(document.querySelectorAll('.empresa-card:not(.disabled)'));
+        const found = cards.find(c => {
+          const h = c.innerHTML || '';
+          const t = c.innerText || '';
+          return h.includes(`/empresa/${targetId}/`) || h.includes(`/${targetId}/`) || t.includes(String(targetId)) || c.id?.includes(String(targetId));
+        });
+        if (found) { found.click(); return true; }
+        return false;
+      }, accountId).catch(() => false);
+    }
+
+    if (clicked) {
+      // Aguarda confirmação ativa gravada no localStorage pelo G-Click
+      await page.waitForFunction((id) => {
+        try {
+          const cur = JSON.parse(localStorage.getItem('g3CurrentEmpresa') || 'null');
+          return cur && String(cur.id) === String(id);
+        } catch { return false; }
+      }, String(accountId), { timeout: 15000 }).catch(() => {});
+
+      await page.waitForTimeout(1000);
+      const currentAfter = await getActiveEmpresa(page);
+      return {
+        entered: Boolean(currentAfter && String(currentAfter.id) === String(accountId)),
+        accountId,
+        empresaNome: currentAfter?.nome || targetNome || null
+      };
+    }
+  } catch {}
+
+  const finalCheck = await getActiveEmpresa(page);
+  return {
+    entered: Boolean(finalCheck && String(finalCheck.id) === String(accountId)),
+    accountId,
+    empresaNome: finalCheck?.nome || null
+  };
+}
+
+/**
+ * Garante que a empresa ativa no G-Click coincide com accountId.
+ * Se estiver conectado em outra empresa (ex: 2420), alterna automaticamente para accountId.
+ */
+export async function ensureEmpresaActive(contextOrPage, accountId, { autoSwitch = true } = {}) {
+  if (!contextOrPage || !accountId) return { active: false, reason: 'missing_context_or_account' };
+
+  let context = null;
+  let page = null;
+  if (typeof contextOrPage.pages === 'function') {
+    context = contextOrPage;
+    const pages = context.pages().filter(p => !p.isClosed());
+    page = pages.find(p => {
+      try { return new URL(p.url()).hostname === 'appp.gclick.com.br'; } catch { return false; }
+    }) || pages.find(p => {
+      try { return /(^|\.)gclick\.com\.br$/.test(new URL(p.url()).hostname); } catch { return false; }
+    });
+  } else {
+    page = contextOrPage;
+    context = page.context?.();
+  }
+
+  if (!page || page.isClosed()) {
+    return { active: false, reason: 'no_gclick_page_open' };
+  }
+
+  // 1. Verifica empresa ativa atual
+  const active = await getActiveEmpresa(page);
+  const allAccess = await getAccessEmpresas(page) || [];
+
+  if (active && String(active.id) === String(accountId)) {
+    return {
+      active: true,
+      accountId: String(accountId),
+      currentEmpresaId: active.id,
+      currentAccountId: String(active.id),
+      currentEmpresaNome: active.nome || null,
+      empresaNome: active.nome || null,
+      availableEmpresas: allAccess
+    };
+  }
+
+  // 2. Se o usuário não possui acesso à empresa solicitada
+  if (allAccess.length > 0 && !allAccess.some(e => String(e.id) === String(accountId))) {
+    return {
+      active: false,
+      reason: 'account_not_in_access_list',
+      currentAccountId: active?.id ? String(active.id) : null,
+      currentEmpresaId: active?.id || null,
+      currentEmpresaNome: active?.nome || null,
+      requestedAccountId: String(accountId),
+      targetAccountId: String(accountId),
+      availableEmpresas: allAccess
+    };
+  }
+
+  // Se autoSwitch for false, não realiza a troca e reporta a divergência
+  if (!autoSwitch) {
+    return {
+      active: false,
+      reason: 'account_mismatch',
+      currentAccountId: active?.id ? String(active.id) : null,
+      currentEmpresaId: active?.id || null,
+      currentEmpresaNome: active?.nome || null,
+      requestedAccountId: String(accountId),
+      targetAccountId: String(accountId),
+      availableEmpresas: allAccess
+    };
+  }
+
+  // 3. Empresa ativa é diferente ou estamos em /empresas: aciona troca para accountId
+  const result = await enterEmpresa(page, accountId);
+  if (result.entered) {
+    const updated = await getActiveEmpresa(page);
+    return {
+      active: true,
+      accountId: String(accountId),
+      currentEmpresaId: updated?.id || accountId,
+      currentAccountId: String(updated?.id || accountId),
+      currentEmpresaNome: updated?.nome || result.empresaNome || null,
+      empresaNome: updated?.nome || result.empresaNome || null,
+      switchedFrom: active?.id ? String(active.id) : null,
+      availableEmpresas: allAccess
+    };
+  }
+
+  // Se não conseguiu entrar
+  const currentAfter = await getActiveEmpresa(page);
+  return {
+    active: Boolean(currentAfter && String(currentAfter.id) === String(accountId)),
+    reason: 'failed_to_switch',
+    currentAccountId: currentAfter?.id ? String(currentAfter.id) : (active?.id ? String(active.id) : null),
+    currentEmpresaId: currentAfter?.id || active?.id || null,
+    currentEmpresaNome: currentAfter?.nome || active?.nome || null,
+    requestedAccountId: String(accountId),
+    targetAccountId: String(accountId),
+    availableEmpresas: allAccess
+  };
 }
 
 export async function hasGclickSession(context, accountId) {
@@ -144,8 +437,13 @@ export async function waitForEnquete(context, accountId, { timeoutMs = 10 * 60 *
     if (context.pages().some(page => loggedInUrl(page.url())) && Date.now() - lastTry > 20000) {
       lastTry = Date.now();
       onStatus(`Login detectado. Abrindo a Enquete da conta ${accountId}…`);
-      if (await hasGclickSession(context, accountId)) return true;
-      onStatus(`A Enquete da conta ${accountId} não abriu. Confira se o usuário tem acesso a esse escritório; nova tentativa em 20 s.`);
+      try {
+        if (await hasGclickSession(context, accountId)) return true;
+        onStatus(`A Enquete da conta ${accountId} não abriu. Confira se o usuário tem acesso a esse escritório; nova tentativa em 20 s.`);
+      } catch (error) {
+        if (!(error instanceof EmpresaSessionError)) throw error;
+        onStatus(`${error.message} Nova tentativa em 20 s.`);
+      }
     }
     await new Promise(resolve => setTimeout(resolve, intervalMs));
   }

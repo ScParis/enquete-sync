@@ -36,6 +36,7 @@ test('conta nova carrega o próprio catálogo e recebe sugestão de mapeamento d
     await page.route('**/api/downloads', route => route.fulfill({ json: { files: [{ name: 'enquete.csv', modifiedAt: new Date().toISOString(), size: 100, stale: false }] } }));
     await page.route('**/api/tasks', route => route.fulfill({ json: { source: 'enquete.csv', rowCount: 2, tasks: [{ name: 'DeSTDA', count: 1, clients: 1 }, { name: 'DAS - Mensal - CDB', count: 1, clients: 1 }] } }));
     await page.goto(`http://127.0.0.1:${server.address().port}/`);
+    await page.getByRole('radio', { name: 'CSV baixado do Sheets' }).click(); // a tela abre em Link do Google Sheets
     assert.equal(await page.locator('#accountId').inputValue(), '', 'nenhuma conta fixa como padrão');
     await page.locator('#accountId').fill('7000');
     await page.locator('#accountId').dispatchEvent('change');

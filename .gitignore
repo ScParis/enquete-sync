@@ -25,4 +25,6 @@ automacao/backups/
 .env
 .env.local
 *.txt
+*.swp
+*.swo
 

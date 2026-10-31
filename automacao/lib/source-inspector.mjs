@@ -124,6 +124,11 @@ function suggestTargetField(header, samples, position) {
     return { field: 'empresa', confidence: 'high', needsConfirmation: false };
   }
 
+  // Responsável (apelido do usuário G-Click na planilha da Carteira)
+  if (['pessoa responsavel', 'responsavel', 'usuario', 'apelido', 'nome do usuario'].includes(norm)) {
+    return { field: 'responsavel', confidence: 'high', needsConfirmation: false };
+  }
+
   // EmpID (identificador interno G-Click)
   if (['empid', 'id empresa', 'id_empresa', 'gclick id', 'id gclick'].includes(norm)) {
     return { field: 'empId', confidence: 'high', needsConfirmation: false };

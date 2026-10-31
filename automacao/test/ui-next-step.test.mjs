@@ -30,6 +30,7 @@ test('cartão mostra a situação real na Enquete e a tela orienta baixar CSV no
       pendingTasks: [], excludedTasks: [], failedTasks: [], invalidSource: [], summary: { vazio: 2 },
       inspected: [{ cnpj: '68.699.407/0001-92', mappingTask: 'GIA-ST', uiStatus: 'vazio' }, { cnpj: '68.699.448/0001-89', mappingTask: 'GIA-ST', uiStatus: 'vazio' }] } } }));
     await page.goto(`http://127.0.0.1:${server.address().port}/`);
+    await page.getByRole('radio', { name: 'CSV baixado do Sheets' }).click(); // a tela abre em Link do Google Sheets
     await page.waitForFunction(() => document.querySelector('#auditStatus').textContent.includes('Concluído'));
     const card = await page.locator('.queue-item', { hasText: 'GIA-ST' }).innerText();
     assert.match(card, /Regra: marcar 02\.03 → 08 - GIA ST/);

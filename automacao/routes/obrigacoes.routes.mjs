@@ -3,6 +3,7 @@
 
 import path from 'node:path';
 import fs from 'node:fs/promises';
+import { ensureEmpresaActive } from '../lib/gclick.mjs';
 
 export async function handleObrigacoesRoutes(req, res, {
   url,
@@ -117,6 +118,12 @@ export async function handleObrigacoesRoutes(req, res, {
     if (!loginContext || !hasGclickActiveSession(loginContext)) {
       return send(res, 400, {
         error: 'Sessão do G-Click não conectada. Conecte sua conta no menu "Conexão & Conta G-Click" antes de sincronizar as obrigações.'
+      });
+    }
+    const empresaCheck = await ensureEmpresaActive(loginContext, accountId);
+    if (!empresaCheck.active) {
+      return send(res, 400, {
+        error: `Sessão do G-Click conectada em outra empresa (${empresaCheck.currentEmpresaNome || empresaCheck.currentAccountId || 'desconhecida'}). Alterne para a conta ${accountId} em "Conexão & Conta G-Click".`
       });
     }
     return send(res, 200, await exclusive(async () => {

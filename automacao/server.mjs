@@ -7,8 +7,8 @@ import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { parseCsv, parseCsvTable, makePlan, scopeFromEligible, formatCnpj, normalizeCnpj, validCnpj } from './lib/data.mjs';
 import { parseHeaderAndSample } from './lib/source-inspector.mjs';
-import { TARGET_MODELS, AVAILABLE_FIELDS, TRANSFORMS, createSuggestedProfile, validateProfileAgainstStructure, normalizeTable } from './lib/mapping-engine.mjs';
-import { LOGIN_URL, hasGclickSession, openBrowser, openQuestion, questionStillOpen, resolveColumnValue, readQuestionCatalog, inspectAll, applyQuestionWithOperator, enterEmpresa, getActiveEmpresa, getAccessEmpresas } from './lib/gclick.mjs';
+import { TARGET_MODELS, AVAILABLE_FIELDS, TRANSFORMS, createSuggestedProfile, validateProfileAgainstStructure, normalizeTable, profileFitsUse } from './lib/mapping-engine.mjs';
+import { LOGIN_URL, hasGclickSession, openBrowser, openQuestion, questionStillOpen, resolveColumnValue, readQuestionCatalog, inspectAll, applyQuestionWithOperator, enterEmpresa, getActiveEmpresa, getAccessEmpresas, ensureEmpresaActive, saveEmpresaFoto, findSavedEmpresaFoto, describeEmpresaFotoCandidates } from './lib/gclick.mjs';
 import { readPublicGoogleCsv, readWithServiceAccount, parseSheetUrl } from './lib/google-service.mjs';
 import { appsScriptSource, validScriptUrl, testSheetWriter, writeMarks, writeAuditLog } from './lib/sheet-writer.mjs';
 import { listCsvDownloads, readCsvDownload } from './lib/downloads.mjs';
@@ -35,14 +35,37 @@ import { handleAuthRoutes, handleUserAdminPostRoutes } from './routes/auth.route
 import { handleSheetsRoutes } from './routes/sheets.routes.mjs';
 import { handleObrigacoesRoutes } from './routes/obrigacoes.routes.mjs';
 import { handleSourceProfileRoutes } from './routes/source-profile.routes.mjs';
+import { handleCarteiraRoutes } from './routes/carteira.routes.mjs';
+import * as carteiraLib from './lib/carteira.mjs';
 
 const root = path.dirname(new URL(import.meta.url).pathname);
 const authService = new AuthService();
 const host = '127.0.0.1';
 const port = Number(process.env.GCLICK_PORT ?? 8766);
+const ALLOWED_ORIGIN_HOSTS = new Set([
+  '127.0.0.1',
+  'localhost',
+  'app.jb-consultoria.com',
+  'jb-consultoria.com'
+]);
+if (process.env.GCLICK_ALLOWED_HOSTS) {
+  process.env.GCLICK_ALLOWED_HOSTS.split(',').forEach(h => {
+    const trimmed = h.trim().toLowerCase();
+    if (trimmed) ALLOWED_ORIGIN_HOSTS.add(trimmed);
+  });
+}
+function isAllowedHost(hostname) {
+  if (!hostname || typeof hostname !== 'string') return false;
+  const h = hostname.trim().toLowerCase();
+  if (ALLOWED_ORIGIN_HOSTS.has(h)) return true;
+  if (h.endsWith('.jb-consultoria.com') || h.endsWith('.local')) return true;
+  return false;
+}
 const profile = process.env.GCLICK_PROFILE_DIR ?? path.join(os.homedir(), '.local/share/gclick-enquete/browser-profile');
 const downloadsDir = path.join(os.homedir(), 'Downloads');
 const catalogsDir = path.join(root, 'catalogos');
+const empresaFotosDir = path.join(catalogsDir, 'fotos');
+const empresaFotoAttempts = new Map();
 const ledgerDir = path.join(root, 'registros');
 const writersFile = path.join(root, 'escrita-planilha.json');
 const token = crypto.randomBytes(24).toString('hex');
@@ -250,7 +273,7 @@ async function listStoredAccounts() {
   catch (error) { if (error.code !== 'ENOENT') throw error; }
   const ids = new Set([...files.map(name => name.replace(/\.json$/, '')), ...Object.keys(accountSettings)]);
   return Promise.all([...ids].sort().map(async accountId => ({ accountId, capturedAt: (await readStoredCatalog(accountId))?.capturedAt ?? null,
-    sheetUrl: accountSettings[accountId]?.sheetUrl ?? '', mappings: savedMappings.filter(m => m.accountId === accountId).length })));
+    sheetUrl: accountSettings[accountId]?.sheetUrl ?? '', carteiraSheetUrl: accountSettings[accountId]?.carteiraSheetUrl ?? '', mappings: savedMappings.filter(m => m.accountId === accountId).length })));
 }
 function validSheetUrl(value) {
   if (!value) return '';
@@ -519,6 +542,13 @@ async function route(req, res) {
     });
   }
 
+  if (req.method === 'GET' && url.pathname === '/api/gclick/empresa-foto') {
+    if (!currentUser) return send(res, 401, { error: 'Sessão necessária', code: 'unauthenticated' });
+    const saved = await findSavedEmpresaFoto(empresaFotosDir, url.searchParams.get('accountId')?.trim());
+    if (!saved) return send(res, 404, { error: 'Foto da empresa ainda não capturada' });
+    res.writeHead(200, { 'Content-Type': saved.ext === 'png' ? 'image/png' : saved.ext === 'webp' ? 'image/webp' : 'image/jpeg', 'Cache-Control': 'no-cache' });
+    return res.end(await fs.readFile(saved.file));
+  }
   if (req.method === 'GET' && url.pathname === '/api/gclick/session') {
     if (!currentUser) return send(res, 401, { error: 'Sessão necessária', code: 'unauthenticated' });
     const accountId = url.searchParams.get('accountId')?.trim();
@@ -526,8 +556,12 @@ async function route(req, res) {
       return send(res, 200, {
         browserStatus: 'closed',
         gclickAuthStatus: 'unknown',
+        accountMatches: false,
+        isReadyForModules: false,
         activeAccountId: accountId || null,
         activeEmpresaNome: null,
+        currentEmpresaId: null,
+        currentEmpresaNome: null,
         availableEmpresas: [],
         message: 'Navegador de automação fechado.'
       });
@@ -538,13 +572,6 @@ async function route(req, res) {
     const onAuth = urls.some(current => /(^|\.)gclick\.com\.br$/.test(current.hostname) && current.pathname.startsWith('/autenticacao'));
     const onEmpresas = urls.some(current => current.hostname === 'appp.gclick.com.br' && current.pathname.includes('/empresas'));
     const hasInternalPage = urls.some(current => /(^|\.)gclick\.com\.br$/.test(current.hostname) && !current.pathname.startsWith('/autenticacao'));
-
-    let authStatus = 'unknown';
-    if (urls.length === 0 || onAuth) {
-      authStatus = 'awaiting_login';
-    } else if (hasInternalPage) {
-      authStatus = 'login_detected';
-    }
 
     // Leitura passiva do localStorage (empresa ativa e lista de acessos)
     let activeEmpresa = null;
@@ -583,34 +610,62 @@ async function route(req, res) {
       resolvedNome = activeEmpresa.nome;
     }
 
-    // Fallback: se ainda não resolveu por localStorage, tenta seletores comuns de interface
-    if (!resolvedNome) {
-      for (const p of pages) {
-        if (p.isClosed()) continue;
-        try {
-          const domNome = await p.evaluate(() => {
-            const el = document.querySelector('.empresa-ativa, .nome-empresa, #nomeEmpresa, .current-empresa, .user-empresa, .navbar-brand, .escritorio-nome, .header-empresa');
-            return el?.innerText?.trim() || null;
-          }).catch(() => null);
-          if (domNome && !['G-Click', 'Dashboard', 'Início', 'Enquete'].includes(domNome)) {
-            resolvedNome = domNome;
-            break;
-          }
-        } catch {}
+    const accountMatches = Boolean(accountId && activeEmpresa?.id && String(activeEmpresa.id) === String(accountId));
+
+    let authStatus = 'unknown';
+    let message = 'Aguardando login no G-Click no navegador de automação.';
+
+    if (urls.length === 0 || onAuth) {
+      authStatus = 'awaiting_login';
+      message = 'Aguardando o login no Chrome da automação.';
+    } else if (onEmpresas) {
+      authStatus = 'select_company';
+      message = accountId
+        ? `Login realizado. Selecione a empresa no G-Click (conta ${accountId}) para continuar.`
+        : 'Login realizado. Selecione uma empresa no G-Click.';
+    } else if (hasInternalPage) {
+      if (accountId && activeEmpresa?.id && !accountMatches) {
+        authStatus = 'account_mismatch';
+        message = `G-Click conectado em "${activeEmpresa.nome || activeEmpresa.id}" (${activeEmpresa.id}), diferente da conta ${accountId}. Alterne para a conta ${accountId} para liberar os módulos.`;
+      } else {
+        authStatus = 'login_detected';
+        message = accountId
+          ? `Conta ${accountId}${resolvedNome ? ` (${resolvedNome})` : ''} conectada e validada no G-Click. Módulos liberados!`
+          : 'Login detectado no G-Click.';
       }
+    }
+
+    const isReadyForModules = Boolean(authStatus === 'login_detected' && (accountId ? accountMatches : true));
+    // Foto da empresa: tenta uma vez por minuto enquanto não houver cópia; só lê o que já está aberto, sem navegar.
+    if (isReadyForModules && accountId && Date.now() - (empresaFotoAttempts.get(accountId) ?? 0) > 60000) {
+      empresaFotoAttempts.set(accountId, Date.now());
+      findSavedEmpresaFoto(empresaFotosDir, accountId)
+        .then(async saved => {
+          if (saved || await saveEmpresaFoto(loginContext, accountId, empresaFotosDir)) return;
+          console.log(`[foto-empresa] conta ${accountId}: foto não localizada nas páginas abertas`, JSON.stringify(await describeEmpresaFotoCandidates(loginContext)));
+        })
+        .catch(() => null);
     }
 
     return send(res, 200, {
       browserStatus: 'open',
       gclickAuthStatus: authStatus,
       onEmpresas,
-      activeAccountId: (activeEmpresa?.id ? String(activeEmpresa.id) : (accountId || null)),
+      accountMatches,
+      isReadyForModules,
+      activeAccountId: accountId || (activeEmpresa?.id ? String(activeEmpresa.id) : null),
       activeEmpresaNome: resolvedNome,
       currentEmpresaId: activeEmpresa?.id ? String(activeEmpresa.id) : null,
-      availableEmpresas: accessEmpresas.map(e => ({ id: String(e.id), nome: e.nome })),
-      message: authStatus === 'login_detected'
-        ? 'Login detectado no G-Click pela URL da aba. O acesso aos módulos será validado ao acioná-los.'
-        : 'Aguardando login no G-Click no navegador de automação.'
+      currentEmpresaNome: activeEmpresa?.nome || null,
+      availableEmpresas: accessEmpresas.map(e => ({
+        id: String(e.id),
+        nome: e.nome,
+        apelido: e.apelido || null,
+        cnpj: e.cnpj || null,
+        ativo: e.ativo !== 0,
+        imagemUrl: e.imagemUrl || e.foto || e.avatar || null
+      })),
+      message
     });
   }
 
@@ -672,7 +727,7 @@ async function route(req, res) {
   if (origin) {
     try {
       const originUrl = new URL(origin);
-      if (!['127.0.0.1', 'localhost'].includes(originUrl.hostname)) {
+      if (!isAllowedHost(originUrl.hostname)) {
         return send(res, 403, { error: 'Origem não permitida', code: 'forbidden_origin' });
       }
     } catch {
@@ -681,7 +736,7 @@ async function route(req, res) {
   } else if (referer) {
     try {
       const refUrl = new URL(referer);
-      if (!['127.0.0.1', 'localhost'].includes(refUrl.hostname)) {
+      if (!isAllowedHost(refUrl.hostname)) {
         return send(res, 403, { error: 'Referer não permitido', code: 'forbidden_origin' });
       }
     } catch {
@@ -762,10 +817,29 @@ async function route(req, res) {
   });
   if (obrigacoesHandled !== false) return obrigacoesHandled;
 
+  const carteiraHandled = await handleCarteiraRoutes(req, res, {
+    url,
+    payload,
+    currentUser,
+    authService,
+    requireAccount,
+    loginContext,
+    hasGclickActiveSession,
+    exclusive,
+    catalogsDir,
+    runsDir: path.join(root, 'runs'),
+    carteiraLib,
+    send
+  });
+  if (carteiraHandled !== false) return carteiraHandled;
+
   if (url.pathname === '/api/accounts/save') {
     const accountId = requireAccount(payload.accountId);
-    const sheetUrl = validSheetUrl(payload.sheetUrl);
-    accountSettings[accountId] = { ...accountSettings[accountId], sheetUrl, updatedAt: new Date().toISOString() };
+    // Cada uso guarda o próprio link; só os campos enviados são alterados.
+    const changes = {};
+    if ('sheetUrl' in payload) changes.sheetUrl = validSheetUrl(payload.sheetUrl);
+    if ('carteiraSheetUrl' in payload) changes.carteiraSheetUrl = validSheetUrl(payload.carteiraSheetUrl);
+    accountSettings[accountId] = { ...accountSettings[accountId], ...changes, updatedAt: new Date().toISOString() };
     await saveAccountSettings();
     return send(res, 200, { accounts: await listStoredAccounts() });
   }
@@ -866,7 +940,7 @@ async function route(req, res) {
     const source = await loadSource(payload);
     const sheetId = String(payload.sheetName ?? payload.sheetId ?? source.label);
     const structure = parseHeaderAndSample(source.csv, { headerRow: payload.headerRow ?? 1 });
-    let profile = payload.profile ?? savedProfiles.find(p => p.accountId === accountId && (p.sourceFingerprint === source.label || p.sheetIdentifier === sheetId));
+    let profile = payload.profile ?? savedProfiles.find(p => p.accountId === accountId && profileFitsUse(p, 'enquete_automacao') && (p.sourceFingerprint === source.label || p.sheetIdentifier === sheetId));
     if (profile) {
       const val = validateProfileAgainstStructure(profile, structure);
       if (!val.valid) {
@@ -903,7 +977,7 @@ async function route(req, res) {
     const accountId = payload.accountId ? String(payload.accountId).trim() : '';
     const sheetId = String(payload.sheetName ?? payload.sheetId ?? source.label);
     const structure = parseHeaderAndSample(source.csv, { headerRow: payload.headerRow ?? 1 });
-    let profile = payload.profile ?? savedProfiles.find(p => p.accountId === accountId && (p.sourceFingerprint === source.label || p.sheetIdentifier === sheetId));
+    let profile = payload.profile ?? savedProfiles.find(p => p.accountId === accountId && profileFitsUse(p, 'enquete_automacao') && (p.sourceFingerprint === source.label || p.sheetIdentifier === sheetId));
     let normalized = null;
     let audit = null;
     let isEligible = true;
@@ -1038,7 +1112,7 @@ async function route(req, res) {
     const table = parseCsvTable(source.csv);
     const sheetId = String(payload.sheetName ?? payload.sheetId ?? source.label);
     const structure = parseHeaderAndSample(source.csv, { headerRow: payload.headerRow ?? 1 });
-    let profile = payload.profile ?? savedProfiles.find(p => p.accountId === accountId && (p.sourceFingerprint === source.label || p.sheetIdentifier === sheetId));
+    let profile = payload.profile ?? savedProfiles.find(p => p.accountId === accountId && profileFitsUse(p, 'enquete_automacao') && (p.sourceFingerprint === source.label || p.sheetIdentifier === sheetId));
     if (profile) {
       const val = validateProfileAgainstStructure(profile, structure);
       if (!val.valid) {
@@ -1400,6 +1474,22 @@ async function route(req, res) {
     } catch (e) { if (loginContext) await loginContext.close(); loginContext = null; loginReady = false; catalogState = null; catalogStatus = 'not_requested'; if (loginLock) await loginLock(); loginLock = null; throw e; }
     finally { busy = false; }
   }
+  if (url.pathname === '/api/gclick/switch-empresa') {
+    if (!currentUser) return send(res, 401, { error: 'Sessão necessária', code: 'unauthenticated' });
+    if (!loginContext) throw new Error('Abra primeiro a janela de login da automação.');
+    const accountId = requireAccount(payload?.accountId);
+    const result = await ensureEmpresaActive(loginContext, accountId);
+    if (result.active) result.fotoSaved = Boolean(await saveEmpresaFoto(loginContext, accountId, empresaFotosDir).catch(() => null));
+    if (!result.active) {
+      const atual = result.currentEmpresaNome || result.currentAccountId;
+      result.message = result.reason === 'no_gclick_page_open'
+        ? 'Nenhuma aba do G-Click aberta no Chrome da automação. Faça o login antes de alternar.'
+        : result.reason === 'account_not_in_access_list'
+          ? `A conta ${accountId} não consta entre as empresas acessíveis deste usuário no G-Click.`
+          : `Não foi possível alternar para a conta ${accountId}${atual ? `; o G-Click segue em ${atual}` : ''}. Selecione a empresa manualmente no Chrome da automação.`;
+    }
+    return send(res, 200, result);
+  }
   if (url.pathname === '/api/login/close') {
     if (!loginContext) throw new Error('Abra primeiro a janela de login da automação.');
     const accountId = requireAccount(payload.accountId);
@@ -1412,44 +1502,61 @@ async function route(req, res) {
     if (!loggedIn || onAuth) {
       return send(res, 200, { open: true, ready: false, stage: 'login', message: 'Aguardando o login no Chrome da automação.' });
     }
-    if (onEmpresas) {
-      return send(res, 200, { open: true, ready: false, stage: 'select_company', message: `Login realizado. Selecione a empresa no G-Click (conta ${accountId}) para continuar.` });
+
+    // Tenta garantir que a empresa ativa seja a solicitada
+    const empresaResult = await ensureEmpresaActive(loginContext, accountId);
+
+    if (!empresaResult.active) {
+      if (empresaResult.reason === 'account_not_in_access_list') {
+        const available = empresaResult.availableEmpresas?.map(e => `${e.nome} (${e.id})`).slice(0, 5).join(', ') || 'Nenhuma identificada';
+        return send(res, 200, {
+          open: true,
+          ready: false,
+          stage: 'account_mismatch',
+          accountMatches: false,
+          currentAccountId: empresaResult.currentAccountId,
+          currentEmpresaNome: empresaResult.currentEmpresaNome,
+          message: `A conta ${accountId} não consta na lista de empresas acessíveis deste usuário no G-Click. Empresas disponíveis: ${available}.`
+        });
+      }
+
+      if (onEmpresas) {
+        return send(res, 200, {
+          open: true,
+          ready: false,
+          stage: 'select_company',
+          accountMatches: false,
+          message: `Login realizado. Selecione a empresa no G-Click (conta ${accountId}) para continuar.`
+        });
+      }
+
+      return send(res, 200, {
+        open: true,
+        ready: false,
+        stage: 'account_mismatch',
+        accountMatches: false,
+        currentAccountId: empresaResult.currentAccountId,
+        currentEmpresaNome: empresaResult.currentEmpresaNome,
+        message: `O G-Click está conectado na empresa ${empresaResult.currentEmpresaNome || empresaResult.currentAccountId} (${empresaResult.currentAccountId}), diferente da conta ${accountId}. Clique em "Alternar para conta ${accountId}" ou selecione-a no G-Click.`
+      });
     }
 
-    // Leitura passiva da empresa
-    let empresaNome = null;
-    const mainPage = pages.find(p => {
-      try {
-        const u = new URL(p.url());
-        return /(^|\.)gclick\.com\.br$/.test(u.hostname) && !u.pathname.startsWith('/autenticacao');
-      } catch { return false; }
-    });
-    if (mainPage) {
-      try {
-        const raw = await mainPage.evaluate(() => localStorage.getItem('g3AccessEmpresas')).catch(() => null);
-        if (raw) {
-          const list = JSON.parse(raw);
-          const found = list.find(e => String(e.id) === String(accountId));
-          if (found) empresaNome = found.nome;
-        }
-      } catch {}
-    }
-
-    // Não navega para a Enquete e não captura catálogo silenciosamente
+    // Empresa ativa confirmada
     return send(res, 200, {
       open: true,
-      ready: false,
+      ready: true,
       stage: 'login_detected',
+      accountMatches: true,
       accountId,
-      empresaNome,
+      empresaNome: empresaResult.empresaNome,
       catalog: catalogState?.accountId === accountId ? catalogState : null,
-      message: 'Login detectado no G-Click. Para ler a Enquete, abra Enquete -> Mapeamento e clique em Buscar Perguntas e Respostas (Sob Demanda).'
+      message: `Conta ${accountId} (${empresaResult.empresaNome || 'Ativa'}) conectada e confirmada no G-Click. Módulos liberados!`
     });
   }
   return send(res, 404, { error: 'Rota não encontrada' });
 }
 const server = http.createServer((req, res) => { route(req, res).catch(async e => { console.error(`[API 400] ${req.method} ${req.url}: ${e.message}`); if (e.report) lastReport = e.report; send(res, 400, { error: humanError(e), report: e.report ?? null }); }); });
-export { server, route };
+export { server, route, isAllowedHost, ALLOWED_ORIGIN_HOSTS };
 if (process.argv[1] === new URL(import.meta.url).pathname) {
   server.listen(port, host, () => console.log(`G-Click local: http://${host}:${port}`));
 }

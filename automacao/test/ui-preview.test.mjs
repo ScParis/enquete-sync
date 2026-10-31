@@ -33,6 +33,7 @@ test('novo CSV invalida a conferência e desabilita a gravação', async () => {
       pendingTasks: [], excludedTasks: [], failedTasks: [], invalidSource: [], summary: { vazio: 1 },
       inspected: [{ cnpj: '19.402.991/0001-67', empId: '1', empresa: 'Teste', mappingTask: 'DeSTDA', uiStatus: 'vazio' }] } } }); });
     await page.goto(`http://127.0.0.1:${server.address().port}/`);
+    await page.getByRole('radio', { name: 'CSV baixado do Sheets' }).click(); // a tela abre em Link do Google Sheets
     await page.waitForFunction(() => document.querySelector('#auditStatus').textContent.includes('Concluído'));
     assert.equal(await page.locator('#apply').isEnabled(), true);
     await page.getByRole('button', { name: 'Atualizar downloads' }).click();

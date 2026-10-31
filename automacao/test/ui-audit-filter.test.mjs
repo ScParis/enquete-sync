@@ -52,6 +52,7 @@ test('conferência manual permite escolher escopo total ou filtrar por obrigaç�
     });
 
     await page.goto(`http://127.0.0.1:${server.address().port}/`);
+    await page.getByRole('radio', { name: 'CSV baixado do Sheets' }).click(); // a tela abre em Link do Google Sheets
     await page.waitForFunction(() => document.querySelector('#auditStatus').textContent.includes('Concluído:'), null, { timeout: 10000 });
 
     assert.equal(previewCalls.length, 1);

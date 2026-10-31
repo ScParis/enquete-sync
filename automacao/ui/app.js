@@ -139,11 +139,44 @@ const currentAccount = () => {
   return val || '';
 };
 function status(message, kind = '') { $('status').textContent = message; $('status').className = `status ${kind}`; }
-function sourceStatus(message, kind = '') { $('sourceStatus').textContent = message; $('sourceStatus').className = `source-status ${kind}`; }
-function clearImportedTable() { importedTable = null; importedPage = 0; $('sourcePreview').hidden = true; $('sourceTable').replaceChildren(); }
+// Planilhas guarda uma planilha por uso: a da Enquete (globais importedTable/taskCatalog) e a da Carteira (carteiraSheet).
+const sourceUse = () => document.querySelector('input[name="sourceUse"]:checked')?.value || 'enquete';
+const useTargetModel = () => sourceUse() === 'carteira' ? 'carteira_responsaveis' : 'enquete_automacao';
+let carteiraSheet = null;
+let carteiraUsers = [];
+let carteiraMinha = null; // Minha Carteira de cada usuário, trazida na sincronização
+let carteiraParsedData = null;
+let carteiraAuditItems = [];
+const sourceViewByUse = { enquete: null, carteira: null };
+// carteira: 'switch' oferece usar a aba como planilha da Carteira; 'go' leva até a Carteira já carregada.
+function sourceStatus(message, kind = '', { carteira = false } = {}) {
+  sourceViewByUse[sourceUse()] = { message, kind, carteira };
+  $('sourceStatus').textContent = message;
+  $('sourceStatus').className = kind;
+  $('sourceStatusBox').className = `source-status ${kind}`;
+  const btn = $('btnSourceToCarteira');
+  btn.hidden = !carteira;
+  btn.dataset.mode = carteira || '';
+  btn.textContent = carteira === 'switch' ? 'Usar como planilha da Carteira' : 'Ir para Carteira por Usuário';
+}
+// Nome curto da origem: o link inteiro da planilha não ajuda a leitura.
+// Um DE/PARA só vale como "salvo" quando está na lista do escritório; o sugerido pelo servidor não está.
+const isSavedProfile = profile => Boolean(profile?.id && savedProfiles.some(p => p.id === profile.id));
+const profileLabel = profile => !profile ? 'sem DE/PARA' : isSavedProfile(profile) ? `DE/PARA salvo (v${profile.version})` : 'DE/PARA sugerido, ainda não salvo';
+function renderProfileBadge() {
+  const badge = $('profileVersionBadge');
+  if (!badge) return;
+  const saved = isSavedProfile(currentProfile);
+  badge.textContent = saved ? `Salvo · v${currentProfile.version}` : 'Sugerido, não salvo';
+  badge.className = `nav-badge ${saved ? 'badge-ok' : 'badge-warn'}`;
+}
+const sourceLabel = source => /^https?:\/\//i.test(String(source ?? '')) ? 'Google Sheets' : String(source ?? '');
+function clearImportedTable() { importedTable = null; importedPage = 0; if (sourceUse() === 'enquete') { $('sourcePreview').hidden = true; $('sourceTable').replaceChildren(); } }
+const shownTable = () => sourceUse() === 'carteira' ? carteiraSheet?.table ?? null : importedTable;
 function renderImportedTable() {
-  if (!importedTable) { $('sourcePreview').hidden = true; return; }
-  const { columns, rows } = importedTable;
+  const shown = shownTable();
+  if (!shown) { $('sourcePreview').hidden = true; return; }
+  const { columns, rows } = shown;
   const start = importedPage * SOURCE_PAGE_SIZE;
   const table = $('sourceTable'); table.replaceChildren();
   const head = document.createElement('thead'), headerRow = document.createElement('tr');
@@ -387,23 +420,7 @@ function updateTopAccountDisplay(accountId, empresaNome = undefined, sessionStat
   }
 
   if ($('topAccountId')) $('topAccountId').textContent = accountId || '—';
-  if ($('topAccountNome')) $('topAccountNome').textContent = currentEmpresaNome ? `· ${currentEmpresaNome}` : '';
-  const badge = $('topSessionBadge');
-  if (badge) {
-    if (currentSessionStatus === 'login_detected') {
-      badge.style.display = 'inline-block';
-      badge.textContent = 'Login detectado';
-      badge.style.background = '#065f46';
-      badge.style.color = '#a7f3d0';
-    } else if (currentSessionStatus === 'awaiting_login') {
-      badge.style.display = 'inline-block';
-      badge.textContent = 'Aguardando login';
-      badge.style.background = '#854d0e';
-      badge.style.color = '#fef08a';
-    } else {
-      badge.style.display = 'none';
-    }
-  }
+  updateSidebarBadges(); // o selo e o nome da empresa no topo saem de connectionView()
 
   // Se a conta mudou e a seção atual for obrigações, recarrega o catálogo da conta ativa
   if (accountId && previousId && accountId !== previousId) {
@@ -416,39 +433,114 @@ function updateTopAccountDisplay(accountId, empresaNome = undefined, sessionStat
   }
 }
 
+let gclickSessionState = {
+  connected: false,
+  accountMatches: false,
+  isReadyForModules: false,
+  activeAccountId: null,
+  activeEmpresaNome: null,
+  currentEmpresaId: null,
+  currentEmpresaNome: null,
+  availableEmpresas: []
+};
+
+function isConnectionResolved() {
+  const acc = currentAccount();
+  if (!/^\d+$/.test(acc)) return false;
+  return Boolean(
+    gclickSessionState.connected &&
+    gclickSessionState.accountMatches &&
+    String(gclickSessionState.activeAccountId) === String(acc)
+  );
+}
+
+function applySessionResult(result, targetAcc = null) {
+  if (!result || !result.browserStatus) return;
+  const selectedAcc = targetAcc || currentAccount();
+  const effectiveAccount = selectedAcc || result.currentEmpresaId || result.activeAccountId;
+  let empresaNome = result.activeEmpresaNome || result.currentEmpresaNome;
+  if (result.availableEmpresas && Array.isArray(result.availableEmpresas)) {
+    const match = result.availableEmpresas.find(e => String(e.id) === String(effectiveAccount));
+    if (match?.nome) empresaNome = match.nome;
+  }
+
+  const isMatch = result.accountMatches !== undefined
+    ? Boolean(result.accountMatches)
+    : (result.gclickAuthStatus === 'login_detected' && (!result.currentEmpresaId || String(result.currentEmpresaId) === String(effectiveAccount)));
+
+  const isReady = result.isReadyForModules !== undefined
+    ? Boolean(result.isReadyForModules)
+    : (result.gclickAuthStatus === 'login_detected' && isMatch);
+
+  result.isReadyForModules = isReady;
+  result.accountMatches = isMatch;
+
+  gclickSessionState = {
+    connected: Boolean(result.browserStatus === 'open' && (result.gclickAuthStatus === 'login_detected' || result.gclickAuthStatus === 'account_mismatch')),
+    accountMatches: isMatch,
+    isReadyForModules: isReady,
+    activeAccountId: isMatch ? (result.activeAccountId || effectiveAccount) : (result.currentEmpresaId || effectiveAccount),
+    activeEmpresaNome: empresaNome,
+    currentEmpresaId: result.currentEmpresaId || effectiveAccount,
+    currentEmpresaNome: result.currentEmpresaNome || empresaNome,
+    availableEmpresas: result.availableEmpresas || []
+  };
+
+  updateTopAccountDisplay(effectiveAccount, empresaNome, result.gclickAuthStatus);
+  updateSidebarBadges();
+  renderAccountList();
+  renderEmpresasGrid();
+}
+
+async function syncGClickSession(targetAcc = null) {
+  const acc = targetAcc || currentAccount();
+  const queryParam = acc ? `?accountId=${encodeURIComponent(acc)}` : '';
+  try {
+    const res = await fetch(`/api/gclick/session${queryParam}`);
+    if (res.ok) {
+      const result = await res.json().catch(() => null);
+      if (result) {
+        applySessionResult(result, acc);
+        return result;
+      }
+    }
+  } catch { /* inspeção passiva silenciosa */ }
+  return null;
+}
+
+let autoSwitchTriedFor = null;
 function startLoginPoll() {
   if (loginPoll) return;
   loginPoll = setInterval(async () => {
     if (working || loginPollBusy) return;
     loginPollBusy = true;
     try {
-      // 1. Endpoint observacional passivo /api/gclick/session
-      const currentAcc = currentAccount();
-      const queryParam = currentAcc ? `?accountId=${encodeURIComponent(currentAcc)}` : '';
-      const res = await fetch(`/api/gclick/session${queryParam}`);
-      if (res.ok) {
-        const result = await res.json().catch(() => null);
-        if (result && result.browserStatus) {
-          const selectedAcc = currentAccount();
-          const effectiveAccount = selectedAcc || result.currentEmpresaId || result.activeAccountId;
-          let empresaNome = result.activeEmpresaNome;
-          if (result.availableEmpresas && Array.isArray(result.availableEmpresas)) {
-            const match = result.availableEmpresas.find(e => String(e.id) === String(effectiveAccount));
-            if (match?.nome) empresaNome = match.nome;
-          }
-          updateTopAccountDisplay(effectiveAccount, empresaNome, result.gclickAuthStatus);
+      const selectedAcc = currentAccount();
+      const result = await syncGClickSession(selectedAcc);
+      if (result && result.browserStatus) {
+        const effectiveAccount = selectedAcc || result.currentEmpresaId || result.activeAccountId;
+        let empresaNome = result.activeEmpresaNome || result.currentEmpresaNome;
 
-          if (result.gclickAuthStatus === 'login_detected') {
-            status(`Login detectado no G-Click pela URL da aba. Conta: ${effectiveAccount}${empresaNome ? ` (${empresaNome})` : ''}. Para ler perguntas e respostas da Enquete, abra Enquete -> Mapeamento e clique em Buscar Perguntas e Respostas (Sob Demanda).`, 'ok');
-            stopLoginPoll();
-            return;
-          } else if (result.onEmpresas) {
-            status(`Login realizado. Selecione a empresa no G-Click (conta ${effectiveAccount}) para continuar.`);
-            return;
-          } else if (result.message) {
-            status(result.message);
-            return;
-          }
+        if (gclickSessionState.isReadyForModules || isConnectionResolved()) {
+          status(`Login detectado no G-Click para a conta ${effectiveAccount}${empresaNome ? ` (${empresaNome})` : ''}. Módulos liberados!`, 'ok');
+          stopLoginPoll();
+          return;
+        }
+
+        if (selectedAcc && autoSwitchTriedFor !== selectedAcc && (result.gclickAuthStatus === 'account_mismatch' || result.gclickAuthStatus === 'select_company')) {
+          autoSwitchTriedFor = selectedAcc;
+          if (await switchToSelectedEmpresa(selectedAcc)) { stopLoginPoll(); return; }
+        }
+
+        if (result.gclickAuthStatus === 'account_mismatch') {
+          status(result.message || `G-Click conectado em outra empresa (${result.currentEmpresaNome || result.currentEmpresaId}). Alterne para a conta ${selectedAcc}.`, 'warn');
+          return;
+        } else if (result.onEmpresas) {
+          status(`Login realizado. Selecione a empresa no G-Click (conta ${effectiveAccount}) para continuar.`);
+          return;
+        } else if (result.message) {
+          status(result.message);
+          return;
         }
       }
     } catch { /* O login ou a escolha da conta ainda está em andamento. */ }
@@ -465,25 +557,27 @@ function sourceKey() {
   return `url:${$('sourceUrl').value.trim()}:${Date.now()}`;
 }
 
-async function inspectSource() {
+async function inspectSource({ quiet = false } = {}) {
   try {
-    sourceStatus('Inspecionando estrutura da fonte…');
+    if (!quiet) sourceStatus('Lendo as colunas da planilha…');
     const loadPayload = await payload('inspect');
     const result = await api('source/inspect', loadPayload);
+    if (!result?.structure) throw new Error('o servidor não devolveu as colunas da planilha');
     currentStructure = result.structure;
     currentProfile = result.existingProfile ?? result.suggestedProfile;
     renderMappingEditor();
     $('mappingEditorSection').hidden = false;
-    sourceStatus(`Estrutura conhecida: ${result.structure.columnCount} coluna(s) identificada(s). Configure ou confirme o mapeamento abaixo.`, 'ok');
+    if (!quiet) sourceStatus(`${result.structure.columnCount} coluna(s) encontradas. Confira o DE/PARA abaixo e salve.`, 'ok');
   } catch (e) {
-    sourceStatus(`Falha ao inspecionar estrutura: ${e.message}`, 'error');
+    if (quiet) return; // conferência automática após a leitura: a falha não apaga o resultado já mostrado
+    sourceStatus(`Falha ao ler as colunas: ${e.message}`, 'error');
   }
 }
 
 function renderMappingEditor() {
   if (!currentStructure || !currentProfile) return;
   if ($('targetModelSelect')) $('targetModelSelect').value = currentProfile.targetModel || 'enquete_automacao';
-  if ($('profileVersionBadge')) $('profileVersionBadge').textContent = currentProfile.version ? `Perfil: v${currentProfile.version}` : 'Perfil: Proposta';
+  renderProfileBadge();
 
   const body = $('mappingColumnsBody');
   if (!body) return;
@@ -495,6 +589,7 @@ function renderMappingEditor() {
     { id: 'empresa', label: 'Empresa / Razão Social' },
     { id: 'empId', label: 'EmpID (G-Click)' },
     { id: 'cod', label: 'Código Interno (Cod.)' },
+    { id: 'responsavel', label: 'Responsável (usuário G-Click)' },
     { id: 'tarefa', label: 'Obrigação / Tarefa' },
     { id: 'resposta', label: 'Resposta / Opção' },
     { id: 'data_base', label: 'Data-base' },
@@ -649,7 +744,7 @@ function gatherProfileFromEditor() {
   });
   return {
     ...currentProfile,
-    targetModel: $('targetModelSelect')?.value || currentProfile.targetModel || 'enquete_automacao',
+    targetModel: useTargetModel(),
     headerRow: parseInt($('headerRowInput')?.value || '1', 10),
     columns
   };
@@ -659,13 +754,14 @@ async function saveMappingProfile() {
   const profile = gatherProfileFromEditor();
   if (!profile) return;
   try {
-    sourceStatus('Salvando perfil de mapeamento…');
+    sourceStatus('Salvando DE/PARA…');
     const res = await api('mapping/profiles/save', { profile });
     currentProfile = res.profile;
-    if ($('profileVersionBadge')) $('profileVersionBadge').textContent = `Perfil: v${currentProfile.version}`;
-    sourceStatus(`Perfil salvo com sucesso (v${currentProfile.version}).`, 'ok');
+    if (res.savedProfiles) savedProfiles = res.savedProfiles;
+    renderProfileBadge();
+    sourceStatus(`DE/PARA salvo (v${currentProfile.version}). Nas próximas leituras desta planilha ele é aplicado sozinho.`, 'ok');
   } catch (e) {
-    sourceStatus(`Erro ao salvar perfil: ${e.message}`, 'error');
+    sourceStatus(`Erro ao salvar o DE/PARA: ${e.message}`, 'error');
   }
 }
 
@@ -674,9 +770,53 @@ async function applyMappingAndLoad() {
   if (!profile) return;
   currentProfile = profile;
   clearPreview();
-  await loadTasks(profile);
+  await readSource(profile);
 }
 
+// "Ler planilha" lê para o uso escolhido; nenhum uso apaga a planilha do outro.
+function readSource(profile) {
+  return sourceUse() === 'carteira' ? loadCarteiraSheet(profile) : loadTasks(profile);
+}
+
+const FIELD_NAMES = { responsavel: 'o Responsável', cnpj: 'o CNPJ', tarefa: 'a Obrigação / Tarefa' };
+async function loadCarteiraSheet(profileParam) {
+  if (!/^\d+$/.test(currentAccount())) {
+    sourceStatus('Informe a conta do escritório em Conexão G-Click antes de ler a planilha da Carteira: os responsáveis são conferidos nos usuários dessa conta.', 'warn');
+    return;
+  }
+  try {
+    sourceStatus('Lendo a planilha da Carteira…');
+    const p = await payload('tasks');
+    if (profileParam) p.profile = profileParam; else delete p.profile;
+    const result = await api('source/load', p);
+    carteiraSheet = { table: result.table, profile: result.profile, source: result.source, readAt: new Date() };
+    carteiraParsedData = null;
+    currentProfile = result.profile;
+    importedPage = 0; renderImportedTable(); renderProfileBadge();
+    $('sourcePreviewInfo').textContent = `${result.rowCount} linha(s) · ${result.table.columns.length} coluna(s) · ${sourceLabel(result.source)} · ${profileLabel(result.profile)}`;
+    carteiraSheet.info = $('sourcePreviewInfo').textContent;
+    const saved = isSavedProfile(result.profile);
+    if (result.missingFields?.length) {
+      sourceStatus(`${result.rowCount} linha(s) lidas, mas o DE/PARA não indica ${result.missingFields.map(f => FIELD_NAMES[f] ?? f).join(' nem ')}. Ajuste o DE/PARA abaixo e clique em Aplicar e ler de novo.`, 'warn');
+    } else {
+      const rows = result.normalized.map(r => ({ linha: r._row, responsavel: r._norm.responsavel, empresa: r._norm.empresa, cnpj: r._norm.cnpj }));
+      const parsed = await handleParseCarteiraSheet({ rows });
+      sourceStatus(`${parsed.totalRows} empresa(s) de ${parsed.users.length} responsável(is) prontas para a Carteira.${saved ? '' : ' Confira o DE/PARA abaixo e salve para as próximas leituras.'}`, 'ok', { carteira: 'go' });
+    }
+    if (!saved || result.missingFields?.length) await inspectSource({ quiet: true });
+    else $('mappingEditorSection').hidden = true;
+  } catch (e) {
+    sourceStatus(e.message, 'error');
+  }
+  renderCarteiraSheetSummary(); updateSidebarBadges();
+}
+function clearCarteiraSheet() {
+  carteiraSheet = null; carteiraParsedData = null;
+  if (sourceUse() === 'carteira') { $('sourcePreview').hidden = true; $('sourceTable').replaceChildren(); }
+  renderCarteiraSheetSummary();
+}
+
+let enqueteSourceInfo = '';
 async function loadTasks(profileParam) {
   try {
     $('taskStatus').textContent = 'Lendo e normalizando dados da fonte…';
@@ -686,21 +826,25 @@ async function loadTasks(profileParam) {
     const result = await api('tasks', p);
     if (result.profile) {
       currentProfile = result.profile;
-      if ($('profileVersionBadge')) $('profileVersionBadge').textContent = currentProfile.version ? `Perfil: v${currentProfile.version}` : 'Perfil: Sugerido';
+      renderProfileBadge();
     }
     taskCatalog = result.tasks ?? [];
     importedTable = result.table ?? null; importedPage = 0; renderImportedTable();
     if (importedTable) {
       const auditNote = result.audit ? ` · Auditados: ${result.audit.totalRows} registros (${result.audit.uniqueCnpjs ?? 0} CNPJs distintos)` : '';
-      $('sourcePreviewInfo').textContent = `${result.rowCount} linha(s) e ${importedTable.columns.length} coluna(s) lidas de ${result.source}${auditNote}.`;
+      $('sourcePreviewInfo').textContent = `${result.rowCount} linha(s) · ${importedTable.columns.length} coluna(s) · ${sourceLabel(result.source)} · ${profileLabel(result.profile)}${auditNote}`;
+      enqueteSourceInfo = $('sourcePreviewInfo').textContent;
     }
     const key = sourceKey();
     if (key !== lastSourceKey) { lastSourceKey = key; sourceVersion++; }
-    const message = result.kind === 'table'
-      ? `${result.rowCount} linha(s) e ${importedTable.columns.length} coluna(s) importadas. Esta aba não possui ${result.missingForAutomation.join(', ')}; a conferência e a gravação de obrigações ficam indisponíveis para ela.`
-      : `${taskCatalog.length} nomes de tarefa encontrados em ${result.rowCount} linhas (${result.source}).`;
+    const isTableOnly = result.kind === 'table';
+    const message = isTableOnly
+      ? `${result.rowCount} linha(s) lidas, mas esta aba não tem ${result.missingForAutomation.join(', ')}: ela não serve para conferir nem gravar na Enquete. Se for a planilha de responsáveis × empresas, use-a como planilha da Carteira; senão, ajuste o DE/PARA abaixo.`
+      : `${taskCatalog.length} nomes de tarefa encontrados em ${result.rowCount} linhas (${sourceLabel(result.source)}).${isSavedProfile(result.profile) ? '' : ' Confira o DE/PARA abaixo e salve para as próximas leituras.'}`;
     $('taskStatus').textContent = message;
-    sourceStatus(message, 'ok');
+    sourceStatus(message, isTableOnly ? 'warn' : 'ok', { carteira: isTableOnly ? 'switch' : false });
+    if (importedTable && !isSavedProfile(result.profile)) await inspectSource({ quiet: true });
+    else if ($('mappingEditorSection')) $('mappingEditorSection').hidden = true;
     if ($('queueFilter').value === 'attention' && !$('queueSearch').value.trim() && taskCatalog.some(task => ['ready', 'candidate'].includes(mappingFor(task).state))) $('queueFilter').value = 'ready';
     renderQueue();
     updateAuditTaskSelect();
@@ -708,7 +852,7 @@ async function loadTasks(profileParam) {
   } catch (e) { taskCatalog = []; clearImportedTable(); renderQueue(); updateAuditTaskSelect(); $('taskStatus').textContent = e.message; sourceStatus(e.message, 'error'); }
 }
 $('sourcePrev').addEventListener('click', () => { if (importedPage) { importedPage--; renderImportedTable(); } });
-$('sourceNext').addEventListener('click', () => { if (importedTable && (importedPage + 1) * SOURCE_PAGE_SIZE < importedTable.rows.length) { importedPage++; renderImportedTable(); } });
+$('sourceNext').addEventListener('click', () => { if (shownTable() && (importedPage + 1) * SOURCE_PAGE_SIZE < shownTable().rows.length) { importedPage++; renderImportedTable(); } });
 function updateAuditTaskSelect() {
   const select = $('auditTaskSelect');
   if (!select) return;
@@ -734,12 +878,12 @@ function updateAuditTaskSelect() {
 }
 function dataUrl(file) { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result).split(',')[1]); reader.onerror = reject; reader.readAsDataURL(file); }); }
 async function payload(mode) {
-  const out = { mode, sourceType: sourceType(), accountId: currentAccount() };
+  const out = { mode, sourceType: sourceType(), accountId: currentAccount(), targetModel: useTargetModel() };
   if ($('headerRowInput')) out.headerRow = parseInt($('headerRowInput').value || '1', 10);
   if (currentProfile) out.profile = currentProfile;
   if (out.sourceType === 'recent') { out.downloadFile = $('downloadFile').value; if (!out.downloadFile) throw new Error('Selecione o CSV baixado da aba da planilha'); }
   else if (out.sourceType === 'file') { const file = $('file').files[0]; if (!file) throw new Error('Selecione um arquivo CSV ou XLSX'); out.fileName = file.name; out.fileLastModified = file.lastModified; out.fileBase64 = await dataUrl(file); out.sheetName = $('sheetName').value.trim(); }
-  else { out.sourceUrl = $('sourceUrl').value.trim(); const key = $('serviceKey').files[0]; if (key) { if (key.size > 100 * 1024) throw new Error('JSON da conta de serviço maior que 100 KB'); out.serviceKeyBase64 = await dataUrl(key); } }
+  else { out.sourceUrl = (sourceUse() === 'carteira' ? $('carteiraSourceUrl') : $('sourceUrl')).value.trim(); const key = $('serviceKey').files[0]; if (key) { if (key.size > 100 * 1024) throw new Error('JSON da conta de serviço maior que 100 KB'); out.serviceKeyBase64 = await dataUrl(key); } }
   return out;
 }
 async function api(endpoint, data) {
@@ -1061,31 +1205,59 @@ async function refreshDownloads() {
       if (previewId) status('O CSV selecionado mudou. Gere uma nova prévia antes de gravar.', 'warn');
       clearPreview();
     }
-    showDownloadSelection(); updateApply(); if (select.value) await loadTasks();
+    showDownloadSelection(); updateApply(); if (select.value) await readSource();
   } catch (e) { status(e.message, 'error'); }
 }
 async function login(endpoint) {
   const btnId = endpoint === 'login/open' ? 'openLogin' : 'closeLogin';
-  const label = endpoint === 'login/open' ? 'Abrindo navegador…' : 'Verificando login…';
+  const label = endpoint === 'login/open' ? 'Abrindo navegador…' : 'Verificando…';
   return withButtonLoading(btnId, label, async () => {
     try {
       setBusy(true); clearPreview(); stopLoginPoll();
-      status(endpoint === 'login/open' ? 'Abrindo o Chrome na página de autenticação do G-Click…' : 'Verificando login no G-Click…');
+      if (endpoint === 'login/open') autoSwitchTriedFor = null; // novo login: a troca automática vale de novo
+      status(endpoint === 'login/open' ? 'Abrindo o Chrome na página de autenticação do G-Click…' : 'Verificando a conexão com o G-Click…');
       if (!/^\d+$/.test(currentAccount())) {
         toast.warning('Informe o código da conta G-Click (empId do escritório) antes de conectar.', 'Conta necessária');
         throw new Error('Informe o código da conta G-Click (empId do escritório) antes de conectar.');
       }
       const result = await api(endpoint, { accountId: currentAccount() });
+
+      const selectedAcc = currentAccount();
+      const effectiveAccount = selectedAcc || result.currentEmpresaId || result.activeAccountId;
+      const empresaNome = result.activeEmpresaNome || result.currentEmpresaNome || result.empresaNome;
+
+      gclickSessionState = {
+        connected: Boolean(result.stage === 'login_detected' || result.stage === 'account_mismatch'),
+        accountMatches: Boolean(result.accountMatches ?? (result.stage === 'login_detected')),
+        isReadyForModules: Boolean(result.isReadyForModules ?? (result.stage === 'login_detected')),
+        activeAccountId: result.activeAccountId || effectiveAccount,
+        activeEmpresaNome: empresaNome,
+        currentEmpresaId: result.currentEmpresaId || effectiveAccount,
+        currentEmpresaNome: empresaNome
+      };
+
+      if (result.accountId || result.empresaNome || effectiveAccount) {
+        updateTopAccountDisplay(effectiveAccount, empresaNome, result.stage === 'login_detected' ? 'login_detected' : result.stage === 'account_mismatch' ? 'account_mismatch' : 'logged_in');
+      }
+
+      updateSidebarBadges();
+
+      if (result.stage === 'account_mismatch') {
+        const mismatchMsg = result.message || `G-Click conectado em outra empresa (${result.currentEmpresaNome || result.currentEmpresaId}). Alterne para a conta ${selectedAcc}.`;
+        status(mismatchMsg, 'warn');
+        toast.warning(mismatchMsg, 'Empresa Incorreta');
+        startLoginPoll();
+        return;
+      }
+
       if (result.catalog) useCatalog(result.catalog, true);
       else if (endpoint === 'login/open') {
         liveCatalog = null; catalogLive = false; renderCatalogOverview(); renderQueue();
         startLoginPoll();
       }
-      if (result.accountId || result.empresaNome) {
-        updateTopAccountDisplay(result.accountId || currentAccount(), result.empresaNome, result.stage === 'login_detected' ? 'login_detected' : 'logged_in');
-      }
+
       const msg = endpoint === 'login/open'
-        ? 'Entre no G-Click na janela que abriu. Quando o login for detectado, abra Enquete -> Mapeamento e clique em Buscar Perguntas e Respostas (Sob Demanda).'
+        ? 'Entre no G-Click na janela que abriu. A conexão é detectada sozinha e os módulos são liberados quando a conta certa estiver ativa.'
         : (result.catalog ? `Catálogo atual conferido: ${result.catalog.questionCount} perguntas.` : (result.message || 'Login verificado no G-Click.'));
       status(msg, 'ok');
       toast.success(msg, endpoint === 'login/open' ? 'Navegador aberto' : 'Sessão G-Click');
@@ -1098,7 +1270,7 @@ async function login(endpoint) {
     }
   });
 }
-for (const input of document.querySelectorAll('input[name="sourceType"]')) input.addEventListener('change', () => { $('fileBox').hidden = sourceType() !== 'file'; $('urlBox').hidden = sourceType() !== 'url'; $('recentBox').hidden = sourceType() !== 'recent'; taskCatalog = []; selectedTasks.clear(); clearImportedTable(); renderQueue(); $('taskStatus').textContent = 'Leia as tarefas da fonte selecionada.'; sourceStatus(sourceType() === 'url' ? 'Links privados exigem JSON de conta de serviço. Para usar seu login do Google, baixe a aba como CSV e importe em Arquivo.' : sourceType() === 'file' ? 'Escolha o CSV ou XLSX e clique em Importar arquivo selecionado.' : 'Baixe o CSV da aba e selecione o arquivo recebido.'); clearPreview(); if (sourceType() === 'recent') refreshDownloads(); });
+for (const input of document.querySelectorAll('input[name="sourceType"]')) input.addEventListener('change', () => { $('fileBox').hidden = sourceType() !== 'file'; $('urlBox').hidden = sourceType() !== 'url'; $('recentBox').hidden = sourceType() !== 'recent'; if (sourceUse() === 'carteira') { currentProfile = null; $('mappingEditorSection').hidden = true; sourceStatus(sourceType() === 'url' ? 'Cole o link da planilha de responsáveis × empresas e clique em Ler planilha.' : sourceType() === 'file' ? 'Escolha o CSV ou XLSX; a leitura começa ao selecionar o arquivo.' : 'Baixe o CSV da aba e selecione o arquivo recebido.'); if (sourceType() === 'recent') refreshDownloads(); return; } taskCatalog = []; selectedTasks.clear(); clearImportedTable(); renderQueue(); $('taskStatus').textContent = 'Leia as tarefas da fonte selecionada.'; currentProfile = null; $('mappingEditorSection').hidden = true; sourceStatus(sourceType() === 'url' ? 'Cole o link da planilha e clique em Ler planilha.' : sourceType() === 'file' ? 'Escolha o CSV ou XLSX; a leitura começa ao selecionar o arquivo.' : 'Baixe o CSV da aba e selecione o arquivo recebido.'); clearPreview(); if (sourceType() === 'recent') refreshDownloads(); });
 for (const id of ['accountId','file','sheetName','sourceUrl','recentSheetUrl','serviceKey']) $(id).addEventListener('input', () => { previewId = null; updateApply(); if (id === 'accountId') updateSidebarBadges(); });
 function setSheetUrl(value) {
   if ($('recentSheetUrl').value === value && $('sourceUrl').value === value) return;
@@ -1116,8 +1288,159 @@ async function saveSheetUrl(event) {
   } catch (error) { status(error.message, 'error'); }
 }
 function renderAccountList() {
-  $('accountList').replaceChildren(...(config.accounts ?? []).map(a => new Option(`${a.mappings} mapeamento(s)${a.capturedAt ? ` · catálogo de ${new Date(a.capturedAt).toLocaleDateString('pt-BR')}` : ''}${a.sheetUrl ? ' · planilha salva' : ''}`, a.accountId)));
+  const accounts = config?.accounts ?? [];
+  const options = [];
+  const seenIds = new Set();
+
+  for (const a of accounts) {
+    seenIds.add(String(a.accountId));
+    const label = `${a.accountId} · ${a.mappings} mapeamento(s)${a.capturedAt ? ` · catálogo de ${new Date(a.capturedAt).toLocaleDateString('pt-BR')}` : ''}${a.sheetUrl ? ' · planilha salva' : ''}`;
+    options.push(new Option(label, a.accountId));
+  }
+
+  if (Array.isArray(gclickSessionState?.availableEmpresas)) {
+    for (const emp of gclickSessionState.availableEmpresas) {
+      if (!seenIds.has(String(emp.id))) {
+        seenIds.add(String(emp.id));
+        options.push(new Option(`${emp.id} · ${emp.nome}`, emp.id));
+      }
+    }
+  }
+
+  $('accountList')?.replaceChildren(...options);
 }
+
+function formatCnpjDisplay(cnpj) {
+  if (!cnpj) return null;
+  const digits = String(cnpj).replace(/\D/g, '');
+  if (digits.length === 14) {
+    return digits.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
+  }
+  return String(cnpj);
+}
+
+function getInitials(name) {
+  if (!name) return 'GC';
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function renderEmpresasGrid() {
+  const container = $('empresaCardsGrid');
+  if (!container) return;
+
+  const empresas = gclickSessionState?.availableEmpresas || [];
+  const activeId = String(gclickSessionState?.activeAccountId || gclickSessionState?.currentEmpresaId || currentAccount() || '');
+  const searchFilter = ($('empresaGridSearch')?.value || '').trim().toLowerCase();
+
+  if (!empresas.length) {
+    container.innerHTML = `
+      <div class="empresa-grid-empty" id="empresaGridEmpty">
+        <div class="empty-icon">🏢</div>
+        <p>Nenhuma empresa carregada. Abra a janela de login e autentique-se no G-Click para carregar as empresas disponíveis.</p>
+      </div>`;
+    return;
+  }
+
+  const filtered = empresas.filter(emp => {
+    if (!searchFilter) return true;
+    const nome = (emp.nome || '').toLowerCase();
+    const apelido = (emp.apelido || '').toLowerCase();
+    const id = String(emp.id || '').toLowerCase();
+    const cnpj = String(emp.cnpj || '').replace(/\D/g, '');
+    const cleanFilter = searchFilter.replace(/\D/g, '');
+    return nome.includes(searchFilter) ||
+           apelido.includes(searchFilter) ||
+           id.includes(searchFilter) ||
+           (cleanFilter && cnpj.includes(cleanFilter));
+  });
+
+  if (!filtered.length) {
+    container.innerHTML = `
+      <div class="empresa-grid-empty">
+        <div class="empty-icon">🔍</div>
+        <p>Nenhuma empresa encontrada para o filtro "<strong>${escapeHtml(searchFilter)}</strong>".</p>
+      </div>`;
+    return;
+  }
+
+  container.innerHTML = '';
+  for (const emp of filtered) {
+    const isCurrent = String(emp.id) === activeId;
+    const isSuspended = emp.ativo === false;
+    const card = document.createElement('div');
+    card.className = `empresa-card-item${isCurrent ? ' is-active' : ''}${isSuspended ? ' is-disabled' : ''}`;
+    card.dataset.id = emp.id;
+    if (isSuspended) card.title = 'Empresa suspensa no G-Click';
+
+    const initials = getInitials(emp.apelido || emp.nome);
+    const photoUrl = emp.imagemUrl || `/api/empresa/foto?account=${encodeURIComponent(emp.id)}`;
+    const avatarHtml = `<img class="empresa-card-avatar" src="${escapeHtml(photoUrl)}" alt="" onerror="this.onerror=null;this.replaceWith(Object.assign(document.createElement('div'),{className:'empresa-card-avatar',textContent:'${initials}'}))">`;
+
+    const statusBadge = isSuspended
+      ? `<span class="badge-empresa badge-empresa-status-suspended">Suspensa</span>`
+      : `<span class="badge-empresa badge-empresa-status-active">Empresa Ativa</span>`;
+
+    const connectedBadge = isCurrent
+      ? `<span class="badge-empresa badge-empresa-connected">Conectada Agora</span>`
+      : '';
+
+    const cnpjFormatted = formatCnpjDisplay(emp.cnpj);
+
+    card.innerHTML = `
+      <div class="empresa-card-top">
+        ${avatarHtml}
+        <div class="empresa-card-badges">
+          ${connectedBadge}
+          ${statusBadge}
+        </div>
+      </div>
+      <div class="empresa-card-body">
+        <div class="empresa-card-name">${escapeHtml(emp.nome)}</div>
+        ${emp.apelido && emp.apelido !== emp.nome ? `<div class="empresa-card-apelido">${escapeHtml(emp.apelido)}</div>` : ''}
+      </div>
+      <div class="empresa-card-meta">
+        <span>ID: <strong>${escapeHtml(emp.id)}</strong></span>
+        ${cnpjFormatted ? `<span>CNPJ: <strong>${escapeHtml(cnpjFormatted)}</strong></span>` : ''}
+      </div>
+    `;
+
+    card.addEventListener('click', async () => {
+      if (card.classList.contains('is-loading')) return;
+      if (isSuspended) {
+        toast.warning('Esta empresa está marcada como suspensa no G-Click.', 'Empresa Suspensa');
+        return;
+      }
+      if (isCurrent && (gclickSessionState.isReadyForModules || isConnectionResolved())) {
+        toast.info(`A conta ${emp.id} (${emp.nome}) já está conectada e ativa no G-Click.`, 'Empresa Conectada');
+        return;
+      }
+
+      card.classList.add('is-loading');
+      const input = $('accountId');
+      if (input) {
+        input.value = emp.id;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+
+      try {
+        const success = await switchToSelectedEmpresa(emp.id);
+        if (success) {
+          renderEmpresasGrid();
+        }
+      } finally {
+        card.classList.remove('is-loading');
+      }
+    });
+
+    container.appendChild(card);
+  }
+}
+
+$('empresaGridSearch')?.addEventListener('input', () => renderEmpresasGrid());
+
 $('recentSheetUrl').addEventListener('input', updateRecentSheetLinks);
 $('recentSheetUrl').addEventListener('input', invalidateRecentSource);
 $('recentSheetUrl').addEventListener('change', saveSheetUrl);
@@ -1139,14 +1462,51 @@ $('directExport').addEventListener('click', () => {
   };
   setTimeout(check, 2500);
 });
-$('refreshDownloads').addEventListener('click', refreshDownloads); $('downloadFile').addEventListener('change', () => { awaitingSheetDownload = false; sheetDownloadRequestedAt = 0; taskCatalog = []; selectedTasks.clear(); clearImportedTable(); renderQueue(); clearPreview(); showDownloadSelection(); if ($('downloadFile').value) loadTasks(); });
-$('loadUrlTasks').addEventListener('click', () => { clearPreview(); loadTasks(); });
-$('loadFileTasks').addEventListener('click', () => { clearPreview(); loadTasks(); });
+$('refreshDownloads').addEventListener('click', refreshDownloads); $('downloadFile').addEventListener('change', () => { awaitingSheetDownload = false; sheetDownloadRequestedAt = 0; taskCatalog = []; selectedTasks.clear(); clearImportedTable(); renderQueue(); clearPreview(); showDownloadSelection(); if ($('downloadFile').value) readSource(); });
+$('loadSourceBtn').addEventListener('click', () => withButtonLoading('loadSourceBtn', 'Lendo…', () => { if (sourceUse() === 'enquete') clearPreview(); return readSource(); }));
+$('btnSourceToCarteira').addEventListener('click', () => {
+  if ($('btnSourceToCarteira').dataset.mode === 'go') { switchSection('carteira'); return; }
+  // A aba lida na Enquete é de responsáveis × empresas: leva o link para o uso Carteira; a leitura fica com o operador.
+  if (sourceType() === 'url') $('carteiraSourceUrl').value = $('sourceUrl').value;
+  setSourceUse('carteira');
+  if (sourceType() === 'url') saveCarteiraSheetUrl();
+  sourceStatus('Uso trocado para Carteira por Usuário. Clique em Ler planilha.');
+});
+function setSourceUse(use) {
+  const radio = document.querySelector(`input[name="sourceUse"][value="${use}"]`);
+  if (radio && !radio.checked) { radio.checked = true; radio.dispatchEvent(new Event('change')); }
+}
+for (const input of document.querySelectorAll('input[name="sourceUse"]')) input.addEventListener('change', () => {
+  const use = sourceUse();
+  $('sourceUrl').hidden = use !== 'enquete';
+  $('carteiraSourceUrl').hidden = use !== 'carteira';
+  if (use === 'carteira' && !$('carteiraSourceUrl').value) $('carteiraSourceUrl').value = knownAccount()?.carteiraSheetUrl ?? '';
+  currentProfile = use === 'carteira' ? carteiraSheet?.profile ?? null : null;
+  currentStructure = null;
+  $('mappingEditorSection').hidden = true;
+  $('requiredFieldsHint').textContent = use === 'carteira' ? 'Responsável e CNPJ' : 'Obrigação / Tarefa e CNPJ ou código';
+  importedPage = 0; renderImportedTable();
+  $('sourcePreviewInfo').textContent = use === 'carteira' ? carteiraSheet?.info ?? '' : enqueteSourceInfo;
+  const view = sourceViewByUse[use];
+  if (view) sourceStatus(view.message, view.kind, { carteira: view.carteira });
+  else sourceStatus(use === 'carteira' ? 'Cole o link da planilha de responsáveis × empresas e clique em Ler planilha.' : 'Cole o link da planilha e clique em Ler planilha.');
+});
+const knownAccount = () => (config.accounts ?? []).find(a => String(a.accountId) === String(currentAccount()));
+async function saveCarteiraSheetUrl() {
+  const accountId = currentAccount(), carteiraSheetUrl = $('carteiraSourceUrl').value.trim();
+  if (!/^\d+$/.test(accountId)) return;
+  try {
+    const result = await api('accounts/save', { accountId, carteiraSheetUrl });
+    config.accounts = result.accounts;
+  } catch (error) { sourceStatus(error.message, 'error'); }
+}
+$('carteiraSourceUrl').addEventListener('change', saveCarteiraSheetUrl);
+$('carteiraSourceUrl').addEventListener('input', () => { if (sourceType() === 'url') { clearCarteiraSheet(); currentProfile = null; $('mappingEditorSection').hidden = true; sourceStatus('Link alterado. Clique em Ler planilha.'); } });
 $('inspectSourceBtn')?.addEventListener('click', inspectSource);
 $('saveProfileBtn')?.addEventListener('click', saveMappingProfile);
 $('applyAndLoadBtn')?.addEventListener('click', applyMappingAndLoad);
-$('file').addEventListener('change', () => { if (sourceType() === 'file' && $('file').files.length) { taskCatalog = []; selectedTasks.clear(); clearPreview(); clearImportedTable(); renderQueue(); loadTasks(); } });
-$('sourceUrl').addEventListener('input', () => { if (sourceType() === 'url') { taskCatalog = []; selectedTasks.clear(); clearPreview(); clearImportedTable(); renderQueue(); sourceStatus('Link alterado. Clique em Ler tarefas do link; links privados exigem uma conta de serviço.'); } });
+$('file').addEventListener('change', () => { if (sourceType() === 'file' && $('file').files.length && sourceUse() === 'carteira') { clearCarteiraSheet(); currentProfile = null; readSource(); return; } if (sourceType() === 'file' && $('file').files.length) { taskCatalog = []; selectedTasks.clear(); currentProfile = null; clearPreview(); clearImportedTable(); renderQueue(); loadTasks(); } });
+$('sourceUrl').addEventListener('input', () => { if (sourceType() === 'url') { taskCatalog = []; selectedTasks.clear(); currentProfile = null; $('mappingEditorSection').hidden = true; clearPreview(); clearImportedTable(); renderQueue(); sourceStatus('Link alterado. Clique em Ler planilha.'); } });
 $('queueSearch').addEventListener('input', renderQueue); $('queueFilter').addEventListener('change', renderQueue);
 $('btnConfirmAllSuggestions')?.addEventListener('click', async () => {
   const accountId = currentAccount();
@@ -1182,7 +1542,8 @@ async function loadAccountCatalog() {
   const accountId = currentAccount();
   // A planilha é de um escritório: ao trocar de conta, a fonte escolhida antes deixa de valer.
   if (loadedAccount && loadedAccount !== accountId) {
-    taskCatalog = []; selectedTasks.clear(); clearPreview(); clearImportedTable();
+    taskCatalog = []; selectedTasks.clear(); clearPreview(); clearImportedTable(); clearCarteiraSheet();
+    $('carteiraSourceUrl').value = knownAccount()?.carteiraSheetUrl ?? '';
     $('downloadFile').value = ''; showDownloadSelection();
     $('taskStatus').textContent = 'Conta alterada: selecione a planilha deste escritório.';
   }
@@ -1200,9 +1561,22 @@ async function loadAccountCatalog() {
   }
   selectedTasks.clear(); renderQueue();
   updateTopAccountDisplay(accountId);
+  if (/^\d+$/.test(accountId)) {
+    syncGClickSession(accountId).catch(() => {});
+  }
 }
-$('accountId').addEventListener('change', loadAccountCatalog);
-$('accountId').addEventListener('input', () => updateTopAccountDisplay($('accountId').value.trim()));
+$('accountId').addEventListener('change', () => {
+  loadAccountCatalog();
+  renderEmpresasGrid();
+});
+$('accountId').addEventListener('input', () => {
+  const acc = $('accountId').value.trim();
+  updateTopAccountDisplay(acc);
+  renderEmpresasGrid();
+  if (/^\d+$/.test(acc)) {
+    syncGClickSession(acc).catch(() => {});
+  }
+});
 $('clearFocus').addEventListener('click', () => { focusTask = null; resultsPage = 0; if ($('resultsTaskFilter')) $('resultsTaskFilter').value = ''; if (lastReport) renderResultRows(lastReport); });
 async function refreshWriterStatus() {
   const accountId = currentAccount();
@@ -1291,6 +1665,52 @@ $('runAuditFromApply')?.addEventListener('click', () => {
   runAuditExecution({ filterTask, force: true });
 });
 $('openLogin').addEventListener('click', () => login('login/open')); $('closeLogin').addEventListener('click', () => login('login/close'));
+// Troca a empresa ativa no Chrome da automação para a conta do painel (card em appp /empresas).
+async function switchToSelectedEmpresa(accountId) {
+  try {
+    status(`Alternando para a empresa ${accountId} no G-Click…`);
+    const result = await api('gclick/switch-empresa', { accountId });
+    // Contrato de ensureEmpresaActive: { active, accountId, empresaNome, reason, message }
+    if (result.active) {
+      const activeId = String(result.currentAccountId || result.accountId || accountId);
+      const nome = result.empresaNome || result.currentEmpresaNome || '';
+      gclickSessionState = {
+        ...gclickSessionState,
+        connected: true,
+        accountMatches: true,
+        isReadyForModules: true,
+        activeAccountId: activeId,
+        activeEmpresaNome: nome,
+        currentEmpresaId: activeId,
+        currentEmpresaNome: nome
+      };
+      if ($('accountId') && $('accountId').value !== activeId) {
+        $('accountId').value = activeId;
+      }
+      updateSidebarBadges();
+      updateTopAccountDisplay(activeId, nome, 'login_detected');
+      renderEmpresasGrid();
+      if (result.fotoSaved) loadAccountFoto(activeId, true);
+      toast.success(`Conta alternada com sucesso para ${activeId}${nome ? ` (${nome})` : ''}`, 'Empresa Atualizada');
+      status(`Empresa ativa atualizada para ${activeId}. Módulos liberados!`, 'ok');
+      return true;
+    }
+    toast.error(result.message || 'Falha ao alternar empresa.', 'Troca de Empresa');
+    status(result.message || 'Falha ao alternar empresa.', 'error');
+  } catch (err) {
+    toast.error(err.message, 'Erro ao alternar empresa');
+    status(err.message, 'error');
+  }
+  return false;
+}
+$('btnSwitchEmpresa')?.addEventListener('click', async () => {
+  const accountId = currentAccount();
+  if (!accountId) {
+    toast.warning('Informe o código da conta antes de alternar.', 'Conta necessária');
+    return;
+  }
+  await withButtonLoading('btnSwitchEmpresa', 'Alternando conta…', () => switchToSelectedEmpresa(accountId));
+});
 const AUTO_AUDIT_KEY = 'enqueteSync_autoAudit';
 const HEADLESS_AUDIT_KEY = 'enqueteSync_headlessAudit';
 try {
@@ -1398,9 +1818,9 @@ async function loadUsersTable() {
       const tdActions = document.createElement('td');
       tdActions.style.textAlign = 'right';
       tdActions.innerHTML = `
-        <button type="button" class="ghost btn-edit-user" data-id="${u.id}" style="padding:4px 8px;font-size:12px;margin-right:4px">✏️ Editar</button>
-        <button type="button" class="secondary btn-overrides-user" data-id="${u.id}" style="padding:4px 8px;font-size:12px;margin-right:4px">⚡ Exceções</button>
-        ${!u.is_superadmin ? `<button type="button" class="ghost btn-del-user" data-id="${u.id}" style="padding:4px 8px;font-size:12px;color:#ef4444">🗑️</button>` : ''}
+        <button type="button" class="btn-table-action btn-action-ghost btn-edit-user" data-id="${u.id}" style="margin-right:4px">✏️ Editar</button>
+        <button type="button" class="btn-table-action btn-action-ghost btn-overrides-user" data-id="${u.id}" style="margin-right:4px">⚡ Exceções</button>
+        ${!u.is_superadmin ? `<button type="button" class="btn-table-action btn-action-ghost btn-del-user" data-id="${u.id}" style="color:#ef4444" title="Excluir usuário">🗑️</button>` : ''}
       `;
       
       tdActions.querySelector('.btn-edit-user')?.addEventListener('click', () => openUserModal(u));
@@ -1678,10 +2098,31 @@ async function initApp() {
     } catch { /* sem preferência local */ }
   }
   updateTopAccountDisplay(currentAccount());
-  if (config.catalog && config.catalogLive) useCatalog(config.catalog, true);
-  else if (currentAccount()) await loadAccountCatalog();
+  if (config.catalog && config.catalogLive) {
+    useCatalog(config.catalog, true);
+    gclickSessionState = {
+      connected: true,
+      accountMatches: true,
+      isReadyForModules: true,
+      activeAccountId: config.catalog.accountId,
+      activeEmpresaNome: config.empresaNome || null,
+      currentEmpresaId: config.catalog.accountId,
+      currentEmpresaNome: config.empresaNome || null
+    };
+  } else if (currentAccount()) {
+    await loadAccountCatalog();
+  }
+
+  const accForSession = currentAccount();
+  const sessionResult = await syncGClickSession(accForSession);
+  if (!accForSession && sessionResult?.currentEmpresaId && sessionResult.browserStatus === 'open') {
+    $('accountId').value = sessionResult.currentEmpresaId;
+    loadedAccount = sessionResult.currentEmpresaId;
+    await syncGClickSession(sessionResult.currentEmpresaId);
+  }
   loadedAccount = currentAccount() || null;
   if (currentAccount() && !$('recentSheetUrl').value) setSheetUrl((config.accounts ?? []).find(a => a.accountId === currentAccount())?.sheetUrl ?? '');
+  renderEmpresasGrid();
   
   if (config.loginOpen) {
     status('Janela do navegador de automação aberta. Aguardando login no G-Click.');
@@ -1703,6 +2144,20 @@ const SECTION_STORAGE_KEY = 'enqueteSync_activeSection';
 
 function switchSection(sectionId) {
   const target = sectionId || 'all';
+
+  // Proteção de Pré-condição e Isolamento de Conta (AGENTS.md)
+  // Se o G-Click estiver com mismatch ativo (ex: logado na conta 2420 enquanto outra conta está selecionada),
+  // bloqueia estritamente o acesso aos módulos operacionais para impedir ações no escritório errado.
+  const operationalModules = ['catalog', 'mapping', 'audit', 'apply', 'obrigacoes', 'carteira'];
+  if (operationalModules.includes(target) && gclickSessionState.connected && !gclickSessionState.accountMatches) {
+    const acc = currentAccount();
+    const reason = `O G-Click está conectado na empresa ${gclickSessionState.currentEmpresaNome || gclickSessionState.currentEmpresaId}, diferente da conta ${acc} selecionada. Alterne a empresa no módulo Conexão G-Click.`;
+    toast.warning(reason, 'Empresa Divergente');
+    status(reason, 'warn');
+    switchSection('connection');
+    return;
+  }
+
   const navBtns = document.querySelectorAll('#sidebarNav .nav-btn');
   const sections = document.querySelectorAll('.app-section');
 
@@ -1729,6 +2184,13 @@ function switchSection(sectionId) {
   if (target === 'obrigacoes') {
     loadObrigacoesSection();
   }
+  if (target === 'carteira') {
+    loadCarteiraSection();
+  }
+
+  // O fluxo de etapas descreve só a Enquete; nos demais módulos seriam ruído.
+  const isEnqueteFlow = ENQUETE_FLOW_SECTIONS.includes(target);
+  if ($('enquetePipeline')) $('enquetePipeline').hidden = !isEnqueteFlow;
 
   $('sidebar')?.classList.remove('open');
   updateSidebarBadges();
@@ -1739,7 +2201,7 @@ function switchSection(sectionId) {
   });
 
   // Auto-expande sub-módulo se a ação ativa estiver dentro dele
-  if (['catalog', 'mapping', 'audit', 'apply'].includes(target)) {
+  if (['catalog', 'mapping', 'audit', 'apply', 'writer'].includes(target)) {
     $('submoduleEnquete')?.classList.remove('collapsed');
   } else if (['obrigacoes'].includes(target)) {
     $('submoduleObrigacoes')?.classList.remove('collapsed');
@@ -1750,48 +2212,110 @@ function switchSection(sectionId) {
   } catch { /* sem preferência local */ }
 }
 
+// Fonte única do estado da conexão: o card, a barra lateral, a faixa de indicadores e o fluxo de etapas leem daqui.
+function connectionView() {
+  const acc = currentAccount();
+  const s = gclickSessionState;
+  const empresa = s.currentEmpresaNome
+    ? `${s.currentEmpresaNome}${s.currentEmpresaId ? ` (${s.currentEmpresaId})` : ''}`
+    : (s.currentEmpresaId ? `conta ${s.currentEmpresaId}` : 'outra empresa');
+  if (isConnectionResolved()) {
+    return { state: 'ok', short: 'Conectado', title: `Conectado em ${empresa}`, detail: 'Módulos de automação liberados.' };
+  }
+  if (s.connected && !s.accountMatches) {
+    return { state: 'mismatch', short: 'Conta divergente', title: `G-Click aberto em outra conta: ${empresa}`,
+      detail: `Os módulos ficam bloqueados até a conta ${acc || 'selecionada'} ficar ativa.` };
+  }
+  if (config?.loginOpen) {
+    return { state: 'entering', short: 'Aguardando login', title: 'Aguardando login',
+      detail: 'Entre no G-Click na janela da automação. A conexão é detectada sozinha.' };
+  }
+  return { state: 'idle', short: 'Não conectado', title: 'Não conectado',
+    detail: acc ? `Clique em Abrir janela de login para conectar a conta ${acc}.` : 'Informe a conta do escritório.' };
+}
+
+const ENQUETE_FLOW_SECTIONS = ['all', 'connection', 'source', 'catalog', 'mapping', 'audit', 'apply', 'writer'];
+
+// Cabeçalho: foto da empresa (cópia local guardada pelo robô), nome e estado da conexão.
+const EMPRESA_STOPWORDS = new Set(['LTDA', 'ME', 'EPP', 'EIRELI', 'SA', 'S/A', 'DE', 'DA', 'DO', 'DAS', 'DOS', 'E']);
+function empresaInitials(nome) {
+  const words = String(nome ?? '').toUpperCase().split(/\s+/).filter(w => w && !EMPRESA_STOPWORDS.has(w));
+  return words.slice(0, 2).map(w => w[0]).join('') || '—';
+}
+const accountFoto = { src: '', loaded: false, triedAt: 0 };
+function loadAccountFoto(acc, force = false) {
+  const img = $('topAccountFoto');
+  if (!img) return;
+  if (!acc) { img.hidden = true; img.removeAttribute('src'); accountFoto.src = ''; return; }
+  const base = `/api/gclick/empresa-foto?accountId=${encodeURIComponent(acc)}`;
+  if (!force && accountFoto.src.startsWith(base)) return;
+  accountFoto.src = `${base}&t=${Date.now()}`;
+  accountFoto.loaded = false; accountFoto.triedAt = Date.now();
+  img.onload = () => { accountFoto.loaded = true; img.hidden = false; };
+  img.onerror = () => { accountFoto.loaded = false; img.hidden = true; };
+  img.src = accountFoto.src;
+}
+function renderAccountChip(acc, view, tone) {
+  const chip = $('topAccountPill');
+  if (!chip) return;
+  const nome = view.state === 'ok' ? gclickSessionState.currentEmpresaNome : '';
+  chip.dataset.state = view.state;
+  chip.title = `${view.title}. Clique para abrir Conexão G-Click.`;
+  $('topAccountNome').textContent = nome || (acc ? `Conta ${acc}` : 'Nenhuma conta selecionada');
+  $('topAccountId').textContent = acc || '—';
+  $('topAccountIdWrap').hidden = !nome;
+  $('topAccountInitials').textContent = nome ? empresaInitials(nome) : (acc ? '#' : '—');
+  const badge = $('topSessionBadge');
+  badge.hidden = !acc;
+  badge.textContent = view.short;
+  badge.className = `nav-badge ${tone}`;
+  // A foto é capturada pelo robô quando a conta fica ativa; sem ela, tenta de novo a cada 30 s.
+  loadAccountFoto(acc);
+  if (acc && view.state === 'ok' && !accountFoto.loaded && Date.now() - accountFoto.triedAt > 30000) loadAccountFoto(acc, true);
+}
+
 function updateSidebarBadges() {
   const acc = currentAccount();
-  const accText = acc ? `Conta: ${acc}` : 'Conta: —';
-  if ($('topAccountId')) $('topAccountId').textContent = acc || '—';
-  if ($('sidebarAccountDisplay')) $('sidebarAccountDisplay').textContent = accText;
-  if ($('kpiAccountDisplay')) $('kpiAccountDisplay').textContent = acc || '—';
+  const isResolved = isConnectionResolved();
+  const view = connectionView();
+  const tone = { ok: 'badge-ok', mismatch: 'badge-warn', entering: 'badge-warn', idle: 'badge-neutral' }[view.state];
 
-  const isOnline = Boolean(catalogLive && (liveCatalog ? (!acc || String(liveCatalog.accountId) === String(acc)) : true));
-  const isEntering = Boolean(config?.loginOpen && !isOnline);
-  if ($('sidebarStatusDot')) {
-    $('sidebarStatusDot').className = `status-dot ${isOnline ? 'active' : ''}`;
-  }
-  const sessionText = isOnline ? 'Enquete conectada' : isEntering ? 'Entrando…' : 'Sessão desconectada';
-  if ($('sidebarSessionDisplay')) {
-    $('sidebarSessionDisplay').textContent = sessionText;
-  }
-  if ($('kpiSessionStatus')) {
-    $('kpiSessionStatus').textContent = sessionText;
-    $('kpiSessionStatus').style.color = isOnline ? '#059669' : isEntering ? '#d97706' : '#94a3b8';
-  }
-  if ($('stepMetaConnection')) {
-    $('stepMetaConnection').textContent = isOnline ? 'Sessão ativa' : acc ? `Conta ${acc}` : 'Aguardando login';
-  }
-
+  renderAccountChip(acc, view, tone);
+  if ($('stepMetaConnection')) $('stepMetaConnection').textContent = view.short;
   const badgeConn = $('navBadgeConnection');
-  if (badgeConn) {
-    if (isOnline) { badgeConn.textContent = 'Conectado'; badgeConn.className = 'nav-badge badge-ok'; }
-    else if (isEntering) { badgeConn.textContent = 'Entrando…'; badgeConn.className = 'nav-badge badge-warn'; }
-    else if (acc) { badgeConn.textContent = 'Conta OK'; badgeConn.className = 'nav-badge badge-info'; }
-    else { badgeConn.textContent = 'Aguardando'; badgeConn.className = 'nav-badge badge-neutral'; }
+  if (badgeConn) { badgeConn.textContent = view.short; badgeConn.className = `nav-badge ${tone}`; }
+
+  const card = $('connectionCard');
+  if (card) card.dataset.state = view.state;
+  if ($('connStatusTitle')) $('connStatusTitle').textContent = view.title;
+  if ($('connStatusDetail')) $('connStatusDetail').textContent = view.detail;
+  const btnSwitch = $('btnSwitchEmpresa');
+  if (btnSwitch) {
+    btnSwitch.hidden = view.state !== 'mismatch';
+    if (!btnSwitch.disabled) btnSwitch.textContent = acc ? `Alternar para a conta ${acc}` : 'Alternar conta';
   }
+
+  // Atualiza classes de bloqueio visual em itens do menu lateral e pipeline stepper
+  const dependentModules = ['source', 'catalog', 'mapping', 'audit', 'apply', 'obrigacoes', 'carteira', 'users'];
+  document.querySelectorAll('#sidebarNav .nav-btn').forEach(btn => {
+    if (dependentModules.includes(btn.dataset.section)) {
+      btn.classList.toggle('nav-blocked', !isResolved);
+    }
+  });
+  document.querySelectorAll('.pipeline-step').forEach(btn => {
+    if (dependentModules.includes(btn.dataset.step)) {
+      btn.classList.toggle('step-blocked', !isResolved);
+    }
+  });
 
   const badgeSource = $('navBadgeSource');
   const rowCount = importedTable?.rows?.length || 0;
-  const currentFileName = $('downloadFile')?.value || '';
-  if ($('kpiRowsCount')) $('kpiRowsCount').textContent = rowCount;
-  if ($('kpiSourceFile')) $('kpiSourceFile').textContent = currentFileName || (rowCount ? `${rowCount} linhas lidas` : 'Nenhum CSV carregado');
-  if ($('stepMetaSource')) $('stepMetaSource').textContent = rowCount ? `${rowCount} registros` : 'Selecionar dados';
+  if ($('stepMetaSource')) $('stepMetaSource').textContent = rowCount ? `${rowCount} linhas` : 'Selecionar dados';
 
   if (badgeSource) {
     if (taskCatalog.length) { badgeSource.textContent = `${taskCatalog.length} tarefas`; badgeSource.className = 'nav-badge badge-ok'; }
     else if (importedTable) { badgeSource.textContent = `${importedTable.rows.length} linhas`; badgeSource.className = 'nav-badge badge-ok'; }
+    else if (carteiraParsedData) { badgeSource.textContent = 'Carteira lida'; badgeSource.className = 'nav-badge badge-ok'; }
     else { badgeSource.textContent = 'Pendente'; badgeSource.className = 'nav-badge badge-neutral'; }
   }
 
@@ -1806,10 +2330,6 @@ function updateSidebarBadges() {
   }
 
   const mappedCount = taskCatalog.length || (importedTable?.tasks?.length || 0);
-  if ($('kpiMappedTasks')) $('kpiMappedTasks').textContent = mappedCount;
-  if ($('kpiCatalogStatus')) {
-    $('kpiCatalogStatus').textContent = liveCatalog?.questionCount ? `${liveCatalog.questionCount} perguntas ativas` : 'Catálogo offline';
-  }
   if ($('stepMetaMapping')) {
     $('stepMetaMapping').textContent = mappedCount ? `${mappedCount} tarefas mapeadas` : 'Definir regras';
   }
@@ -1839,15 +2359,28 @@ function updateSidebarBadges() {
     else { badgeApply.textContent = 'Aguardando'; badgeApply.className = 'nav-badge badge-neutral'; }
   }
 
+  const badgeCarteira = $('navBadgeCarteira');
+  if (badgeCarteira) {
+    if (carteiraAuditItems && carteiraAuditItems.length > 0) {
+      const disp = carteiraAuditItems.filter(i => i.status === 'disponivel_para_vincular').length;
+      if (disp > 0) {
+        badgeCarteira.textContent = `${disp} a vincular`;
+        badgeCarteira.className = 'nav-badge badge-warn';
+      } else {
+        badgeCarteira.textContent = 'Auditado';
+        badgeCarteira.className = 'nav-badge badge-ok';
+      }
+    } else if (carteiraUsers && carteiraUsers.length > 0) {
+      badgeCarteira.textContent = `${carteiraUsers.length} usuários`;
+      badgeCarteira.className = 'nav-badge badge-info';
+    } else {
+      badgeCarteira.textContent = 'Carteira';
+      badgeCarteira.className = 'nav-badge badge-neutral';
+    }
+  }
+
   const badgeWriter = $('navBadgeWriter');
   const isWriterConfigured = Boolean($('writerUrl')?.value?.trim());
-  if ($('kpiSheetStatus')) {
-    $('kpiSheetStatus').textContent = isWriterConfigured ? 'Integrada (Ativa)' : 'Não configurada';
-    $('kpiSheetStatus').style.color = isWriterConfigured ? '#059669' : '#64748b';
-  }
-  if ($('kpiSheetPending')) {
-    $('kpiSheetPending').textContent = `${pendingMarks} marcações pendentes`;
-  }
   if (badgeWriter) {
     badgeWriter.textContent = isWriterConfigured ? 'Ativo' : 'Pendente';
     badgeWriter.className = `nav-badge ${isWriterConfigured ? 'badge-ok' : 'badge-neutral'}`;
@@ -1884,7 +2417,7 @@ function updateSidebarBadges() {
 $('refreshCatalogManual')?.addEventListener('click', async () => {
   const accountId = currentAccount();
   if (!/^\d+$/.test(accountId)) {
-    status('Informe o código da conta G-Click (empId) em Conexão & Conta antes de buscar o catálogo.', 'error');
+    status('Informe o código da conta G-Click (empId) em Conexão G-Click antes de buscar o catálogo.', 'error');
     return;
   }
   const btn = $('refreshCatalogManual');
@@ -1898,7 +2431,7 @@ $('refreshCatalogManual')?.addEventListener('click', async () => {
       status(`Catálogo da Enquete atualizado sob demanda com sucesso: ${result.catalog.questionCount} perguntas e ${result.catalog.answerCount} respostas.`, 'ok');
     }
   } catch (error) {
-    status(`Busca sob demanda: ${error.message}. Se a janela do G-Click não estiver aberta, clique em "Abrir janela de login" no menu Conexão & Conta.`, 'error');
+    status(`Busca sob demanda: ${error.message}. Se a janela do G-Click não estiver aberta, clique em "Abrir janela de login" no menu Conexão G-Click.`, 'error');
   } finally {
     setBusy(false);
     if (btn) btn.disabled = false;
@@ -2117,63 +2650,63 @@ function renderObrigacoesTable() {
   }
 
   tbody.innerHTML = pageItems.map(item => {
-    let paridadeBadge = `<span style="font-size:11px;color:var(--text-muted);background:#f0f4f3;padding:3px 8px;border-radius:4px;">Sem disparo</span>`;
+    let paridadeBadge = `<span style="font-size:11px;color:var(--text-muted);background:#f0f4f3;padding:2px 6px;border-radius:4px;">Sem disparo</span>`;
     const precisaOrdem = Boolean(item.paridade?.precisaReordenacao);
     if (item.paridade?.status === 'conforme') {
       if (item.paridade?.canalExclusivoEmail) {
-        paridadeBadge = `<span class="badge-ok" style="font-size:11px;padding:3px 8px;border-radius:4px;display:inline-flex;align-items:center;gap:4px;" title="Obrigação com canal exclusivo de e-mail (não requer WhatsApp)"><span>✓</span> ✉️ Canal E-mail</span>`;
+        paridadeBadge = `<span class="badge-ok" style="font-size:11px;padding:2px 6px;border-radius:4px;display:inline-flex;align-items:center;gap:3px;" title="Obrigação com canal exclusivo de e-mail (não requer WhatsApp)"><span>✓</span> ✉️ Canal E-mail</span>`;
       } else if (precisaOrdem) {
-        paridadeBadge = `<span class="badge-warn" style="font-size:11px;padding:3px 8px;border-radius:4px;display:inline-flex;align-items:center;gap:4px;" title="Cada passo de WhatsApp deve ficar imediatamente antes do respectivo passo de e-mail"><span>↕️</span> Ordem a ajustar</span>`;
+        paridadeBadge = `<span class="badge-warn" style="font-size:11px;padding:2px 6px;border-radius:4px;display:inline-flex;align-items:center;gap:3px;" title="Cada passo de WhatsApp deve ficar imediatamente antes do respectivo passo de e-mail"><span>↕️</span> Ordem a ajustar</span>`;
       } else {
-        paridadeBadge = `<span class="badge-ok" style="font-size:11px;padding:3px 8px;border-radius:4px;display:inline-flex;align-items:center;gap:4px;"><span>✓</span> ✉️ + 💬 Alinhados</span>`;
+        paridadeBadge = `<span class="badge-ok" style="font-size:11px;padding:2px 6px;border-radius:4px;display:inline-flex;align-items:center;gap:3px;"><span>✓</span> ✉️ + 💬 Alinhados</span>`;
       }
     } else if (item.paridade?.status === 'pendente_whatsapp') {
       const faltam = item.paridade?.faltamWhatsapp || 1;
       const totalEmail = item.paridade?.emailCount || faltam;
-      paridadeBadge = `<span class="badge-warn" style="font-size:11px;padding:3px 8px;border-radius:4px;display:inline-flex;align-items:center;gap:4px;" title="${totalEmail} passo(s) de e-mail e ${item.paridade?.whatsappCount || 0} de WhatsApp (regra 1:1)"><span>⚠️</span> Faltam ${faltam} WhatsApp</span>`;
+      paridadeBadge = `<span class="badge-warn" style="font-size:11px;padding:2px 6px;border-radius:4px;display:inline-flex;align-items:center;gap:3px;" title="${totalEmail} passo(s) de e-mail e ${item.paridade?.whatsappCount || 0} de WhatsApp (regra 1:1)"><span>⚠️</span> Faltam ${faltam} WhatsApp</span>`;
     } else if (item.paridade?.status === 'pendente_email') {
-      paridadeBadge = `<span style="font-size:11px;background:#e0e7ff;color:#3730a3;padding:3px 8px;border-radius:4px;">💬 Sem E-mail</span>`;
+      paridadeBadge = `<span style="font-size:11px;background:#e0e7ff;color:#3730a3;padding:2px 6px;border-radius:4px;">💬 Sem E-mail</span>`;
     }
 
-    const deptoBadge = `<span style="font-size:11px;background:#eaf2f1;color:#184f59;padding:2px 8px;border-radius:4px;font-weight:600;">${escapeHtml(item.departamento || 'Geral')}</span>`;
+    const deptoBadge = `<span style="font-size:11px;background:#eaf2f1;color:#184f59;padding:2px 6px;border-radius:4px;font-weight:600;">${escapeHtml(item.departamento || 'Geral')}</span>`;
     const orgaoBadge = `<span style="font-size:11px;color:#4a6560;">${escapeHtml(item.orgao || 'Empresa')}</span>`;
     const vencText = item.diaVencimento ? `Dia ${item.diaVencimento}` : '—';
     const isChecked = selectedObrigacoesIds.has(item.id);
 
     return `
-      <tr style="border-bottom:1px solid #edf3f2;font-size:13px;transition:background .15s ease;${isChecked ? 'background:#f0f9f8;' : ''}">
-        <td style="padding:10px 12px;text-align:center;">
+      <tr class="${isChecked ? 'is-selected' : ''}">
+        <td style="text-align:center;">
           <input type="checkbox" class="obrig-row-check" data-id="${item.id}" ${isChecked ? 'checked' : ''} style="cursor:pointer;">
         </td>
-        <td style="padding:10px 14px;color:#184f59;font-weight:700;">#${item.id}</td>
-        <td style="padding:10px 16px;">
+        <td style="color:#184f59;font-weight:700;">#${item.id}</td>
+        <td>
           <strong style="color:#184f59;">${escapeHtml(item.nome)}</strong>
         </td>
-        <td style="padding:10px 16px;">${deptoBadge}</td>
-        <td style="padding:10px 16px;color:#4a6560;">${escapeHtml(item.frequencia || '—')}</td>
-        <td style="padding:10px 16px;color:#4a6560;">${escapeHtml(vencText)}</td>
-        <td style="padding:10px 16px;color:#4a6560;">${escapeHtml(item.fatoGerador || '—')}</td>
-        <td style="padding:10px 16px;">${orgaoBadge}</td>
-        <td style="padding:10px 16px;text-align:center;">${paridadeBadge}</td>
-        <td style="padding:10px 16px;text-align:center;">
+        <td>${deptoBadge}</td>
+        <td style="color:#4a6560;">${escapeHtml(item.frequencia || '—')}</td>
+        <td style="color:#4a6560;">${escapeHtml(vencText)}</td>
+        <td style="color:#4a6560;">${escapeHtml(item.fatoGerador || '—')}</td>
+        <td>${orgaoBadge}</td>
+        <td style="text-align:center;">${paridadeBadge}</td>
+        <td style="text-align:center;">
           ${(() => {
             const kanbanRaw = (item.quadroKanban || (item.status && item.status !== 'Ativo' ? item.status : '') || '').replace(/\n+/g, ' · ').trim();
             return kanbanRaw
-              ? `<span style="font-size:11px;background:#eef6f5;color:#184f59;padding:2px 8px;border-radius:4px;font-weight:500;display:inline-block;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(kanbanRaw)}">${escapeHtml(kanbanRaw)}</span>`
+              ? `<span style="font-size:11px;background:#eef6f5;color:#184f59;padding:2px 6px;border-radius:4px;font-weight:500;display:inline-block;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(kanbanRaw)}">${escapeHtml(kanbanRaw)}</span>`
               : `<span style="font-size:11.5px;color:#94a3b8;">—</span>`;
           })()}
         </td>
-        <td style="padding:10px 16px;text-align:right;white-space:nowrap;">
-          <div style="display:inline-flex;gap:6px;align-items:center;">
-            <button type="button" class="ghost" style="padding:4px 9px;font-size:11.5px;display:inline-flex;align-items:center;gap:4px;border:1px solid #184f59;color:#184f59;" onclick="openFixEmailModal(${item.id})">
+        <td style="text-align:right;white-space:nowrap;">
+          <div style="display:inline-flex;gap:4px;align-items:center;">
+            <button type="button" class="btn-table-action btn-action-ghost" onclick="openFixEmailModal(${item.id})" title="Ajustar passos e modelos de E-mail">
               <span>✉️</span> Ajustar E-mail
             </button>
             ${item.paridade?.hasWhatsapp ? `
-              <button type="button" class="ghost" style="padding:4px 9px;font-size:11.5px;display:inline-flex;align-items:center;gap:4px;border:1px solid #047857;color:#047857;" title="Confere e atualiza a configuração nos passos de WhatsApp (tipo de cancelamento, automação de envio e anexos)" onclick="openCreateWhatsappModal(${item.id})">
+              <button type="button" class="btn-table-action btn-action-ghost" title="Confere e atualiza a configuração nos passos de WhatsApp (tipo de cancelamento, automação de envio e anexos)" onclick="openCreateWhatsappModal(${item.id})">
                 <span>💬</span> Ajustar WhatsApp
               </button>
             ` : (!item.paridade?.canalExclusivoEmail ? `
-              <button type="button" class="primary" style="padding:4px 9px;font-size:11.5px;display:inline-flex;align-items:center;gap:4px;" onclick="openCreateWhatsappModal(${item.id})">
+              <button type="button" class="btn-table-action btn-action-primary" title="Criar passos de disparo WhatsApp" onclick="openCreateWhatsappModal(${item.id})">
                 <span>💬</span> Criar WhatsApp
               </button>
             ` : '')}
@@ -3378,7 +3911,7 @@ $('btnSyncObrigacoes')?.addEventListener('click', async () => {
     } catch {}
   }
   if (!isLive) {
-    const msg = 'A sessão do G-Click não está ativa. Abra o menu "Conexão & Conta G-Click" e clique em "Abrir janela de login" para conectar antes de sincronizar.';
+    const msg = 'A sessão do G-Click não está ativa. Abra o menu "Conexão G-Click" e clique em "Abrir janela de login" para conectar antes de sincronizar.';
     setObrigStatus(msg, 'warn');
     status(msg, 'warn');
     return;
@@ -3545,15 +4078,16 @@ $('btnConfirmAbort')?.addEventListener('click', executeCancelOperation);
 // COMMAND PALETTE ENTERPRISE (⌘K / Ctrl+K)
 // ==========================================================================
 const COMMANDS_REGISTRY = [
-  { id: 'nav-conn', title: 'Conexão & Conta G-Click', desc: 'Gerenciar sessão e código empId do escritório', icon: '🔑', badge: 'Módulo 1', action: () => switchSection('connection') },
-  { id: 'nav-source', title: 'Fonte (Importação)', desc: 'Carregar arquivo CSV da planilha ou Downloads', icon: '📥', badge: 'Módulo 1', action: () => switchSection('source') },
-  { id: 'nav-writer', title: 'Sincronização com Google Sheets', desc: 'Configurar script Apps Script e registrar logs', icon: '🔄', badge: 'Módulo 1', action: () => switchSection('writer') },
-  { id: 'nav-catalog', title: 'Catálogo de Perguntas & Respostas', desc: 'Visualizar perguntas lidas na Enquete', icon: '📑', badge: 'Módulo 2', action: () => switchSection('catalog') },
-  { id: 'nav-mapping', title: 'Tarefas e Mapeamento da Enquete', desc: 'Configurar associação de tarefas às respostas', icon: '🔀', badge: 'Módulo 2', action: () => switchSection('mapping') },
-  { id: 'nav-audit', title: 'Auditoria & Conferência na Enquete', desc: 'Auditar divergências e validar marcações', icon: '🔍', badge: 'Módulo 2', action: () => switchSection('audit') },
-  { id: 'nav-apply', title: 'Gravação no G-Click', desc: 'Executar robô para gravação com confirmação', icon: '⚡', badge: 'Módulo 2', action: () => switchSection('apply') },
-  { id: 'nav-obrig', title: 'Módulo de Obrigações', desc: 'Gerenciar catálogo de obrigações, WhatsApp e E-mail', icon: '📁', badge: 'Módulo 3', action: () => switchSection('obrigacoes') },
-  { id: 'nav-users', title: 'Usuários & Permissões (RBAC)', desc: 'Administrar acessos e exceções de usuários', icon: '👥', badge: 'Módulo 4', action: () => switchSection('users') },
+  { id: 'nav-conn', title: 'Conexão G-Click', desc: 'Gerenciar sessão e código empId do escritório', icon: '🔑', badge: 'Preparação', action: () => switchSection('connection') },
+  { id: 'nav-source', title: 'Planilhas', desc: 'Ler a planilha da Enquete ou da Carteira com DE/PARA de colunas', icon: '📥', badge: 'Preparação', action: () => switchSection('source') },
+  { id: 'nav-writer', title: 'Sincronização com Sheets', desc: 'Configurar script Apps Script e registrar logs', icon: '🔄', badge: 'Enquete', action: () => switchSection('writer') },
+  { id: 'nav-catalog', title: 'Catálogo de Perguntas', desc: 'Visualizar perguntas lidas na Enquete', icon: '📑', badge: 'Enquete', action: () => switchSection('catalog') },
+  { id: 'nav-mapping', title: 'Mapeamento de Tarefas', desc: 'Configurar associação de tarefas às respostas', icon: '🔀', badge: 'Enquete', action: () => switchSection('mapping') },
+  { id: 'nav-audit', title: 'Conferência', desc: 'Auditar divergências e validar marcações', icon: '🔍', badge: 'Enquete', action: () => switchSection('audit') },
+  { id: 'nav-apply', title: 'Gravação no G-Click', desc: 'Executar robô para gravação com confirmação', icon: '⚡', badge: 'Enquete', action: () => switchSection('apply') },
+  { id: 'nav-obrig', title: 'Obrigações', desc: 'Gerenciar catálogo de obrigações, WhatsApp e E-mail', icon: '📁', badge: 'Obrigações', action: () => switchSection('obrigacoes') },
+  { id: 'nav-carteira', title: 'Carteira por Usuário', desc: 'Conferir e vincular clientes a usuários no G-Click', icon: '🗂️', badge: 'Carteira', action: () => switchSection('carteira') },
+  { id: 'nav-users', title: 'Usuários & Permissões', desc: 'Administrar acessos e exceções de usuários', icon: '👥', badge: 'Governança', action: () => switchSection('users') },
   { id: 'act-refresh-catalog', title: 'Buscar Catálogo Sob Demanda', desc: 'Ler perguntas e respostas ativas da Enquete no G-Click', icon: '🔄', badge: 'Ação', action: () => $('refreshCatalogManual')?.click() },
   { id: 'act-view-all', title: 'Visão Geral (Todas as Seções)', desc: 'Exibir painel integrado completo', icon: '📊', badge: 'Navegação', action: () => switchSection('all') }
 ];
@@ -3687,10 +4221,607 @@ window.addEventListener('keydown', (e) => {
       executeCancelOperation();
       return;
     }
-    if (working) {
+      if (working) {
       e.preventDefault();
       requestCancelOperation();
     }
+  }
+});
+
+// ==========================================================================
+// MÓDULO: CARTEIRA DE CLIENTES POR USUÁRIO (Cadastros > Usuários > Carteira)
+// ==========================================================================
+
+async function loadCarteiraSection() {
+  const acc = currentAccount();
+  if (!acc) return;
+
+  renderCarteiraSheetSummary();
+
+  try {
+    const res = await fetch(`/api/carteira/users?accountId=${encodeURIComponent(acc)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accountId: acc })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      carteiraUsers = data.users || [];
+      carteiraMinha = data.minhaCarteira || null;
+      updateCarteiraUsersBadge();
+      renderCarteiraMinha();
+    }
+    loadCarteiraOperacoes();
+  } catch (e) {
+    console.warn('Erro ao carregar usuários da carteira:', e);
+  }
+}
+
+function updateCarteiraUsersBadge() {
+  const badge = $('carteiraUsersCountBadge');
+  const preview = $('carteiraUsersPreview');
+  const previewText = $('carteiraUsersPreviewText');
+  if (!badge) return;
+
+  if (carteiraUsers.length > 0) {
+    badge.textContent = `${carteiraUsers.length} usuários em cache`;
+    badge.className = 'nav-badge badge-ok';
+    if (preview && previewText) {
+      preview.style.display = 'block';
+      const sample = carteiraUsers.slice(0, 5).map(u => `${u.apelido || u.nome} (${u.nome})`).join(' • ');
+      previewText.innerHTML = `<strong>Mapeamentos em cache:</strong> ${sample}${carteiraUsers.length > 5 ? ` e mais ${carteiraUsers.length - 5} usuário(s)...` : ''}`;
+    }
+  } else {
+    badge.textContent = '0 usuários em cache';
+    badge.className = 'nav-badge badge-neutral';
+    if (preview) preview.style.display = 'none';
+  }
+}
+
+// Alternância das sub-abas do módulo Carteira (Vinculação vs Carteiras Existentes)
+document.querySelectorAll('input[name="carteiraSubTab"]').forEach(radio => {
+  radio.addEventListener('change', () => {
+    const isVinculacao = radio.value === 'vinculacao';
+    const viewVinc = $('carteiraViewVinculacao');
+    const viewExist = $('carteiraViewExistentes');
+    if (viewVinc) viewVinc.style.display = isVinculacao ? 'flex' : 'none';
+    if (viewExist) viewExist.style.display = isVinculacao ? 'none' : 'flex';
+  });
+});
+
+// Sincroniza o seletor único com o filtro da tabela de auditoria
+$('carteiraSelectResponsavel')?.addEventListener('change', () => {
+  const val = $('carteiraSelectResponsavel')?.value || '';
+  const auditFilter = $('carteiraAuditUserFilter');
+  if (auditFilter) {
+    auditFilter.value = val === '__ALL__' ? '' : val;
+    if (carteiraAuditItems && carteiraAuditItems.length > 0) {
+      renderCarteiraAuditTable();
+    }
+  }
+});
+
+$('btnSyncCarteiraUsers')?.addEventListener('click', async () => {
+  const acc = currentAccount();
+  if (!acc) {
+    toast.warning('Selecione ou informe uma conta G-Click no topo da página.');
+    return;
+  }
+
+  await withButtonLoading('btnSyncCarteiraUsers', 'Lendo usuários e carteiras...', async () => {
+    try {
+      const res = await fetch('/api/carteira/users/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountId: acc })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Falha ao sincronizar usuários do G-Click.');
+      }
+      carteiraUsers = data.users || [];
+      carteiraMinha = data.minhaCarteira || null;
+      updateCarteiraUsersBadge();
+      renderCarteiraMinha();
+      const falhas = (carteiraMinha?.usuarios || []).filter(u => u.erro).length;
+      toast.success(`${carteiraUsers.length} usuário(s) sincronizados; ${carteiraMinha?.totalEmpresas ?? 0} empresa(s) em Minha Carteira.${falhas ? ` ${falhas} usuário(s) não puderam ser lidos.` : ''}`, 'Usuários e carteiras atualizados');
+      if (carteiraParsedData) {
+        renderCarteiraUsersSelect();
+      }
+    } catch (err) {
+      toast.error(err.message, 'Erro ao Sincronizar');
+    }
+  });
+});
+
+function renderCarteiraMinha() {
+  const wrap = $('carteiraMinhaWrap');
+  if (!wrap) return;
+  const usuarios = carteiraMinha?.usuarios || [];
+  wrap.hidden = !usuarios.length;
+  if (!usuarios.length) return;
+  const abertos = new Set(Array.from(wrap.querySelectorAll('.carteira-minha-user[open]')).map(el => el.dataset.valor));
+  const quando = new Date(carteiraMinha.syncedAt);
+  $('carteiraMinhaSyncedAt').textContent = `${carteiraMinha.totalEmpresas} empresa(s) em ${usuarios.length} usuário(s) · sincronizado em ${quando.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}`;
+  $('carteiraMinhaList').innerHTML = usuarios.map(u => `
+    <details class="carteira-minha-user" data-valor="${escapeHtml(u.valor)}"${abertos.has(String(u.valor)) ? ' open' : ''}>
+      <summary><div>${escapeHtml(u.nome)}</div><span class="nav-badge ${u.erro ? 'badge-danger' : u.total ? 'badge-ok' : 'badge-neutral'}">${u.erro ? 'Não lido' : `${u.total} empresa(s)`}</span></summary>
+      ${u.erro ? `<p class="sub-hint">${escapeHtml(u.erro)}</p>` : u.total
+        ? `<ul>${u.empresas.map(e => `<li><label><input type="checkbox" class="carteira-retirar-cb" value="${escapeHtml(e.cnpj)}"${e.cnpj ? '' : ' disabled title="Sem CNPJ na tela do G-Click"'}> <code>${escapeHtml(e.cnpjFormatado || '—')}</code> ${escapeHtml(e.empresa)}</label></li>`).join('')}</ul>
+          <div class="carteira-minha-actions"><button type="button" class="btn btn-danger btn-md carteira-retirar-btn" disabled>Retirar selecionadas</button></div>`
+        : '<p class="sub-hint">Carteira vazia.</p>'}
+    </details>`).join('');
+}
+
+// Seleção e retirada por usuário, a partir da Minha Carteira sincronizada.
+$('carteiraMinhaList')?.addEventListener('change', event => {
+  if (!event.target.classList.contains('carteira-retirar-cb')) return;
+  const user = event.target.closest('.carteira-minha-user');
+  const count = user.querySelectorAll('.carteira-retirar-cb:checked').length;
+  const btn = user.querySelector('.carteira-retirar-btn');
+  btn.disabled = count === 0;
+  btn.textContent = count ? `Retirar ${count} empresa(s)` : 'Retirar selecionadas';
+});
+$('carteiraMinhaList')?.addEventListener('click', async event => {
+  const btn = event.target.closest('.carteira-retirar-btn');
+  if (!btn) return;
+  const acc = currentAccount();
+  const userEl = btn.closest('.carteira-minha-user');
+  const usuario = carteiraMinha?.usuarios?.find(u => String(u.valor) === userEl.dataset.valor);
+  const cnpjs = Array.from(userEl.querySelectorAll('.carteira-retirar-cb:checked')).map(cb => cb.value);
+  if (!acc || !usuario || !cnpjs.length) return;
+  if (!confirm(`Retirar ${cnpjs.length} empresa(s) da Minha Carteira de ${usuario.nome} no G-Click? O robô marcará as empresas e clicará em "Retirar".`)) return;
+
+  btn.disabled = true;
+  btn.textContent = 'Retirando no G-Click...';
+  try {
+    const res = await fetch('/api/carteira/retirar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accountId: acc, usuario: usuario.nome, valor: usuario.valor, cnpjs })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Falha ao retirar clientes.');
+    if (data.usuarioSincronizado) Object.assign(usuario, data.usuarioSincronizado);
+    carteiraMinha.totalEmpresas = carteiraMinha.usuarios.reduce((sum, u) => sum + u.total, 0);
+    if (data.registro?.status === 'ok') toast.success(`${data.removidos.length} empresa(s) retiradas da carteira de ${usuario.nome}.`, 'Retirada concluída');
+    else toast.warning(`${data.removidos.length} de ${cnpjs.length} empresa(s) retiradas. O motivo ficou no histórico.`, 'Retirada incompleta');
+  } catch (err) {
+    toast.error(`${err.message} O erro ficou registrado no histórico.`, 'Erro ao retirar');
+  } finally {
+    renderCarteiraMinha();
+    loadCarteiraOperacoes();
+  }
+});
+
+const CARTEIRA_OP_STATUS = { ok: ['Concluído', 'badge-ok'], parcial: ['Parcial', 'badge-warn'], erro: ['Erro', 'badge-danger'] };
+async function loadCarteiraOperacoes() {
+  const acc = currentAccount();
+  const card = $('cardCarteiraOperacoes');
+  if (!acc || !card) return;
+  try {
+    const res = await fetch(`/api/carteira/operacoes?accountId=${encodeURIComponent(acc)}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ accountId: acc })
+    });
+    if (!res.ok) return;
+    const { operacoes = [] } = await res.json();
+    card.hidden = !operacoes.length;
+    const erros = operacoes.filter(op => op.status !== 'ok').length;
+    $('carteiraOperacoesResumo').textContent = `${operacoes.length} registro(s) recentes${erros ? ` · ${erros} com erro ou incompletos` : ''}`;
+    $('carteiraOperacoesBody').innerHTML = operacoes.map(op => {
+      const [label, cls] = CARTEIRA_OP_STATUS[op.status] || [op.status, 'badge-neutral'];
+      const acao = op.acao === 'retirar' ? 'Retirar' : `Vincular${op.origem ? ` (${op.origem === 'mesmo_cargo' ? 'mesmo Cargo' : 'Restantes'})` : ''}`;
+      return `<tr data-status="${escapeHtml(op.status)}">
+        <td>${escapeHtml(new Date(op.createdAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }))}</td>
+        <td>${escapeHtml(acao)}</td>
+        <td>${escapeHtml(op.usuario)}</td>
+        <td>${op.concluidos.length}/${op.solicitados.length}</td>
+        <td><span class="nav-badge ${cls}">${label}</span>${op.erro ? `<div class="carteira-op-erro">${escapeHtml(op.erro)}</div>` : ''}</td>
+        <td>${escapeHtml(op.operador || '—')}</td>
+      </tr>`;
+    }).join('');
+  } catch (e) {
+    console.warn('Erro ao carregar o histórico da Carteira:', e);
+  }
+}
+
+async function handleParseCarteiraSheet(payload) {
+  const res = await fetch('/api/carteira/sheet/parse', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ accountId: currentAccount(), ...payload })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(`A Carteira não aceitou a planilha: ${data.error || 'falha ao processar'}`);
+
+  carteiraParsedData = data;
+  $('carteiraMetricUsers').textContent = data.users.length;
+  $('carteiraMetricUsersHint').textContent = `${data.validCnpjs} CNPJs válidos`;
+  $('carteiraMetricTotalEmpresas').textContent = data.totalRows;
+  renderCarteiraUsersSelect();
+  $('carteiraUserSelectWrap').style.display = 'block';
+  return data;
+}
+
+function findCarteiraUser(identifier) {
+  if (!identifier || !carteiraUsers?.length) return null;
+  const raw = String(identifier).trim().toLowerCase();
+  const clean = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
+  const cleanRaw = clean(raw);
+
+  // 1. Apelido ou nome exato
+  let match = carteiraUsers.find(u => String(u.apelido || '').toLowerCase() === raw || String(u.nome || '').toLowerCase() === raw);
+  if (match) return match;
+
+  // 2. Normalizado sem acento
+  match = carteiraUsers.find(u => clean(u.apelido) === cleanRaw || clean(u.nome) === cleanRaw);
+  if (match) return match;
+
+  // 3. Tokens (ex.: "andreane" em "andreane.exito" casando com "Andreane Rocha")
+  const tokens = cleanRaw.split(' ').filter(t => t.length > 1);
+  if (tokens.length) {
+    const firstTok = tokens[0];
+    const candidates = carteiraUsers.filter(u => {
+      const uFirst = clean(u.nome).split(' ')[0] || '';
+      const uApFirst = clean(u.apelido).split(' ')[0] || '';
+      return uFirst === firstTok || uApFirst === firstTok;
+    });
+    if (candidates.length === 1) return candidates[0];
+    if (candidates.length > 1 && tokens.length > 1) {
+      const meaningfulTokens = tokens.filter(t => !/^(exito|consultoria|empresa|contabilidade|adm|oper|aux)$/i.test(t));
+      const exactCandidate = candidates.find(c => meaningfulTokens.every(tok => clean(c.nome).includes(tok))) || candidates[0];
+      if (exactCandidate) return exactCandidate;
+    }
+  }
+
+  // 4. Substring
+  return carteiraUsers.find(u => clean(u.nome).includes(cleanRaw)) || null;
+}
+
+function renderCarteiraUsersSelect() {
+  const select = $('carteiraSelectResponsavel');
+  if (!select || !carteiraParsedData?.users) return;
+
+  select.innerHTML = '';
+  const optAll = document.createElement('option');
+  optAll.value = '__ALL__';
+  optAll.textContent = `⚡ Todos os usuários da planilha (${carteiraParsedData.users.length} responsáveis / ${carteiraParsedData.totalRows} empresas)`;
+  select.appendChild(optAll);
+
+  carteiraParsedData.users.forEach(u => {
+    const opt = document.createElement('option');
+    opt.value = u.responsavel;
+    const gUser = u.usuarioGclick || findCarteiraUser(u.responsavel);
+    const nomeMapeado = gUser?.nome 
+      ? ` — ${gUser.nome}` 
+      : ' (⚠️ Não cadastrado no G-Click)';
+    opt.textContent = `${u.responsavel}${nomeMapeado} (${u.totalEmpresas} empresas)`;
+    select.appendChild(opt);
+  });
+}
+
+// A planilha da Carteira é lida em Planilhas (uso "Carteira por Usuário"); aqui só o resumo e o atalho até lá.
+function renderCarteiraSheetSummary() {
+  if (!$('carteiraSheetSummary')) return;
+  const ready = Boolean(carteiraParsedData && carteiraSheet);
+  $('carteiraSheetTitle').textContent = ready ? `${carteiraParsedData.totalRows} empresa(s) · ${carteiraParsedData.users.length} responsável(is)` : 'Planilha da Carteira não carregada';
+  $('carteiraSheetDetail').textContent = ready
+    ? `${sourceLabel(carteiraSheet.source)} · lida às ${carteiraSheet.readAt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} · ${profileLabel(carteiraSheet.profile)}`
+    : 'Leia a planilha em Planilhas, escolhendo o uso "Carteira por Usuário".';
+  $('btnCarteiraChangeSheet').textContent = ready ? 'Trocar planilha' : 'Abrir Planilhas';
+  $('carteiraSheetSummary').classList.toggle('ready', ready);
+  if (!ready) {
+    $('carteiraUserSelectWrap').style.display = 'none';
+    for (const id of ['carteiraMetricUsers', 'carteiraMetricTotalEmpresas']) $(id).textContent = '--';
+    $('carteiraMetricUsersHint').textContent = 'Aguardando planilha';
+  }
+}
+$('btnCarteiraChangeSheet')?.addEventListener('click', () => { switchSection('source'); setSourceUse('carteira'); });
+
+$('btnAuditCarteira')?.addEventListener('click', async () => {
+  const acc = currentAccount();
+  if (!acc) {
+    toast.warning('Selecione ou informe uma conta G-Click no topo da página.');
+    return;
+  }
+  const select = $('carteiraSelectResponsavel');
+  const selectedResp = select?.value;
+  if (!selectedResp) {
+    toast.warning('Selecione um responsável para conferir.');
+    return;
+  }
+
+  await withButtonLoading('btnAuditCarteira', 'Auditando na Carteira...', async () => {
+    try {
+      let targets = [];
+      if (selectedResp === '__ALL__') {
+        targets = carteiraParsedData.users;
+      } else {
+        const found = carteiraParsedData.users.find(u => u.responsavel === selectedResp);
+        if (found) targets = [found];
+      }
+
+      if (!targets.length) {
+        throw new Error('Nenhum dado encontrado para o responsável selecionado.');
+      }
+
+      carteiraAuditItems = [];
+      let totalJaVinculados = 0;
+      let totalDisponiveis = 0;
+      let totalNaoLocalizados = 0;
+      const totalPorOrigem = { mesmo_cargo: 0, restantes: 0 };
+
+      for (const t of targets) {
+        try {
+          const res = await fetch('/api/carteira/audit', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              accountId: acc,
+              responsavel: t.responsavel,
+              empresas: t.empresas
+            })
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            throw new Error(data.error || `Falha ao auditar usuário ${t.responsavel}`);
+          }
+          if (data.audit?.items) {
+            carteiraAuditItems.push(...data.audit.items);
+            totalJaVinculados += data.audit.jaVinculados || 0;
+            totalDisponiveis += data.audit.disponiveis || 0;
+            totalPorOrigem.mesmo_cargo += data.audit.disponiveisMesmoCargo || 0;
+            totalPorOrigem.restantes += data.audit.disponiveisRestantes || 0;
+            totalNaoLocalizados += data.audit.naoLocalizados || 0;
+          }
+        } catch (errUser) {
+          console.warn(`[Carteira] Erro ao auditar responsável ${t.responsavel}:`, errUser);
+          (t.empresas || []).forEach(emp => {
+            carteiraAuditItems.push({
+              linha: emp.linha,
+              responsavel: t.responsavel,
+              empresa: emp.empresa,
+              cnpj: emp.cnpj,
+              cnpjFormatado: emp.cnpjFormatado,
+              status: 'usuario_nao_localizado',
+              situacao: 'Usuário não cadastrado no G-Click',
+              colunaGclick: null,
+              origens: [],
+              detalhe: errUser.message || 'Usuário ausente no G-Click'
+            });
+            totalNaoLocalizados++;
+          });
+        }
+      }
+
+      $('carteiraMetricJaVinculados').textContent = totalJaVinculados;
+      $('carteiraMetricDisponiveis').textContent = totalDisponiveis;
+      $('carteiraMetricDisponiveisHint').textContent = `${totalPorOrigem.mesmo_cargo} mesmo Cargo · ${totalPorOrigem.restantes} Restantes`;
+      $('carteiraMetricNaoLocalizados').textContent = totalNaoLocalizados;
+      updateCarteiraVincularState();
+
+      $('cardCarteiraAudit').style.display = 'block';
+      if ($('btnExportCarteiraCsv')) $('btnExportCarteiraCsv').style.display = 'inline-flex';
+      populateCarteiraAuditUserFilter();
+      renderCarteiraAuditTable();
+
+      toast.success(`Auditoria concluída: ${totalJaVinculados} já vinculados, ${totalDisponiveis} disponíveis, ${totalNaoLocalizados} não localizados/pendentes.`, 'Conferência Realizada');
+    } catch (err) {
+      toast.error(err.message, 'Erro na Auditoria');
+    }
+  });
+});
+
+function populateCarteiraAuditUserFilter() {
+  const select = $('carteiraAuditUserFilter');
+  if (!select) return;
+  const currentVal = select.value;
+
+  select.innerHTML = '';
+  const optAll = document.createElement('option');
+  optAll.value = '';
+  optAll.textContent = 'Todos os Usuários / Responsáveis';
+  select.appendChild(optAll);
+
+  const userMap = new Map();
+  for (const item of carteiraAuditItems) {
+    if (!item.responsavel) continue;
+    if (!userMap.has(item.responsavel)) {
+      const gUser = findCarteiraUser(item.responsavel);
+      userMap.set(item.responsavel, {
+        responsavel: item.responsavel,
+        usuarioNome: item.usuarioNome || gUser?.nome || null,
+        count: 0
+      });
+    }
+    userMap.get(item.responsavel).count++;
+  }
+
+  for (const [resp, info] of userMap.entries()) {
+    const opt = document.createElement('option');
+    opt.value = resp;
+    const nomeTxt = info.usuarioNome ? ` — ${info.usuarioNome}` : '';
+    opt.textContent = `${resp}${nomeTxt} (${info.count} empresas)`;
+    select.appendChild(opt);
+  }
+
+  if (currentVal && userMap.has(currentVal)) {
+    select.value = currentVal;
+  }
+}
+
+const CARTEIRA_ORIGEM_LABEL = { mesmo_cargo: 'Clientes Disponíveis com o mesmo Cargo', restantes: 'Clientes Restantes Disponíveis' };
+const carteiraPendentes = origem => carteiraAuditItems.filter(i => i.status === 'disponivel_para_vincular' && (i.origens || []).includes(origem));
+
+// O vínculo sai de uma coluna só, escolhida pelo operador; o botão conta o que está disponível nela.
+function updateCarteiraVincularState() {
+  const select = $('carteiraVincularOrigem');
+  if (!select) return;
+  for (const option of select.options) {
+    option.textContent = `${CARTEIRA_ORIGEM_LABEL[option.value]} (${carteiraPendentes(option.value).length})`;
+  }
+  const count = carteiraPendentes(select.value).length;
+  $('btnVincularCarteira').disabled = count === 0;
+  $('carteiraAuditVincularHint').textContent = count > 0
+    ? `${count} cliente(s) prontos para vincular a partir de ${CARTEIRA_ORIGEM_LABEL[select.value]}.`
+    : `Nenhum cliente disponível em ${CARTEIRA_ORIGEM_LABEL[select.value]}.`;
+}
+$('carteiraVincularOrigem')?.addEventListener('change', updateCarteiraVincularState);
+
+function renderCarteiraAuditTable() {
+  const tbody = $('carteiraAuditTableBody');
+  if (!tbody) return;
+
+  const filterUser = $('carteiraAuditUserFilter')?.value || '';
+  const filterStatus = $('carteiraAuditStatusFilter')?.value || '';
+  const search = ($('carteiraAuditSearch')?.value || '').trim().toLowerCase();
+
+  const filtered = carteiraAuditItems.filter(item => {
+    if (filterUser && item.responsavel !== filterUser) return false;
+    if (filterStatus.startsWith('origem:')) {
+      if (!(item.origens || []).includes(filterStatus.slice(7))) return false;
+    } else if (filterStatus && item.status !== filterStatus) return false;
+    if (search) {
+      const matchText = `${item.responsavel} ${item.usuarioNome || ''} ${item.empresa} ${item.cnpj} ${item.cnpjFormatado} ${item.situacao} ${item.colunaGclick || ''}`.toLowerCase();
+      if (!matchText.includes(search)) return false;
+    }
+    return true;
+  });
+
+  tbody.innerHTML = '';
+
+  if (!filtered.length) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td colspan="7" style="padding:24px;text-align:center;color:#64748b;">Nenhum registro corresponde aos filtros selecionados.</td>`;
+    tbody.appendChild(tr);
+    $('carteiraAuditSummaryText').textContent = 'Exibindo 0 registros';
+    return;
+  }
+
+  $('carteiraAuditSummaryText').textContent = `Exibindo ${filtered.length} de ${carteiraAuditItems.length} registros`;
+
+  filtered.forEach(item => {
+    const tr = document.createElement('tr');
+
+    let badgeClass = 'badge-neutral';
+    if (item.status === 'ja_vinculado') {
+      badgeClass = 'badge-ok';
+    } else if (item.status === 'disponivel_para_vincular') {
+      badgeClass = 'badge-warn';
+    } else if (item.status === 'usuario_nao_localizado') {
+      badgeClass = 'badge-warn';
+    } else if (item.status === 'nao_localizado') {
+      badgeClass = 'badge-danger';
+    }
+
+    const nomeMapeado = item.usuarioNome || findCarteiraUser(item.responsavel)?.nome || '';
+
+    tr.innerHTML = `
+      <td style="color:#94a3b8;">${item.linha || '--'}</td>
+      <td>
+        <div style="font-weight:600;color:#1e293b;">${escapeHtml(item.responsavel)}</div>
+        ${nomeMapeado ? `<div style="font-size:11.5px;color:#0f766e;font-weight:500;">${escapeHtml(nomeMapeado)}</div>` : ''}
+      </td>
+      <td style="color:#334155;">${escapeHtml(item.empresa)}</td>
+      <td style="font-family:var(--font-mono);font-size:12px;color:#0f766e;">${escapeHtml(item.cnpjFormatado || item.cnpj)}</td>
+      <td>
+        <span class="nav-badge ${badgeClass}" style="padding:2px 8px;border-radius:12px;display:inline-block;font-size:11px;">
+          ${escapeHtml(item.situacao)}
+        </span>
+      </td>
+      <td style="color:#64748b;">${escapeHtml(item.colunaGclick || '—')}</td>
+      <td style="font-size:12px;color:#64748b;">${escapeHtml(item.detalhe || '')}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+$('carteiraAuditUserFilter')?.addEventListener('change', renderCarteiraAuditTable);
+$('carteiraAuditSearch')?.addEventListener('input', renderCarteiraAuditTable);
+$('carteiraAuditStatusFilter')?.addEventListener('change', renderCarteiraAuditTable);
+
+$('btnVincularCarteira')?.addEventListener('click', async () => {
+  const acc = currentAccount();
+  if (!acc) return;
+
+  const origem = $('carteiraVincularOrigem')?.value || 'mesmo_cargo';
+  const pendentes = carteiraPendentes(origem);
+  if (!pendentes.length) {
+    toast.info(`Não há clientes disponíveis em ${CARTEIRA_ORIGEM_LABEL[origem]}.`);
+    return;
+  }
+
+  const porResp = {};
+  pendentes.forEach(p => {
+    if (!porResp[p.responsavel]) porResp[p.responsavel] = [];
+    porResp[p.responsavel].push(p.cnpj);
+  });
+
+  const confirmMsg = `Confirma a vinculação de ${pendentes.length} cliente(s) para ${Object.keys(porResp).length} usuário(s) no G-Click, a partir de "${CARTEIRA_ORIGEM_LABEL[origem]}"? O robô marcará os checkboxes nessa coluna e clicará no "<- Vincular" dela.`;
+  if (!confirm(confirmMsg)) return;
+
+  await withButtonLoading('btnVincularCarteira', 'Vinculando no G-Click...', async () => {
+    try {
+      let totalVinculados = 0;
+      for (const [resp, cnpjs] of Object.entries(porResp)) {
+        const res = await fetch('/api/carteira/vincular', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            accountId: acc,
+            responsavel: resp,
+            cnpjs,
+            origem
+          })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || `Falha ao vincular clientes para ${resp}`);
+        }
+        totalVinculados += data.verifiedCount || data.markedCount || 0;
+      }
+
+      toast.success(`${totalVinculados} cliente(s) vinculados com sucesso no G-Click!`, 'Vinculação Concluída');
+      loadCarteiraOperacoes();
+      $('btnAuditCarteira')?.click();
+    } catch (err) {
+      toast.error(err.message, 'Erro ao Vincular');
+      loadCarteiraOperacoes();
+    }
+  });
+});
+
+$('btnExportCarteiraCsv')?.addEventListener('click', async () => {
+  const acc = currentAccount();
+  if (!carteiraAuditItems.length) {
+    toast.warning('Execute a conferência antes de exportar.');
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/carteira/audit/export', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        accountId: acc,
+        items: carteiraAuditItems
+      })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Falha ao exportar.');
+
+    const blob = new Blob([data.csv], { type: 'text/csv;charset=utf-8;' });
+    const u = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = u;
+    a.download = data.filename || 'auditoria-carteira.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(u);
+    toast.success('Relatório CSV baixado com sucesso!');
+  } catch (err) {
+    toast.error(err.message, 'Erro ao Exportar');
   }
 });
 
@@ -3698,3 +4829,10 @@ const savedSection = localStorage.getItem(SECTION_STORAGE_KEY) || 'all';
 switchSection(savedSection);
 updateSidebarBadges();
 
+
+$('topAccountPill')?.addEventListener('click', () => switchSection('connection'));
+if ($('sidebarLocal')) {
+  $('sidebarLocal').textContent = location.port
+    ? `Servidor local · porta ${location.port}`
+    : `JB Consultoria · ${location.hostname}`;
+}

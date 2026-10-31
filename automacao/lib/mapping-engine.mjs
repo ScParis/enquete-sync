@@ -17,6 +17,12 @@ export const TARGET_MODELS = {
     description: 'Mapeia dados cadastrais sem exigir obrigações ou tarefas.',
     requiredFields: []
   },
+  carteira_responsaveis: {
+    id: 'carteira_responsaveis',
+    label: 'Carteira por Usuário',
+    description: 'Responsável × empresa: exige o responsável e o CNPJ de cada empresa para conferir e vincular a Carteira no G-Click.',
+    requiredFields: ['responsavel', 'cnpj']
+  },
   generico_consulta: {
     id: 'generico_consulta',
     label: 'Importação Geral (Consulta / Tabela)',
@@ -30,6 +36,7 @@ export const AVAILABLE_FIELDS = [
   { id: 'empresa', label: 'Empresa / Razão Social', description: 'Nome da empresa/cliente' },
   { id: 'empId', label: 'EmpID (ID G-Click)', description: 'ID numérico interno do escritório no G-Click' },
   { id: 'cod', label: 'Código Interno (Cod.)', description: 'Código do cliente no sistema de origem' },
+  { id: 'responsavel', label: 'Responsável (usuário G-Click)', description: 'Apelido ou nome do usuário responsável pela empresa na Carteira' },
   { id: 'tarefa', label: 'Obrigação / Tarefa', description: 'Nome da tarefa que se relaciona às perguntas da Enquete' },
   { id: 'resposta', label: 'Resposta / Opção', description: 'Resposta esperada na Enquete' },
   { id: 'data_base', label: 'Data-base', description: 'Mês/Ano de referência da data-base' },
@@ -261,4 +268,17 @@ export function createSuggestedProfile(accountId, sourceFingerprint, sheetIdenti
     updatedAt: new Date().toISOString(),
     columns
   };
+}
+
+// Planilha da Carteira e planilha da Enquete têm DE/PARA próprios: um perfil só serve ao uso para o qual foi salvo.
+export function profileFitsUse(profile, targetModel) {
+  return (profile?.targetModel === 'carteira_responsaveis') === (targetModel === 'carteira_responsaveis');
+}
+
+// Campos obrigatórios do modelo que o DE/PARA ainda não mapeia.
+export function missingRequiredFields(profile) {
+  const model = TARGET_MODELS[profile?.targetModel];
+  if (!model) return [];
+  const mapped = new Set((profile.columns ?? []).filter(c => c.action === 'map').map(c => c.targetField));
+  return model.requiredFields.filter(field => !mapped.has(field));
 }

@@ -1,6 +1,16 @@
 // Roteador Modular de Fontes e Perfis de Normalização
 // Responsabilidade Única: rotas /api/source/inspect, /api/source/load, /api/mapping/profiles/*
 
+import { profileFitsUse, missingRequiredFields } from '../lib/mapping-engine.mjs';
+
+// Estatística por coluna, no mesmo formato que a tela usa para a prévia da planilha.
+function columnStats(table) {
+  return table.columns.map((name, index) => {
+    const values = table.rows.map(row => String(row[index] ?? '').trim()).filter(Boolean);
+    return { name, index, filled: values.length, distinct: new Set(values).size };
+  });
+}
+
 export async function handleSourceProfileRoutes(req, res, {
   url,
   payload,
@@ -23,7 +33,7 @@ export async function handleSourceProfileRoutes(req, res, {
     const structure = parseHeaderAndSample(source.csv, { headerRow });
     const accountId = payload.accountId ? String(payload.accountId).trim() : '';
     const sheetId = String(payload.sheetName ?? payload.sheetId ?? source.label);
-    const existing = savedProfiles.find(p => p.accountId === accountId && (p.sourceFingerprint === source.label || p.sheetIdentifier === sheetId));
+    const existing = savedProfiles.find(p => p.accountId === accountId && profileFitsUse(p, payload.targetModel) && (p.sourceFingerprint === source.label || p.sheetIdentifier === sheetId));
     const suggested = createSuggestedProfile(accountId || '0000', source.label, sheetId, structure, payload.targetModel || 'enquete_automacao');
     return send(res, 200, {
       source: source.label,
@@ -61,24 +71,21 @@ export async function handleSourceProfileRoutes(req, res, {
     const table = parseCsvTable(source.csv);
     const accountId = payload.accountId ? String(payload.accountId).trim() : '';
     const sheetId = String(payload.sheetName ?? payload.sheetId ?? source.label);
-    const profile = payload.profile ?? savedProfiles.find(p => p.accountId === accountId && (p.sourceFingerprint === source.label || p.sheetIdentifier === sheetId));
-    if (profile) {
-      const normResult = normalizeTable(table, profile);
-      return send(res, 200, {
-        source: source.label,
-        stale: source.stale,
-        rowCount: table.rows.length,
-        profile,
-        normalized: normResult.normalizedRows,
-        audit: normResult.audit,
-        table: { columns: table.columns, rows: table.rows }
-      });
-    }
+    const targetModel = payload.targetModel || 'generico_consulta';
+    // DE/PARA: o enviado pela tela, senão o salvo para esta planilha e este uso, senão o sugerido pelas colunas.
+    const saved = savedProfiles.find(p => p.accountId === accountId && profileFitsUse(p, targetModel) && (p.sourceFingerprint === source.label || p.sheetIdentifier === sheetId));
+    const structure = parseHeaderAndSample(source.csv, { headerRow: payload.headerRow ?? 1 });
+    const profile = payload.profile ?? saved ?? createSuggestedProfile(accountId || '0000', source.label, sheetId, structure, targetModel);
+    const normResult = normalizeTable(table, profile);
     return send(res, 200, {
       source: source.label,
       stale: source.stale,
       rowCount: table.rows.length,
-      table: { columns: table.columns, rows: table.rows }
+      profile,
+      missingFields: missingRequiredFields(profile),
+      normalized: normResult.normalizedRows,
+      audit: normResult.audit,
+      table: { columns: columnStats(table), rows: table.rows }
     });
   }
 

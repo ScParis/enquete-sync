@@ -42,6 +42,7 @@ test('conta e planilha iniciam conferência de leitura e mostram perguntas, resp
         summary: { total: 57, vazio: 0, ja_correto: 1, divergente: 0, nao_encontrado: 0, bloqueado: 0, sem_mapeamento: 56, invalidSource: 0 } } } });
     });
     await page.goto(`http://127.0.0.1:${server.address().port}/`);
+    await page.getByRole('radio', { name: 'CSV baixado do Sheets' }).click(); // a tela abre em Link do Google Sheets
     await page.waitForFunction(() => document.querySelector('#auditStatus').textContent.includes('Concluído:'), null, { timeout: 10000 });
     assert.equal(calls.length, 1);
     assert.equal(calls[0].autoAudit, true);

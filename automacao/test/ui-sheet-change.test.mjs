@@ -30,6 +30,7 @@ test('trocar o link remove tarefas do CSV antigo até selecionar o novo arquivo'
     });
     await page.route('**/api/accounts/save', route => route.fulfill({ json: { accounts: [] } }));
     await page.goto(`http://127.0.0.1:${server.address().port}/`);
+    await page.getByRole('radio', { name: 'CSV baixado do Sheets' }).click(); // a tela abre em Link do Google Sheets
     await page.waitForFunction(() => document.querySelector('#taskStatus').textContent.includes('antigo.csv'));
 
     await page.locator('#recentSheetUrl').fill('https://docs.google.com/spreadsheets/d/abc123/edit?gid=7#gid=42');
@@ -74,14 +75,14 @@ test('erro de link privado aparece na fonte e o CSV escolhido pode ser importado
         : route.fulfill({ json: { source: request.fileName, rowCount: 1, tasks: [{ name: 'DeSTDA', count: 1, clients: 1 }] } });
     });
     await page.goto(`http://127.0.0.1:${server.address().port}/`);
-    await page.getByRole('radio', { name: 'Link público / API' }).click();
+    await page.getByRole('radio', { name: 'Link do Google Sheets' }).click();
     await page.locator('#sourceUrl').fill('https://docs.google.com/spreadsheets/d/abc123/edit?gid=42');
-    await page.locator('#loadUrlTasks').click();
+    await page.locator('#loadSourceBtn').click();
     await page.waitForFunction(() => document.querySelector('#sourceStatus').textContent.includes('planilha exige acesso'));
     assert.match(await page.locator('#sourceStatus').innerText(), /planilha exige acesso/);
     assert.match(await page.locator('#sourceStatus').getAttribute('class'), /error/);
 
-    await page.getByRole('radio', { name: 'Arquivo' }).click();
+    await page.getByRole('radio', { name: 'Arquivo CSV/XLSX' }).click();
     await page.locator('#file').setInputFiles({ name: 'nova.csv', mimeType: 'text/csv', buffer: Buffer.from('Obrigação / Tarefa,Empresa,EmpID,CNPJ\nDeSTDA,A,1,19.402.991/0001-67\n') });
     await page.waitForFunction(() => document.querySelector('#sourceStatus').textContent.includes('nova.csv'));
     assert.match(await page.locator('#sourceStatus').getAttribute('class'), /ok/);
@@ -110,7 +111,7 @@ test('aba sem colunas de obrigação mostra todos os campos e pagina os registro
       table: { columns: [{ name: 'Cliente', filled: 30, distinct: 30 }, { name: 'Cód. Enquete', filled: 30, distinct: 30 }],
         rows: Array.from({ length: 30 }, (_, i) => [`Cliente ${i + 1}`, i === 0 ? '<script>alert(1)</script>' : String(i + 1)]) } } }));
     await page.goto(`http://127.0.0.1:${server.address().port}/`);
-    await page.getByRole('radio', { name: 'Arquivo' }).click();
+    await page.getByRole('radio', { name: 'Arquivo CSV/XLSX' }).click();
     await page.locator('#file').setInputFiles({ name: 'Clientes.csv', mimeType: 'text/csv', buffer: Buffer.from('Cliente,Cód. Enquete\nA,1\n') });
     await page.waitForFunction(() => document.querySelector('#sourceStatus').textContent.includes('30 linha(s)'));
     assert.equal(await page.locator('#sourceTable thead th').count(), 3);
@@ -121,6 +122,12 @@ test('aba sem colunas de obrigação mostra todos os campos e pagina os registro
     assert.equal(await page.locator('#sourceTable tbody tr').count(), 5);
     assert.equal(await page.locator('#sourcePageInfo').innerText(), '26–30 de 30');
     assert.equal(await page.locator('#navBadgeSource').innerText(), '30 linhas');
+    // Aba sem Obrigação / Tarefa: aviso amarelo com o caminho para a Carteira, sem disparar nada sozinho
+    assert.match(await page.locator('#sourceStatusBox').getAttribute('class'), /warn/);
+    assert.equal(await page.locator('#btnSourceToCarteira').isVisible(), true);
+    assert.equal(await page.locator('#inspectSourceBtn').isVisible(), true);
+    await page.locator('#btnSourceToCarteira').click();
+    assert.equal(await page.locator('#section-carteira').isVisible(), true);
   } finally {
     if (browser) await browser.close();
     await new Promise(resolve => server.close(resolve));

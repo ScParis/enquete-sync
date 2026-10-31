@@ -35,10 +35,10 @@ test('login carrega catálogo e escolha da resposta preenche a regra', async () 
     await page.route('**/api/downloads', route => route.fulfill({ json: { files: [{ name: 'obrigações.csv', modifiedAt: new Date().toISOString(), size: 100, stale: false }] } }));
     await page.route('**/api/tasks', route => route.fulfill({ json: { source: 'obrigações.csv', rowCount: 4, tasks: ['DeSTDA', 'DeSTDA - Declaração mensal', 'DAC - Mensal', 'DAS - Mensal'].map(name => ({ name, count: 1 })) } }));
     await page.goto(`http://127.0.0.1:${server.address().port}/`);
-    await page.getByRole('radio', { name: 'Navegador integrado' }).click();
+    await page.getByRole('radio', { name: 'CSV baixado do Sheets' }).click();
     await page.locator('#accountId').fill('6581');
     await page.getByRole('button', { name: 'Abrir janela de login' }).click();
-    await page.waitForFunction(() => document.querySelector('#topSessionBadge')?.textContent.includes('Login detectado'), null, { timeout: 10000 });
+    await page.waitForFunction(() => document.querySelector("#topSessionBadge")?.textContent === "Conectado", null, { timeout: 10000 });
     await page.locator('#refreshCatalogManual').click();
     await page.waitForFunction(() => document.querySelector('#queueSummary').textContent.includes('1 sugestões para revisar'), null, { timeout: 10000 });
     assert.match(await page.locator('#queueSummary').innerText(), /1 sugestões para revisar/);

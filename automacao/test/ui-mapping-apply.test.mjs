@@ -37,6 +37,7 @@ for (const [complete, warning] of [[false, false], [true, false], [true, true]])
     await page.route('**/api/mappings/apply', async route => { applied.push(route.request().postDataJSON()); await route.fulfill({ json: { report: { mode: 'mapping_apply', accountId: '6581', status: 'verificado', rules: { inputType: 'mixed', allowedTasks: ['DeSTDA'] },
       results: [{ questionRef: '02.02', task: 'DeSTDA', answerRef: '02.02.01', changed: ['19.402.991/0001-67', '63.665.522/0001-22'], skipped: [] }], inspected: [], summary: { total: 0 } } } }); });
     await page.goto(`http://127.0.0.1:${server.address().port}/`);
+    await page.getByRole('radio', { name: 'CSV baixado do Sheets' }).click(); // a tela abre em Link do Google Sheets
     await page.waitForFunction(() => /Concluído|Incompleto/.test(document.querySelector('#auditStatus').textContent));
     assert.equal(await page.locator('#applyCard').isVisible(), true);
     if (warning) {

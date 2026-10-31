@@ -42,6 +42,7 @@ test('confirmar mapeamento mostra na saída os CNPJs da tarefa com a resposta a 
         inspected: [{ cnpj: '19.402.991/0001-67', mappingTask: 'ISS RETIDO - OUTROS MUNICIPIOS', mappingAnswer: '02.07.01', uiStatus: 'vazio' }, { cnpj: '63.665.522/0001-22', mappingTask: 'ISS RETIDO - OUTROS MUNICIPIOS', mappingAnswer: '02.07.01', uiStatus: 'vazio' }] } } });
     });
     await page.goto(`http://127.0.0.1:${server.address().port}/`);
+    await page.getByRole('radio', { name: 'CSV baixado do Sheets' }).click(); // a tela abre em Link do Google Sheets
     await page.waitForFunction(() => document.querySelector('#auditStatus').textContent.includes('Concluído'));
     await page.locator('#queueFilter').selectOption('all');
     await page.locator('.queue-item button').click();

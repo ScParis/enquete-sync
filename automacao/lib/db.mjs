@@ -85,6 +85,22 @@ export function initSchema(db) {
       created_at TEXT NOT NULL,
       expires_at TEXT NOT NULL
     );
+
+    -- Histórico das escritas na Carteira do G-Click (vincular / retirar), com sucesso ou erro.
+    CREATE TABLE IF NOT EXISTS carteira_operacoes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      account_id TEXT NOT NULL,
+      operador TEXT,
+      acao TEXT NOT NULL,             -- 'vincular' | 'retirar'
+      origem TEXT,                    -- coluna de origem do vínculo (mesmo_cargo | restantes)
+      usuario_gclick TEXT NOT NULL,
+      solicitados TEXT NOT NULL,      -- JSON: CNPJs pedidos
+      concluidos TEXT NOT NULL,       -- JSON: CNPJs confirmados no G-Click
+      status TEXT NOT NULL,           -- 'ok' | 'parcial' | 'erro'
+      erro TEXT,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_carteira_operacoes_conta ON carteira_operacoes (account_id, created_at);
   `);
 
   seedInitialData(db);
@@ -98,7 +114,9 @@ const DEFAULT_PERMISSIONS = [
   { slug: 'mapeamentos.gerenciar', module: 'Configurações', description: 'Criar e editar mapeamentos de tarefas e perfis' },
   { slug: 'planilha.escrever', module: 'Planilha', description: 'Sincronizar dados com o Google Sheets via Apps Script' },
   { slug: 'usuarios.administrar', module: 'Administração', description: 'Gerenciar usuários, cargos e permissões' },
-  { slug: 'obrigacoes.visualizar', module: 'Obrigações', description: 'Visualizar e inspecionar obrigações no G-Click' }
+  { slug: 'obrigacoes.visualizar', module: 'Obrigações', description: 'Visualizar e inspecionar obrigações no G-Click' },
+  { slug: 'carteira.visualizar', module: 'Carteira', description: 'Visualizar usuários e conferir carteira de clientes' },
+  { slug: 'carteira.vincular', module: 'Carteira', description: 'Vincular clientes à carteira do usuário no G-Click' }
 ];
 
 const DEFAULT_ROLES = [
@@ -111,14 +129,14 @@ const DEFAULT_ROLES = [
   {
     name: 'Operador',
     slug: 'operador',
-    description: 'Pode visualizar, exportar, conferir e gravar na Enquete e Obrigações',
-    permissions: ['enquete.visualizar', 'enquete.exportar', 'enquete.conferir', 'enquete.gravar', 'obrigacoes.visualizar']
+    description: 'Pode visualizar, exportar, conferir e gravar na Enquete, Obrigações e Carteira',
+    permissions: ['enquete.visualizar', 'enquete.exportar', 'enquete.conferir', 'enquete.gravar', 'obrigacoes.visualizar', 'carteira.visualizar', 'carteira.vincular']
   },
   {
     name: 'Auditor',
     slug: 'auditor',
     description: 'Somente leitura e exportação de dados',
-    permissions: ['enquete.visualizar', 'enquete.exportar']
+    permissions: ['enquete.visualizar', 'enquete.exportar', 'carteira.visualizar']
   }
 ];
 

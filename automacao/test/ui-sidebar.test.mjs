@@ -82,6 +82,15 @@ test('menu lateral alterna entre funcionalidades e atualiza visibilidade de seç
     await page.waitForFunction(() => document.querySelector('#navBadgeConnection')?.innerText.includes('Conectado'));
     assert.match(await page.locator('#navBadgeConnection').innerText(), /Conectado/);
 
+    // Fluxo de etapas só aparece nas seções da Enquete
+    assert.equal(await page.locator('#enquetePipeline').isVisible(), true);
+    await page.locator('#navWriter').click(); // Sincronização com Sheets faz parte da Enquete
+    assert.equal(await page.locator('#enquetePipeline').isVisible(), true);
+    await page.locator('#navCarteira').click();
+    assert.equal(await page.locator('#enquetePipeline').isHidden(), true);
+    await page.locator('#navConnection').click();
+    assert.equal(await page.locator('#enquetePipeline').isVisible(), true);
+
     assert.equal(errors.length, 0);
   } finally {
     if (browser) await browser.close();

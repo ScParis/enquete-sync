@@ -54,7 +54,7 @@ test('Fase 2: detecção de login não carrega catálogo automaticamente; busca 
     await page.route('**/api/downloads', route => route.fulfill({ json: { files: [] } }));
 
     await page.goto(`http://127.0.0.1:${server.address().port}/`);
-    await page.getByRole('radio', { name: 'Navegador integrado' }).click();
+    await page.getByRole('radio', { name: 'CSV baixado do Sheets' }).click();
     await page.locator('#accountId').fill('6581');
 
     // Abre janela de login
@@ -68,7 +68,7 @@ test('Fase 2: detecção de login não carrega catálogo automaticamente; busca 
 
     // Verifica que o topo exibe o nome da empresa e o badge
     assert.match(await page.locator('#topAccountNome').innerText(), /Contabilidade Alpha/);
-    assert.match(await page.locator('#topSessionBadge').innerText(), /Login detectado/);
+    assert.equal(await page.locator('#topSessionBadge').innerText(), 'Conectado');
 
     // Confirma que o catálogo NÃO foi solicitado automaticamente
     assert.equal(catalogRequested, false, 'Catálogo não deve ser requisitado automaticamente após detecção de login');
