@@ -1,80 +1,150 @@
-# Enquete Sync
+# Enquete Sync & G-Click Automação
 
-> **Plataforma de Automação, Conferência e Conciliação de Enquetes Fiscais e Contábeis**
+> **Plataforma Local de Automação, Conferência, Conciliação e Validação de PDF para o G-Click**
 
-O **Enquete Sync** é uma ferramenta de produtividade desenvolvida para consultores e escritórios contábeis. A solução automatiza a leitura da relação de clientes × tarefas/obrigações e realiza o preenchimento, conferência e marcação supervisionada de enquetes de qualificação cadastral, eliminando o preenchimento manual individualizado cliente a cliente.
+O **Enquete Sync** é uma ferramenta de produtividade e automação desenvolvida para consultores e escritórios contábeis. A solução automatiza a leitura da relação de clientes × tarefas/obrigações e realiza o preenchimento, conferência e marcação supervisionada de enquetes de qualificação cadastral, além da criação e mapeamento automático de modelos no módulo **ValidaPDF** do G-Click, eliminando o preenchimento manual individualizado cliente a cliente.
 
 A execução ocorre de forma **100% local**, sem envio de dados fiscais ou CNPJs para servidores de terceiros, garantindo total privacidade e conformidade com a LGPD.
 
 ---
 
-## Principais Recursos
+## 💻 Compatibilidade do Sistema
 
-- **Conferência Automática em Tempo Real**: Analisa cada cliente e obrigação da planilha confrontando com as perguntas cadastradas, classificando com precisão os estados (*Já correto*, *Sem resposta / A gravar*, *Divergente*, *Bloqueado* ou *Não localizado*).
-- **Gravação Supervisionada (Operador Soberano)**: O robô automatiza o preenchimento na interface, mas a decisão final de confirmação de qualquer lote permanece exclusiva do operador humano no diálogo do sistema.
-- **Conciliação e Retorno na Planilha**: Registra o histórico de gravações confirmadas em trilha de auditoria local (`registros/`) e sincroniza automaticamente o status na planilha de trabalho do escritório via integração Google Apps Script.
-- **Detecção de Conflitos e Inconsistências**: Previne gravações indevidas ao identificar tarefas conflitantes para o mesmo cliente em perguntas de escolha única, CNPJs duplicados ou cadastros ausentes.
-- **Privacidade por Padrão (Privacy by Design)**: Nenhum dado de cliente (CNPJ, razão social, obrigações) é transmitido para nuvens externas. O perfil de sessão e os dados de conciliação permanecem restritos ao ambiente local do operador.
+O sistema é **totalmente compatível com Windows e Linux** (executando nativamente no Windows 10/11 ou no Linux Ubuntu/Debian, além de suporte a WSL2):
 
----
-
-## Requisitos do Sistema
-
-- **Sistema Operacional**: Linux (Ubuntu 22.04+ / Debian 12+) ou Windows 10/11 com ambiente Node.js.
-- **Node.js**: Versão 22 ou superior.
-- **Navegador**: Google Chrome instalado.
-- **Dependências**: Gerenciador de pacotes `npm`.
+| Componente | Windows (Nativo) | Linux / WSL2 | Observações |
+|---|:---:|:---:|---|
+| **Node.js (v22+)** | ✅ Suportado | ✅ Suportado | Usa ES Modules nativos |
+| **Banco de Dados (SQLite)** | ✅ Suportado | ✅ Suportado | Usa `node:sqlite` nativo (sem compilação C++) |
+| **Navegador (Google Chrome)** | ✅ Suportado | ✅ Suportado | Localizado automaticamente pelo Playwright |
+| **Módulo ValidaPDF (`pdftotext`)** | ✅ Suportado | ✅ Suportado | Requer utilitário Poppler no PATH |
+| **Sessão do Navegador** | ✅ `C:\Users\<User>\.local\...` | ✅ `~/.local/share/...` | Gerenciado via `os.homedir()` |
+| **Downloads de Planilhas** | ✅ `C:\Users\<User>\Downloads` | ✅ `~/Downloads` | Pasta padrão do usuário |
 
 ---
 
-## Guia de Início Rápido
+## 📋 Requisitos Pré-requisitos
 
-### 1. Instalação
+1. **Node.js**: Versão **22.0.0** ou superior ([Download Node.js](https://nodejs.org/)).
+2. **Google Chrome**: Navegador instalado no sistema ([Download Chrome](https://www.google.com/chrome/)).
+3. **Poppler (`pdftotext`)** *(necessário para o módulo ValidaPDF)*:
+   - **Windows**: Instalação em um comando via terminal:
+     ```powershell
+     winget install poppler
+     ```
+     *(ou via Chocolatey: `choco install poppler`)*
+   - **Linux (Ubuntu/Debian)**:
+     ```bash
+     sudo apt update && sudo apt install -y poppler-utils
+     ```
 
-Clone o repositório e instale as dependências na pasta `automacao`:
+---
 
-```bash
+## 🚀 Instalação e Uso no Windows
+
+### Passo 1: Instalar o Node.js e o Poppler
+
+1. Abra o **PowerShell** (ou Terminal do Windows) como Administrador ou usuário comum.
+2. Verifique se o Node.js 22+ está instalado:
+   ```powershell
+   node -v
+   ```
+   *(Caso não esteja instalado, baixe em [nodejs.org](https://nodejs.org/) ou instale via `winget install OpenJS.NodeJS.LTS`).*
+
+3. Instale o utilitário **Poppler** para permitir a leitura e autodetecção de texto dos PDFs:
+   ```powershell
+   winget install poppler
+   ```
+   > **Dica:** Feche e reabra o terminal após instalar o Poppler para atualizar as variáveis de ambiente (`PATH`). Para testar, execute `pdftotext -v`.
+
+### Passo 2: Instalar as Dependências
+
+Navegue até a pasta `automacao` do projeto:
+
+```powershell
 cd automacao
 npm install
 ```
 
-### 2. Execução da Aplicação
+*(Opcional) Caso deseje instalar os navegadores gerenciados do Playwright:*
+```powershell
+npx playwright install chromium
+```
 
-Inicie o servidor local:
+### Passo 3: Iniciar o Servidor
 
-```bash
+No PowerShell ou Prompt de Comando (`cmd`):
+
+```powershell
 npm start
 ```
 
-Abra em seu navegador:
+O terminal exibirá a inicialização:
+```text
+G-Click local: http://127.0.0.1:8766
+```
+
+### Passo 4: Acessar o Painel
+
+Abra seu navegador (Google Chrome, Edge ou Firefox) e acesse:
 ```
 http://127.0.0.1:8766
 ```
 
-### 3. Fluxo de Trabalho Recomendado
+---
 
-1. **Identificação da Conta**: Informe o código do escritório atendido para carregar as configurações e links associados.
-2. **Conexão**: Abra a janela de navegação pelo botão da interface e realize a autenticação no sistema de gestão. O catálogo de perguntas e respostas é capturado automaticamente.
-3. **Seleção da Planilha**: Informe o link da planilha no Google Sheets ou envie o arquivo (`.csv`/`.xlsx`) com as colunas de tarefas e CNPJs.
-4. **Mapeamento de Tarefas**: Associe cada obrigação da planilha à pergunta e resposta correspondente na enquete, ou marque como tarefa excluída.
-5. **Conferência Prévia**: Acompanhe o resultado da conferência automática e o relatório detalhado de pendências.
-6. **Gravação**: Clique em *Marcar respostas*, confira os clientes destacados na janela do navegador e confirme o diálogo.
+## 🐧 Instalação e Uso no Linux / WSL2
+
+```bash
+# 1. Instalar utilitários no Linux
+sudo apt update
+sudo apt install -y poppler-utils
+
+# 2. Instalar dependências do projeto
+cd automacao
+npm install
+
+# 3. Iniciar o servidor
+npm start
+```
 
 ---
 
-## Testes Automatizados
+## 🧭 Funcionalidades do Painel
 
-A suíte de testes unitários e de integração garante a confiabilidade de todas as rotinas de conferência, conciliação e regras de negócio:
+1. **Conexão e Sessão G-Click**:
+   - Clique em **Abrir janela de login** para autenticar de forma segura na interface do G-Click. O perfil e os cookies de sessão ficam salvos localmente no seu computador.
+2. **ValidaPDF & Criação de Modelos**:
+   - **Varredura em Lote**: Analisa pastas locais de arquivos PDF e gera diagnóstico de conformidade com os 3 pilares do G-Click (Obrigação, Inscrição e Competência).
+   - **Novo Mapeamento & Autodetecção**: Carrega o PDF do modelo, autodetecta os 3 pilares (inclusive CPF sem máscara e datas anuais/mensais), permite seleção interativa com mouse na linha e grifo visual.
+   - **Criação Automática no G-Click**: Dispara o robô Playwright para criar o modelo no departamento, mapear os campos, configurar multi-linhas e validar comparativamente sem falsos-positivos.
+3. **Enquete Sync (Clientes × Obrigações)**:
+   - Importa planilhas (Google Sheets ou CSV/XLSX local).
+   - Realiza conferência automática e gravação supervisionada pelo operador com confirmação segura.
+4. **Relatórios e Diagnóstico**:
+   - Emissão de relatórios em HTML/PDF para impressão e exportação em CSV/JSON.
+
+---
+
+## 🧪 Testes Automatizados
+
+Para rodar a suíte completa de testes unitários e de integração:
 
 ```bash
 cd automacao
 npm test
 ```
 
+Para rodar especificamente a suíte de testes do ValidaPDF:
+
+```bash
+node --test test/valida-pdf.test.mjs
+```
+
 ---
 
-## Licença, Termos de Uso e Privacidade
+## 🔒 Licença, Termos de Uso e Privacidade
 
-- **Licença**: Software Proprietário. Todos os direitos reservados. Consulte o arquivo [LICENSE](LICENSE) para maiores detalhes.
-- **Termos de Uso**: O uso desta ferramenta está sujeito aos termos e condições operacionais descritos em [TERMOS_DE_USO.md](TERMOS_DE_USO.md).
-- **Política de Privacidade e LGPD**: Diretrizes de privacidade e conformidade com a Lei Geral de Proteção de Dados (Lei nº 13.709/2018) detalhadas em [POLITICA_DE_PRIVACIDADE.md](POLITICA_DE_PRIVACIDADE.md).
+- **Licença**: Software Proprietário. Todos os direitos reservados.
+- **Termos de Uso**: O uso desta ferramenta está sujeito aos termos operacionais descritos em [TERMOS_DE_USO.md](TERMOS_DE_USO.md).
+- **Política de Privacidade e LGPD**: Diretrizes detalhadas em [POLITICA_DE_PRIVACIDADE.md](POLITICA_DE_PRIVACIDADE.md).

@@ -36,9 +36,12 @@ import { handleSheetsRoutes } from './routes/sheets.routes.mjs';
 import { handleObrigacoesRoutes } from './routes/obrigacoes.routes.mjs';
 import { handleSourceProfileRoutes } from './routes/source-profile.routes.mjs';
 import { handleCarteiraRoutes } from './routes/carteira.routes.mjs';
+import { handleEnqueteCadastroRoutes } from './routes/enquete-cadastro.routes.mjs';
+import { handleValidaPdfRoutes } from './routes/valida-pdf.routes.mjs';
 import * as carteiraLib from './lib/carteira.mjs';
+import { fileURLToPath } from 'node:url';
 
-const root = path.dirname(new URL(import.meta.url).pathname);
+const root = path.dirname(fileURLToPath(import.meta.url));
 const authService = new AuthService();
 const host = '127.0.0.1';
 const port = Number(process.env.GCLICK_PORT ?? 8766);
@@ -719,6 +722,40 @@ async function route(req, res) {
     const rows = buildAuditLogRows(rep, catalog, savedMappings, ledger);
     return send(res, 200, auditLogCsv(rows), 'text/csv; charset=utf-8');
   }
+  // Rotas GET do módulo Enquete Cadastro (GET /api/enquete/conferencia, GET /api/enquete/categorias, GET /api/enquete/progresso)
+  if (req.method === 'GET' && url.pathname.startsWith('/api/enquete/')) {
+    const enqueteCadastroGetHandled = await handleEnqueteCadastroRoutes(req, res, {
+      url,
+      payload: null,
+      currentUser,
+      authService,
+      requireAccount,
+      loginContext,
+      loginReady,
+      hasGclickActiveSession,
+      readStoredCatalog,
+      readQuestionCatalog,
+      send
+    });
+    if (enqueteCadastroGetHandled !== false) return enqueteCadastroGetHandled;
+  }
+
+  // Rotas GET do módulo Valida PDF (GET /api/valida-pdf/models)
+  if (req.method === 'GET' && url.pathname.startsWith('/api/valida-pdf/')) {
+    const validaPdfGetHandled = await handleValidaPdfRoutes(req, res, {
+      url,
+      payload: null,
+      currentUser,
+      authService,
+      requireAccount,
+      loginContext,
+      hasGclickActiveSession,
+      catalogsDir,
+      send
+    });
+    if (validaPdfGetHandled !== false) return validaPdfGetHandled;
+  }
+
   if (req.method !== 'POST' || !url.pathname.startsWith('/api/')) return send(res, 404, { error: 'Rota não encontrada' });
   
   // Validação de Origem/CSRF local para rotas com efeitos
@@ -832,6 +869,36 @@ async function route(req, res) {
     send
   });
   if (carteiraHandled !== false) return carteiraHandled;
+
+  // Rotas POST do módulo Enquete Cadastro (POST /api/enquete/cadastrar)
+  const enqueteCadastroPostHandled = await handleEnqueteCadastroRoutes(req, res, {
+    url,
+    payload,
+    currentUser,
+    authService,
+    requireAccount,
+    loginContext,
+    loginReady,
+    hasGclickActiveSession,
+    readStoredCatalog,
+    readQuestionCatalog,
+    send
+  });
+  if (enqueteCadastroPostHandled !== false) return enqueteCadastroPostHandled;
+
+  // Rotas POST do módulo Valida PDF (/api/valida-pdf/*)
+  const validaPdfPostHandled = await handleValidaPdfRoutes(req, res, {
+    url,
+    payload,
+    currentUser,
+    authService,
+    requireAccount,
+    loginContext,
+    hasGclickActiveSession,
+    catalogsDir,
+    send
+  });
+  if (validaPdfPostHandled !== false) return validaPdfPostHandled;
 
   if (url.pathname === '/api/accounts/save') {
     const accountId = requireAccount(payload.accountId);
@@ -1557,7 +1624,8 @@ async function route(req, res) {
 }
 const server = http.createServer((req, res) => { route(req, res).catch(async e => { console.error(`[API 400] ${req.method} ${req.url}: ${e.message}`); if (e.report) lastReport = e.report; send(res, 400, { error: humanError(e), report: e.report ?? null }); }); });
 export { server, route, isAllowedHost, ALLOWED_ORIGIN_HOSTS };
-if (process.argv[1] === new URL(import.meta.url).pathname) {
+const currentScriptPath = fileURLToPath(import.meta.url);
+if (process.argv[1] && (path.resolve(process.argv[1]) === currentScriptPath || process.argv[1] === currentScriptPath || process.argv[1].endsWith('server.mjs'))) {
   server.listen(port, host, () => console.log(`G-Click local: http://${host}:${port}`));
 }
 process.on('uncaughtException', err => { console.error('[UNCAUGHT EXCEPTION]', err); });

@@ -2148,7 +2148,7 @@ function switchSection(sectionId) {
   // Proteção de Pré-condição e Isolamento de Conta (AGENTS.md)
   // Se o G-Click estiver com mismatch ativo (ex: logado na conta 2420 enquanto outra conta está selecionada),
   // bloqueia estritamente o acesso aos módulos operacionais para impedir ações no escritório errado.
-  const operationalModules = ['catalog', 'mapping', 'audit', 'apply', 'obrigacoes', 'carteira'];
+  const operationalModules = ['catalog', 'mapping', 'audit', 'apply', 'obrigacoes', 'carteira', 'enquete-cadastro'];
   if (operationalModules.includes(target) && gclickSessionState.connected && !gclickSessionState.accountMatches) {
     const acc = currentAccount();
     const reason = `O G-Click está conectado na empresa ${gclickSessionState.currentEmpresaNome || gclickSessionState.currentEmpresaId}, diferente da conta ${acc} selecionada. Alterne a empresa no módulo Conexão G-Click.`;
@@ -2186,6 +2186,12 @@ function switchSection(sectionId) {
   }
   if (target === 'carteira') {
     loadCarteiraSection();
+  }
+  if (target === 'enquete-cadastro') {
+    loadEnqueteCadastroSection();
+  }
+  if (target === 'valida-pdf') {
+    loadValidaPdfSection();
   }
 
   // O fluxo de etapas descreve só a Enquete; nos demais módulos seriam ruído.
@@ -3962,6 +3968,11 @@ for (const btn of document.querySelectorAll('#sidebarNav .nav-btn')) {
       $('btnOpenObrigTemplates')?.click();
       return;
     }
+    if (btn.dataset.action === 'valida-pdf-models') {
+      switchSection('valida-pdf');
+      switchValidaPdfTab('models');
+      return;
+    }
     if (btn.dataset.section) {
       switchSection(btn.dataset.section);
     }
@@ -3972,7 +3983,8 @@ for (const btn of document.querySelectorAll('#sidebarNav .nav-btn')) {
 function setupSubmoduleToggles() {
   const submodules = [
     { headerId: 'headerSubmoduleEnquete', containerId: 'submoduleEnquete', storageKey: 'submodule_enquete_collapsed' },
-    { headerId: 'headerSubmoduleObrigacoes', containerId: 'submoduleObrigacoes', storageKey: 'submodule_obrigacoes_collapsed' }
+    { headerId: 'headerSubmoduleObrigacoes', containerId: 'submoduleObrigacoes', storageKey: 'submodule_obrigacoes_collapsed' },
+    { headerId: 'headerSubmoduleValidaPdf', containerId: 'submoduleValidaPdf', storageKey: 'submodule_valida_pdf_collapsed' }
   ];
 
   submodules.forEach(({ headerId, containerId, storageKey }) => {
@@ -4830,9 +4842,1941 @@ switchSection(savedSection);
 updateSidebarBadges();
 
 
+// ==============================================================================
+// MÓDULO: CADASTRO DE RESPOSTAS DA ENQUETE (CONFERÊNCIA E GRAVAÇÃO EM LOTE)
+// ==============================================================================
+
+let currentEnqueteComparison = null;
+let currentEnqueteCategories = [];
+let enqueteProgressInterval = null;
+
+async function loadEnqueteCadastroSection() {
+  if (currentEnqueteComparison) {
+    renderEnqueteCadastroTable(currentEnqueteComparison);
+    return;
+  }
+  await triggerEnqueteConferencia();
+}
+
+async function triggerEnqueteConferencia() {
+  const acc = currentAccount() || '3032';
+  const sheetInput = $('enqueteModelSheetUrl');
+  const sheetUrl = sheetInput ? sheetInput.value.trim() : '';
+
+  const btnConferir = $('btnEnqueteConferir');
+  if (btnConferir) {
+    btnConferir.disabled = true;
+    btnConferir.innerHTML = '<span>⏳</span> Conferindo...';
+  }
+
+  const tbody = $('tbodyEnqueteCadastro');
+  if (tbody) {
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--text-muted);">
+      <div style="display:inline-block;animation:spin 1s linear infinite;margin-bottom:8px;">⏳</div>
+      <div>Comparando planilha modelo com a Enquete da conta <strong>${acc}</strong>...</div>
+    </td></tr>`;
+  }
+
+  try {
+    const query = new URLSearchParams({ accountId: acc });
+    if (sheetUrl) query.set('sheetUrl', sheetUrl);
+
+    const res = await fetch(`/api/enquete/conferencia?${query.toString()}`);
+    const data = await res.json();
+
+    if (!res.ok) throw new Error(data.error || 'Falha ao carregar conferência da Enquete.');
+
+    currentEnqueteComparison = data.comparison;
+    currentEnqueteCategories = data.categories || ['Fiscal - Ramo', 'Fiscal', 'Dpto. Pessoal', 'Financeiro', 'Contábil', 'Sem Categoria'];
+
+    // Atualiza métricas
+    if ($('metricTotalPerguntas')) $('metricTotalPerguntas').textContent = data.comparison.totalPerguntas || 0;
+    if ($('metricTotalRespostas')) $('metricTotalRespostas').textContent = data.comparison.totalRespostas || 0;
+    if ($('metricRespostasExistentes')) $('metricRespostasExistentes').textContent = data.comparison.respostasJaExistem || 0;
+    if ($('metricRespostasFaltantes')) $('metricRespostasFaltantes').textContent = data.comparison.respostasFaltantes || 0;
+
+    renderEnqueteCadastroTable(currentEnqueteComparison);
+    toast.success(`Conferência concluída: ${data.comparison.respostasFaltantes} resposta(s) faltante(s) identificada(s).`, 'Enquete Sincronizada');
+  } catch (err) {
+    toast.error(err.message, 'Erro na Conferência');
+    if (tbody) {
+      tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:32px;color:#dc2626;">
+        ⚠️ ${err.message}
+      </td></tr>`;
+    }
+  } finally {
+    if (btnConferir) {
+      btnConferir.disabled = false;
+      btnConferir.innerHTML = '<span>🔍</span> Carregar e Conferir';
+    }
+  }
+}
+
+function renderEnqueteCadastroTable(comparison) {
+  const tbody = $('tbodyEnqueteCadastro');
+  if (!tbody || !comparison || !comparison.items) return;
+
+  const filterStatus = document.querySelector('input[name="enqueteFilterStatus"]:checked')?.value || 'all';
+  const searchTerm = ($('enqueteSearchInput')?.value || '').toLowerCase().trim();
+
+  const filtered = comparison.items.filter(item => {
+    if (filterStatus === 'faltante' && item.status !== 'faltante') return false;
+    if (filterStatus === 'ja_existe' && item.status !== 'ja_existe') return false;
+    if (searchTerm) {
+      const matchP = item.pergunta.toLowerCase().includes(searchTerm);
+      const matchR = item.resposta.toLowerCase().includes(searchTerm);
+      const matchG = item.grupo.toLowerCase().includes(searchTerm);
+      if (!matchP && !matchR && !matchG) return false;
+    }
+    return true;
+  });
+
+  if (!filtered.length) {
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--text-muted);">
+      Nenhum registro encontrado para os filtros selecionados.
+    </td></tr>`;
+    updateSelectedCadastroCount();
+    return;
+  }
+
+  let html = '';
+  filtered.forEach((item, fIdx) => {
+    const isFaltante = item.status === 'faltante';
+    const isMatched = item.perguntaMatched;
+    const badgeStatus = isFaltante
+      ? `<span class="badge-cad badge-cad-faltante">⚠️ Faltante</span>`
+      : `<span class="badge-cad badge-cad-existente">✓ Já Existe</span>`;
+
+    const simScore = item.perguntaScore ? Math.round(item.perguntaScore * 100) : 0;
+    const badgeSim = item.perguntaMatchNome && item.perguntaMatchNome !== item.pergunta
+      ? `<br><small class="badge-cad badge-cad-sim" title="Similaridade com o modelo: ${simScore}%">~ ${simScore}% similar: "${item.perguntaMatchNome}"</small>`
+      : '';
+
+    const catOptions = currentEnqueteCategories.map(cat => {
+      const sel = cat === item.categoriaSugerida ? 'selected' : '';
+      return `<option value="${cat}" ${sel}>${cat}</option>`;
+    }).join('');
+
+    const chkDisabled = !isFaltante || !isMatched ? 'disabled' : '';
+    const btnDisabled = !isFaltante || !isMatched ? 'disabled' : '';
+
+    html += `
+      <tr data-fidx="${fIdx}" data-pergunta-id="${item.perguntaId || ''}">
+        <td style="text-align:center;">
+          <input type="checkbox" class="chk-cad-item" ${chkDisabled} data-fidx="${fIdx}" ${isFaltante && isMatched ? 'checked' : ''}>
+        </td>
+        <td style="font-size:12px;color:var(--text-muted);font-weight:600;">${item.grupo}</td>
+        <td style="font-size:12.5px;font-weight:600;color:var(--text-main);">${item.pergunta}</td>
+        <td style="font-size:12px;">
+          ${isMatched ? `<strong>${item.perguntaMatchNome}</strong> (ID: ${item.perguntaId})` : '<em style="color:#dc2626;">Não encontrada no G-Click</em>'}
+          ${badgeSim}
+        </td>
+        <td style="font-size:12.5px;font-weight:700;color:#1e293b;">${item.resposta}</td>
+        <td>${badgeStatus}</td>
+        <td>
+          <select class="cat-select-cell select-item-categoria" ${chkDisabled} data-fidx="${fIdx}">
+            ${catOptions}
+          </select>
+        </td>
+        <td style="text-align:right;">
+          <button type="button" class="btn btn-secondary btn-sm btn-cadastrar-single" ${btnDisabled} data-fidx="${fIdx}">
+            Cadastrar
+          </button>
+        </td>
+      </tr>
+    `;
+  });
+
+  tbody.innerHTML = html;
+  attachEnqueteCadastroRowEvents(filtered);
+  updateSelectedCadastroCount();
+}
+
+function attachEnqueteCadastroRowEvents(filteredItems) {
+  const tbody = $('tbodyEnqueteCadastro');
+  if (!tbody) return;
+
+  tbody.querySelectorAll('.chk-cad-item').forEach(chk => {
+    chk.addEventListener('change', () => {
+      updateSelectedCadastroCount();
+    });
+  });
+
+  tbody.querySelectorAll('.btn-cadastrar-single').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const fIdx = parseInt(btn.dataset.fidx, 10);
+      const item = filteredItems[fIdx];
+      if (!item) return;
+
+      const row = btn.closest('tr');
+      const catSelect = row ? row.querySelector('.select-item-categoria') : null;
+      const categoria = catSelect ? catSelect.value : item.categoriaSugerida;
+
+      const payloadItem = {
+        questionRef: item.perguntaId,
+        questionNome: item.perguntaMatchNome || item.pergunta,
+        perguntaId: item.perguntaId,
+        perguntaNome: item.perguntaMatchNome || item.pergunta,
+        answerName: item.resposta,
+        resposta: item.resposta,
+        categoriaName: categoria,
+        categoria: categoria
+      };
+
+      await executeCadastrarRespostas([payloadItem]);
+    });
+  });
+}
+
+function updateSelectedCadastroCount() {
+  const checkboxes = document.querySelectorAll('.chk-cad-item:checked:not(:disabled)');
+  const count = checkboxes.length;
+  if ($('countSelectedCad')) $('countSelectedCad').textContent = count;
+  if ($('btnCadastrarRespostasSelecionadas')) {
+    $('btnCadastrarRespostasSelecionadas').disabled = count === 0;
+  }
+}
+
+async function executeCadastrarRespostas(itemsToRegister) {
+  const acc = currentAccount() || '3032';
+  if (!itemsToRegister || !itemsToRegister.length) {
+    toast.warning('Nenhuma resposta selecionada para cadastro.');
+    return;
+  }
+
+  // Prepara painel de progresso
+  const panel = $('enqueteProgressPanel');
+  const bar = $('enqueteProgressBar');
+  const percentText = $('enqueteProgressPercent');
+  const titleText = $('enqueteProgressTitle');
+  const logsEl = $('enqueteProgressLogs');
+
+  if (panel) panel.hidden = false;
+  if (bar) bar.style.width = '0%';
+  if (percentText) percentText.textContent = '0%';
+  if (titleText) titleText.textContent = `Cadastrando ${itemsToRegister.length} resposta(s) no G-Click...`;
+  if (logsEl) logsEl.innerHTML = `<div style="color:#0284c7;">[${new Date().toLocaleTimeString('pt-BR')}] Iniciando lote de ${itemsToRegister.length} resposta(s)...</div>`;
+
+  const btnBatch = $('btnCadastrarRespostasSelecionadas');
+  if (btnBatch) btnBatch.disabled = true;
+
+  // Inicia polling de progresso
+  if (enqueteProgressInterval) clearInterval(enqueteProgressInterval);
+  enqueteProgressInterval = setInterval(async () => {
+    try {
+      const pRes = await fetch('/api/enquete/progresso');
+      if (pRes.ok) {
+        const pData = await pRes.json();
+        const p = pData.progress;
+        if (p && p.total > 0) {
+          const pct = Math.round((p.current / p.total) * 100);
+          if (bar) bar.style.width = `${pct}%`;
+          if (percentText) percentText.textContent = `${pct}% (${p.current}/${p.total})`;
+          if (titleText) titleText.textContent = p.message || 'Processando...';
+          if (logsEl && p.logs && p.logs.length) {
+            logsEl.innerHTML = p.logs.map(l => `<div>${l}</div>`).join('');
+            logsEl.scrollTop = logsEl.scrollHeight;
+          }
+        }
+      }
+    } catch { /* ignora erro transitório no polling */ }
+  }, 1000);
+
+  try {
+    const res = await fetch('/api/enquete/cadastrar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        accountId: acc,
+        items: itemsToRegister
+      })
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Falha ao executar cadastro de respostas.');
+
+    clearInterval(enqueteProgressInterval);
+    if (bar) bar.style.width = '100%';
+    if (percentText) percentText.textContent = '100%';
+    if (titleText) titleText.textContent = `Concluído: ${data.results.length} resposta(s) processada(s)!`;
+
+    const criadas = data.results.filter(r => r.created).length;
+    const vinculadas = data.results.filter(r => r.attached).length;
+    toast.success(`${vinculadas} resposta(s) vinculadas (${criadas} novas criadas) na conta ${acc}!`, 'Cadastro Concluído');
+
+    // Recarrega a conferência para atualizar a tela
+    await triggerEnqueteConferencia();
+  } catch (err) {
+    clearInterval(enqueteProgressInterval);
+    toast.error(err.message, 'Erro no Cadastro');
+    if (titleText) titleText.textContent = `Erro: ${err.message}`;
+    if (logsEl) {
+      logsEl.innerHTML += `<div style="color:#dc2626;">[${new Date().toLocaleTimeString('pt-BR')}] ERRO: ${err.message}</div>`;
+    }
+  } finally {
+    if (btnBatch) btnBatch.disabled = false;
+  }
+}
+
+// Event Listeners da Seção Enquete Cadastro
+$('btnEnqueteConferir')?.addEventListener('click', triggerEnqueteConferencia);
+
+$('selectAllEnqueteFaltantes')?.addEventListener('change', (e) => {
+  const isChecked = e.target.checked;
+  document.querySelectorAll('.chk-cad-item:not(:disabled)').forEach(chk => {
+    chk.checked = isChecked;
+  });
+  updateSelectedCadastroCount();
+});
+
+document.querySelectorAll('input[name="enqueteFilterStatus"]').forEach(radio => {
+  radio.addEventListener('change', () => {
+    if (currentEnqueteComparison) renderEnqueteCadastroTable(currentEnqueteComparison);
+  });
+});
+
+$('enqueteSearchInput')?.addEventListener('input', () => {
+  if (currentEnqueteComparison) renderEnqueteCadastroTable(currentEnqueteComparison);
+});
+
+$('btnCadastrarRespostasSelecionadas')?.addEventListener('click', async () => {
+  if (!currentEnqueteComparison) return;
+  const tbody = $('tbodyEnqueteCadastro');
+  if (!tbody) return;
+
+  const checkedBoxes = Array.from(tbody.querySelectorAll('.chk-cad-item:checked:not(:disabled)'));
+  if (!checkedBoxes.length) {
+    toast.warning('Selecione ao menos uma resposta para cadastrar.');
+    return;
+  }
+
+  const items = checkedBoxes.map(chk => {
+    const fIdx = parseInt(chk.dataset.fidx, 10);
+    const row = chk.closest('tr');
+    const catSelect = row ? row.querySelector('.select-item-categoria') : null;
+    const filterStatus = document.querySelector('input[name="enqueteFilterStatus"]:checked')?.value || 'all';
+    const searchTerm = ($('enqueteSearchInput')?.value || '').toLowerCase().trim();
+
+    const filtered = currentEnqueteComparison.items.filter(item => {
+      if (filterStatus === 'faltante' && item.status !== 'faltante') return false;
+      if (filterStatus === 'ja_existe' && item.status !== 'ja_existe') return false;
+      if (searchTerm) {
+        const matchP = item.pergunta.toLowerCase().includes(searchTerm);
+        const matchR = item.resposta.toLowerCase().includes(searchTerm);
+        const matchG = item.grupo.toLowerCase().includes(searchTerm);
+        if (!matchP && !matchR && !matchG) return false;
+      }
+      return true;
+    });
+
+    const item = filtered[fIdx] || currentEnqueteComparison.items[fIdx];
+    return {
+      questionRef: item.perguntaId,
+      questionNome: item.perguntaMatchNome || item.pergunta,
+      perguntaId: item.perguntaId,
+      perguntaNome: item.perguntaMatchNome || item.pergunta,
+      answerName: item.resposta,
+      resposta: item.resposta,
+      categoriaName: catSelect ? catSelect.value : item.categoriaSugerida,
+      categoria: catSelect ? catSelect.value : item.categoriaSugerida
+    };
+  });
+
+  await executeCadastrarRespostas(items);
+});
+
 $('topAccountPill')?.addEventListener('click', () => switchSection('connection'));
 if ($('sidebarLocal')) {
   $('sidebarLocal').textContent = location.port
     ? `Servidor local · porta ${location.port}`
     : `JB Consultoria · ${location.hostname}`;
 }
+
+// ============================================================================
+// MÓDULO: VALIDA PDF (G-CLICK PDF LAYOUT)
+// ============================================================================
+let validaPdfModels = [];
+let validaPdfResults = [];
+let currentInspectedResult = null;
+let validaPdfInitialized = false;
+let currentMapPdfBase64 = null;
+let currentMapPdfPath = null;
+let currentMapPdfLines = [];
+
+function switchValidaPdfTab(tab) {
+  const btnFiles = $('tabBtnValidaFiles');
+  const btnMapping = $('tabBtnValidaMapping');
+  const btnModels = $('tabBtnValidaModels');
+  const contentFiles = $('tabValidaFilesContent');
+  const contentMapping = $('tabValidaMappingContent');
+  const contentModels = $('tabValidaModelsContent');
+
+  if (!btnFiles || !btnModels || !contentFiles || !contentModels) return;
+
+  const allBtns = [btnFiles, btnMapping, btnModels].filter(Boolean);
+  const allContents = [contentFiles, contentMapping, contentModels].filter(Boolean);
+
+  allBtns.forEach(b => {
+    b.classList.remove('active');
+    b.style.color = '#64748b';
+    b.style.borderBottom = 'none';
+  });
+  allContents.forEach(c => { c.hidden = true; });
+
+  if (tab === 'models') {
+    btnModels.classList.add('active');
+    btnModels.style.color = 'var(--gclick-primary)';
+    btnModels.style.borderBottom = '2px solid var(--gclick-primary)';
+    contentModels.hidden = false;
+    renderValidaPdfModelsTable();
+  } else if (tab === 'mapping') {
+    if (btnMapping && contentMapping) {
+      btnMapping.classList.add('active');
+      btnMapping.style.color = 'var(--gclick-primary)';
+      btnMapping.style.borderBottom = '2px solid var(--gclick-primary)';
+      contentMapping.hidden = false;
+    }
+  } else {
+    btnFiles.classList.add('active');
+    btnFiles.style.color = 'var(--gclick-primary)';
+    btnFiles.style.borderBottom = '2px solid var(--gclick-primary)';
+    contentFiles.hidden = false;
+    renderValidaPdfResultsTable();
+  }
+}
+
+async function loadValidaPdfSection() {
+  if (!validaPdfInitialized) {
+    setupValidaPdfListeners();
+    validaPdfInitialized = true;
+  }
+
+  const accountId = currentAccount() || '6019';
+  if (!validaPdfModels.length) {
+    try {
+      const res = await api('valida-pdf/models', { accountId });
+      validaPdfModels = res.models || [];
+    } catch (err) {
+      console.warn('Não foi possível carregar modelos locais do Valida PDF:', err);
+    }
+  }
+
+  const count = validaPdfModels.length || 184;
+  if ($('validaPdfMetricModels')) $('validaPdfMetricModels').textContent = count;
+  if ($('validaModelsTabBadge')) $('validaModelsTabBadge').textContent = count;
+  if ($('navBadgeValidaPdfModels')) $('navBadgeValidaPdfModels').textContent = count;
+
+  renderValidaPdfModelsTable();
+  renderValidaPdfResultsTable();
+}
+
+function renderValidaPdfModelsTable() {
+  const tbody = $('validaModelsBody');
+  if (!tbody) return;
+
+  const searchTerm = ($('validaModelSearch')?.value || '').toLowerCase().trim();
+  const deptoFilter = $('validaModelDeptoFilter')?.value || '';
+
+  const filtered = validaPdfModels.filter(m => {
+    if (deptoFilter && m.departamento !== deptoFilter) return false;
+    if (searchTerm) {
+      const matchNome = (m.nome || '').toLowerCase().includes(searchTerm);
+      const matchKw = (m.palavraChave || '').toLowerCase().includes(searchTerm);
+      const matchAtiv = (m.atividade || '').toLowerCase().includes(searchTerm);
+      const matchDepto = (m.departamento || '').toLowerCase().includes(searchTerm);
+      if (!matchNome && !matchKw && !matchAtiv && !matchDepto) return false;
+    }
+    return true;
+  });
+
+  if (!filtered.length) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="7" style="text-align:center;padding:28px;color:#64748b;">
+          Nenhum modelo encontrado para os filtros aplicados.
+        </td>
+      </tr>
+    `;
+    if ($('validaModelsCount')) $('validaModelsCount').textContent = 'Exibindo 0 modelos';
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(m => `
+    <tr>
+      <td style="font-family:var(--font-mono);font-size:12px;color:#64748b;">${m.id || '-'}</td>
+      <td><strong>${escapeHtml(m.nome || '-')}</strong></td>
+      <td><span class="tag-pill" style="font-size:11px;background:#f1f5f9;color:#334155;">${escapeHtml(m.departamento || 'Geral')}</span></td>
+      <td style="font-family:var(--font-mono);font-size:11.5px;color:#0f766e;">${escapeHtml(m.palavraChave || 'Auto')}</td>
+      <td><span class="nav-badge badge-neutral" style="font-size:11px;">${escapeHtml(m.tipoInscricao || 'CNPJ / CPF')}</span></td>
+      <td><span class="tag-pill" style="font-size:11px;">${escapeHtml(m.competencia || 'MM/AAAA')}</span></td>
+      <td style="font-size:12px;color:#475569;">${escapeHtml(m.atividade || '-')}</td>
+    </tr>
+  `).join('');
+
+  if ($('validaModelsCount')) {
+    $('validaModelsCount').textContent = `Exibindo ${filtered.length} de ${validaPdfModels.length} modelos cadastrados no G-Click`;
+  }
+}
+
+function renderValidaPdfResultsTable() {
+  const tbody = $('validaResultsBody');
+  if (!tbody) return;
+
+  const searchTerm = ($('validaFilterSearch')?.value || '').toLowerCase().trim();
+  const statusFilter = $('validaFilterStatus')?.value || '';
+
+  const filtered = validaPdfResults.filter(r => {
+    if (statusFilter === 'valido' && !r.valido) return false;
+    if (statusFilter === 'invalido' && r.valido) return false;
+    if (statusFilter === 'erro_extracao' && r.status !== 'erro_extracao') return false;
+
+    if (searchTerm) {
+      const matchFile = (r.fileName || '').toLowerCase().includes(searchTerm);
+      const matchSub = (r.subpasta || r.relPath || '').toLowerCase().includes(searchTerm);
+      const matchDoc = (r.regras?.nomeDocumento?.identificado || '').toLowerCase().includes(searchTerm);
+      const matchClient = (r.regras?.identificacaoCliente?.cnpjs || []).join(' ').toLowerCase().includes(searchTerm) ||
+                          (r.regras?.identificacaoCliente?.cpfs || []).join(' ').toLowerCase().includes(searchTerm) ||
+                          (r.regras?.identificacaoCliente?.razaoSocial || '').toLowerCase().includes(searchTerm);
+      const matchComp = (r.regras?.competencia?.competenciaDetectada || '').toLowerCase().includes(searchTerm);
+      if (!matchFile && !matchSub && !matchDoc && !matchClient && !matchComp) return false;
+    }
+    return true;
+  });
+
+  // Atualiza métricas
+  const total = validaPdfResults.length;
+  const validos = validaPdfResults.filter(r => r.valido).length;
+  const invalidos = total - validos;
+
+  if ($('validaPdfMetricTotal')) $('validaPdfMetricTotal').textContent = total;
+  if ($('validaPdfMetricValid')) $('validaPdfMetricValid').textContent = validos;
+  if ($('validaPdfMetricInvalid')) $('validaPdfMetricInvalid').textContent = invalidos;
+  if ($('btnClearValidaResults')) $('btnClearValidaResults').style.display = total > 0 ? 'inline-block' : 'none';
+  if ($('btnGenerateDiagnosticReport')) $('btnGenerateDiagnosticReport').style.display = total > 0 ? 'inline-flex' : 'none';
+  if ($('btnGoToMappingFromFiles')) {
+    $('btnGoToMappingFromFiles').style.display = total > 0 ? 'inline-flex' : 'none';
+    if ($('validaCountForMapping')) $('validaCountForMapping').textContent = total;
+  }
+
+  updateMappingValidatedFilesDropdown();
+
+  if (!filtered.length) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="6" style="text-align:center;padding:36px;color:#64748b;">
+          ${total === 0
+            ? 'Nenhum arquivo validado ainda. Informe uma pasta acima e clique em <strong>Varrer e Validar Pasta</strong> ou arraste arquivos para começar.'
+            : 'Nenhum arquivo corresponde aos filtros aplicados.'}
+        </td>
+      </tr>
+    `;
+    if ($('validaResultsCount')) $('validaResultsCount').textContent = `Exibindo 0 de ${total} registros`;
+    return;
+  }
+
+  tbody.innerHTML = filtered.map((r, idx) => {
+    let statusBadge = '';
+    if (r.valido) {
+      statusBadge = '<span class="nav-badge badge-ok" style="font-weight:600;">✔ 100% Válido</span>';
+    } else if (r.status === 'erro_extracao') {
+      statusBadge = '<span class="nav-badge badge-neutral" style="background:#fee2e2;color:#991b1b;font-weight:600;">📷 Sem OCR / Imagem</span>';
+    } else if (r.status === 'cliente_invalido') {
+      statusBadge = '<span class="nav-badge badge-warn" style="font-weight:600;">⚠️ Cliente Incompatível</span>';
+    } else if (r.status === 'competencia_invalida') {
+      statusBadge = '<span class="nav-badge badge-warn" style="font-weight:600;">⚠️ Comp Incompatível</span>';
+    } else if (r.status === 'documento_desconhecido') {
+      statusBadge = '<span class="nav-badge badge-warn" style="font-weight:600;">⚠️ Doc Desconhecido</span>';
+    } else {
+      statusBadge = `<span class="nav-badge badge-warn" style="font-weight:600;">⚠️ ${escapeHtml(r.status || 'Pendente')}</span>`;
+    }
+
+    const docIdentificado = r.regras?.nomeDocumento?.identificado || '<span style="color:#94a3b8;">Não identificado</span>';
+    const comp = r.regras?.competencia?.competenciaDetectada || '<span style="color:#94a3b8;">--</span>';
+
+    // Cliente (CNPJ / CPF)
+    let clienteHtml = '';
+    const cnpjs = r.regras?.identificacaoCliente?.cnpjs || [];
+    const cnpjsBase = r.regras?.identificacaoCliente?.cnpjsBase || [];
+    const cpfs = r.regras?.identificacaoCliente?.cpfs || [];
+    const razao = r.regras?.identificacaoCliente?.razaoSocial;
+
+    if (cnpjs.length) {
+      clienteHtml = `<span class="tag-pill" style="font-size:11px;background:#e0f2fe;color:#0369a1;">CNPJ ${escapeHtml(cnpjs[0])}</span>`;
+    } else if (cnpjsBase.length) {
+      clienteHtml = `<span class="tag-pill" style="font-size:11px;background:#f0fdf4;color:#15803d;">CNPJ Base ${escapeHtml(cnpjsBase[0])}</span>`;
+    } else if (cpfs.length) {
+      clienteHtml = `<span class="tag-pill" style="font-size:11px;background:#fef3c7;color:#b45309;">CPF ${escapeHtml(cpfs[0])}</span>`;
+    } else if (razao) {
+      clienteHtml = `<span style="font-size:11.5px;color:#475569;">${escapeHtml(razao)}</span>`;
+    } else {
+      clienteHtml = '<span style="color:#94a3b8;">Não localizado</span>';
+    }
+
+    const subpastaTag = r.subpasta
+      ? `<div style="margin-top:3px;"><span class="tag-pill" style="font-size:10.5px;background:#f0fdfa;color:#0f766e;border:1px solid #ccfbf1;">📁 ${escapeHtml(r.subpasta)}</span></div>`
+      : (r.relPath && r.relPath !== r.fileName ? `<div style="font-size:11px;color:#64748b;">${escapeHtml(r.relPath)}</div>` : '');
+
+    return `
+      <tr>
+        <td>${statusBadge}</td>
+        <td>
+          <div style="font-weight:600;font-size:13px;color:#1e293b;">${escapeHtml(r.fileName || 'arquivo.pdf')}</div>
+          ${subpastaTag}
+        </td>
+        <td>
+          <div style="font-size:12.5px;font-weight:500;">${docIdentificado}</div>
+          ${r.regras?.nomeDocumento?.modelosCompativeis?.length ? `<div style="font-size:11px;color:#0f766e;">Modelo: ${escapeHtml(r.regras.nomeDocumento.modelosCompativeis[0].nome)}</div>` : ''}
+        </td>
+        <td>${clienteHtml}</td>
+        <td><strong style="font-size:12.5px;color:#1e293b;">${comp}</strong></td>
+        <td style="text-align:right;white-space:nowrap;">
+          ${r.status === 'erro_extracao'
+            ? `<button type="button" class="btn btn-secondary btn-sm" disabled title="Documentos escaneados sem OCR não podem ser mapeados no G-Click" style="font-size:11.5px;padding:4px 8px;margin-right:4px;opacity:0.6;cursor:not-allowed;">📷 Sem OCR</button>`
+            : `<button type="button" class="btn btn-primary btn-sm btn-map-pdf" data-idx="${idx}" title="Mapear este arquivo no G-Click" style="font-size:11.5px;padding:4px 8px;margin-right:4px;">🛠️ Mapear</button>`
+          }
+          <button type="button" class="btn btn-secondary btn-sm btn-inspect-pdf" data-idx="${idx}" style="font-size:11.5px;padding:4px 8px;">
+            🔍 Inspecionar
+          </button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  if ($('validaResultsCount')) {
+    $('validaResultsCount').textContent = `Exibindo ${filtered.length} de ${total} registros`;
+  }
+}
+
+function updateMappingValidatedFilesDropdown() {
+  const select = $('mapValidatedFilesSelect');
+  if (!select) return;
+
+  if (!validaPdfResults.length) {
+    select.innerHTML = '<option value="">-- Nenhum arquivo validado disponível ainda --</option>';
+    return;
+  }
+
+  const validFiles = validaPdfResults.map((r, idx) => ({ ...r, originalIdx: idx })).filter(r => r.valido);
+  const invalidFiles = validaPdfResults.map((r, idx) => ({ ...r, originalIdx: idx })).filter(r => !r.valido);
+
+  const options = ['<option value="">-- Selecione um arquivo validado para mapear --</option>'];
+
+  if (validFiles.length) {
+    options.push(`<optgroup label="✅ Arquivos Válidos para Mapeamento (${validFiles.length})">`);
+    validFiles.forEach(r => {
+      const doc = r.regras?.nomeDocumento?.identificado ? `[${r.regras.nomeDocumento.identificado}] ` : '';
+      const sub = r.subpasta ? `📁 ${r.subpasta} / ` : '';
+      const cnpj = r.regras?.identificacaoCliente?.cnpjs?.[0] ? ` · CNPJ ${r.regras.identificacaoCliente.cnpjs[0]}` : '';
+      options.push(`<option value="${r.originalIdx}">✔ ${doc}${sub}${escapeHtml(r.fileName || 'arquivo.pdf')}${cnpj}</option>`);
+    });
+    options.push('</optgroup>');
+  }
+
+  if (invalidFiles.length) {
+    options.push(`<optgroup label="⚠️ Inconsistentes / Imagem Sem OCR (${invalidFiles.length})">`);
+    invalidFiles.forEach(r => {
+      const tag = r.status === 'erro_extracao' ? '📷 Sem OCR' : '⚠️ Inconsistente';
+      const sub = r.subpasta ? `📁 ${r.subpasta} / ` : '';
+      options.push(`<option value="${r.originalIdx}">${tag} · ${sub}${escapeHtml(r.fileName || 'arquivo.pdf')}</option>`);
+    });
+    options.push('</optgroup>');
+  }
+
+  select.innerHTML = options.join('');
+}
+
+async function loadValidatedFileIntoMapping(item, itemIdx = null) {
+  if (!item) return;
+
+  currentMapPdfPath = item.filePath || null;
+  currentMapPdfBase64 = item.fileBase64 || null;
+  currentMapPdfLines = [];
+
+  const fileName = item.fileName || 'arquivo.pdf';
+  const subpastaInfo = item.subpasta ? ` (${item.subpasta})` : '';
+  if ($('mapPdfFileName')) {
+    $('mapPdfFileName').textContent = `📁 ${fileName}${subpastaInfo}`;
+  }
+
+  // Sugestão de Nome do Modelo
+  const docIdentificado = item.regras?.nomeDocumento?.identificado;
+  if ($('mapModelName')) {
+    if (docIdentificado && !docIdentificado.includes('Não identificado')) {
+      $('mapModelName').value = docIdentificado;
+    } else {
+      $('mapModelName').value = fileName.replace(/\.pdf$/i, '').replace(/[-_]/g, ' ');
+    }
+  }
+
+  // Sugestão de Departamento
+  const searchStr = `${fileName} ${item.subpasta || ''} ${docIdentificado || ''}`.toLowerCase();
+  if ($('mapModelDepto')) {
+    if (searchStr.includes('folha') || searchStr.includes('recibo') || searchStr.includes('salario') || searchStr.includes('domestica') || searchStr.includes('pro abore') || searchStr.includes('ponto') || searchStr.includes('ferias') || searchStr.includes('rescisao')) {
+      $('mapModelDepto').value = 'Departamento Pessoal';
+    } else if (searchStr.includes('darf') || searchStr.includes('dctf') || searchStr.includes('fiscal') || searchStr.includes('sped') || searchStr.includes('fgts')) {
+      $('mapModelDepto').value = 'Fiscal';
+    } else if (searchStr.includes('contabil') || searchStr.includes('balanco')) {
+      $('mapModelDepto').value = 'Contabilidade';
+    }
+  }
+
+  // Sugestão de Obrigação a vincular
+  if ($('mapObrigacaoNome')) {
+    if (item.regras?.nomeDocumento?.modelosCompativeis?.[0]?.nome) {
+      $('mapObrigacaoNome').value = item.regras.nomeDocumento.modelosCompativeis[0].nome;
+    } else if (searchStr.includes('adiantamento')) {
+      $('mapObrigacaoNome').value = 'Adiantamento Salarial - Mensal';
+    } else if (searchStr.includes('recibo') || searchStr.includes('folha')) {
+      $('mapObrigacaoNome').value = 'Folha de Pagamento';
+    }
+  }
+
+  // Sincroniza o select de arquivos validados
+  if (itemIdx !== null && $('mapValidatedFilesSelect')) {
+    $('mapValidatedFilesSelect').value = String(itemIdx);
+  }
+
+  // Alterna para a aba de mapeamento
+  switchValidaPdfTab('mapping');
+
+  // Se o arquivo for imagem sem OCR, alerta de imediato
+  if (item.status === 'erro_extracao') {
+    resetMappingPillars();
+    renderMapLinesViewer([], fileName);
+    toast.warning(`O arquivo "${fileName}" é uma imagem escaneada sem OCR (0 linhas). O G-Click não aceita imagens para layout. Selecione um arquivo válido (como Recibo de Pagamento).`, 'Sem OCR / Imagem');
+    return;
+  }
+
+  // Dispara autodetecção imediata
+  toast.info(`Arquivo "${fileName}" carregado para mapeamento. Analisando linhas e campos…`, 'Mapeamento');
+  await runAutoDetectMapping();
+}
+
+async function runAutoDetectMapping() {
+  if (!currentMapPdfPath && !currentMapPdfBase64) {
+    toast.warning('Selecione um arquivo PDF primeiro.', 'Mapeamento');
+    return;
+  }
+
+  const btn = $('btnAutoDetectMapping');
+  const origHtml = btn ? btn.innerHTML : '';
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span>⏳</span> Detectando…';
+  }
+
+  const viewer = $('mapLinesViewer');
+  if (viewer) {
+    viewer.innerHTML = '<div style="padding:28px;text-align:center;color:#0369a1;background:#f0f9ff;border-radius:8px;">⏳ Extraindo linhas no formato nativo do G-Click e detectando os 3 pilares…</div>';
+  }
+
+  try {
+    const res = await fetch('/api/valida-pdf/auto-map', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        filePath: currentMapPdfPath,
+        fileBase64: currentMapPdfBase64
+      })
+    });
+
+    const data = await res.json();
+    if (!res.ok || data.error) {
+      toast.error(data.error || 'Falha ao autodetectar campos.', 'Erro');
+      renderMapLinesViewer([], data.fileName || 'arquivo.pdf');
+      return;
+    }
+
+    currentMapPdfLines = data.lines || [];
+    renderMapLinesViewer(currentMapPdfLines, data.fileName || 'arquivo.pdf');
+
+    if (!currentMapPdfLines.length) {
+      resetMappingPillars();
+      toast.warning(`O arquivo "${data.fileName || 'PDF'}" não possui texto legível (0 linhas). O G-Click requer texto selecionável. Selecione um arquivo válido da lista.`, 'Sem OCR');
+      return;
+    }
+
+    // Preenche os 3 Pilares com sugestões
+    let detectadosCount = 0;
+    if (data.pilares?.pilar1_obrigacao) {
+      if ($('mapPilar1Linha')) $('mapPilar1Linha').value = data.pilares.pilar1_obrigacao.linha;
+      if ($('mapPilar1Texto')) $('mapPilar1Texto').value = data.pilares.pilar1_obrigacao.termoMapeado;
+      if ($('mapPilar1Badge')) {
+        $('mapPilar1Badge').textContent = `Linha ${data.pilares.pilar1_obrigacao.linha} (OK)`;
+        $('mapPilar1Badge').style.background = '#dcfce7';
+        $('mapPilar1Badge').style.color = '#15803d';
+      }
+      detectadosCount++;
+    } else {
+      if ($('mapPilar1Linha')) $('mapPilar1Linha').value = '';
+      if ($('mapPilar1Texto')) $('mapPilar1Texto').value = '';
+      if ($('mapPilar1Badge')) {
+        $('mapPilar1Badge').textContent = 'Pendente';
+        $('mapPilar1Badge').style.background = '#f1f5f9';
+        $('mapPilar1Badge').style.color = '#64748b';
+      }
+    }
+
+    if (data.pilares?.pilar2_cliente) {
+      if ($('mapPilar2Linha')) $('mapPilar2Linha').value = data.pilares.pilar2_cliente.linha;
+      if ($('mapPilar2Valor')) $('mapPilar2Valor').value = data.pilares.pilar2_cliente.valor;
+      if ($('mapPilar2Tipo')) {
+        const t = data.pilares.pilar2_cliente.tipo;
+        $('mapPilar2Tipo').value = t === 'CPF' ? 'CPF' : (t === 'CNPJ Base' ? 'CNPJ_BASE' : 'CNPJ');
+      }
+      if ($('mapPilar2Badge')) {
+        $('mapPilar2Badge').textContent = `Linha ${data.pilares.pilar2_cliente.linha} (${data.pilares.pilar2_cliente.tipo})`;
+        $('mapPilar2Badge').style.background = '#dcfce7';
+        $('mapPilar2Badge').style.color = '#15803d';
+      }
+      detectadosCount++;
+    } else {
+      if ($('mapPilar2Linha')) $('mapPilar2Linha').value = '';
+      if ($('mapPilar2Valor')) $('mapPilar2Valor').value = '';
+      if ($('mapPilar2Badge')) {
+        $('mapPilar2Badge').textContent = 'Pendente';
+        $('mapPilar2Badge').style.background = '#f1f5f9';
+        $('mapPilar2Badge').style.color = '#64748b';
+      }
+    }
+
+    if (data.pilares?.pilar3_competencia) {
+      if ($('mapPilar3Linha')) $('mapPilar3Linha').value = data.pilares.pilar3_competencia.linha;
+      const exato = data.pilares.pilar3_competencia.trechoExato || data.pilares.pilar3_competencia.competenciaDetectada || data.pilares.pilar3_competencia.textoCompleto;
+      if ($('mapPilar3Texto')) $('mapPilar3Texto').value = exato;
+      if ($('mapPilar3Formato')) $('mapPilar3Formato').value = data.pilares.pilar3_competencia.formato || 'mes_ano';
+      if ($('mapPilar3Badge')) {
+        $('mapPilar3Badge').textContent = `Linha ${data.pilares.pilar3_competencia.linha} (OK)`;
+        $('mapPilar3Badge').style.background = '#dcfce7';
+        $('mapPilar3Badge').style.color = '#15803d';
+      }
+      detectadosCount++;
+    } else {
+      if ($('mapPilar3Linha')) $('mapPilar3Linha').value = '';
+      if ($('mapPilar3Texto')) $('mapPilar3Texto').value = '';
+      if ($('mapPilar3Badge')) {
+        $('mapPilar3Badge').textContent = 'Pendente';
+        $('mapPilar3Badge').style.background = '#f1f5f9';
+        $('mapPilar3Badge').style.color = '#64748b';
+      }
+    }
+
+    if (typeof data.multiLinhas === 'boolean' && $('mapMultiLinhas')) {
+      $('mapMultiLinhas').checked = data.multiLinhas;
+    }
+
+    if (detectadosCount === 3) {
+      toast.success('Todos os 3 pilares (Obrigação, CNPJ e Competência) autodetectados com sucesso!', 'Mapeamento');
+    } else if (detectadosCount > 0) {
+      toast.info(`${detectadosCount} de 3 pilares autodetectados. Clique nas linhas à esquerda para preencher os pendentes.`, 'Mapeamento');
+    } else {
+      toast.warning('Linhas carregadas. Clique nas linhas à esquerda para selecionar os pilares.', 'Mapeamento Manual');
+    }
+  } catch (err) {
+    toast.error(`Erro na autodetecção: ${err.message}`, 'Falha');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = origHtml;
+    }
+  }
+}
+
+function renderMapLinesViewer(lines, fileName = 'documento.pdf') {
+  const viewer = $('mapLinesViewer');
+  if (!viewer) return;
+  if ($('mapLinesCount')) $('mapLinesCount').textContent = `${lines.length} linhas`;
+
+  if (!lines.length) {
+    const validFiles = validaPdfResults.filter(r => r.valido);
+    const firstValid = validFiles[0];
+    const validPrompt = firstValid
+      ? `<div style="margin-top:14px;">
+           <button type="button" class="btn btn-primary btn-sm" id="btnQuickLoadValidRecibo" style="padding:6px 14px;">
+             👉 Carregar Documento Válido (${escapeHtml(firstValid.fileName)})
+           </button>
+         </div>`
+      : '';
+
+    viewer.innerHTML = `
+      <div style="padding:28px 16px;text-align:center;background:#fff1f2;border:1px dashed #fca5a5;border-radius:8px;margin:12px;">
+        <div style="font-size:28px;margin-bottom:6px;">📷</div>
+        <strong style="color:#991b1b;font-size:14px;display:block;margin-bottom:6px;">
+          Nenhuma linha de texto encontrada no arquivo "${escapeHtml(fileName)}"
+        </strong>
+        <p style="color:#7f1d1d;font-size:12.5px;margin:0 auto;max-width:500px;line-height:1.45;">
+          Este arquivo é uma <strong>imagem digitalizada sem OCR (0 linhas)</strong>. O sistema ValidaPDF do G-Click requer arquivos com texto selecionável para criar regras de validação.
+        </p>
+        ${validPrompt}
+      </div>
+    `;
+
+    $('btnQuickLoadValidRecibo')?.addEventListener('click', () => {
+      const validIdx = validaPdfResults.findIndex(r => r.valido);
+      if (validIdx >= 0) {
+        loadValidatedFileIntoMapping(validaPdfResults[validIdx], validIdx);
+      }
+    });
+    return;
+  }
+
+    viewer.innerHTML = lines.map(l => `
+    <div class="map-line-row" data-line="${l.lineNumber}" style="display:flex;padding:3px 8px;border-bottom:1px solid #f1f5f9;cursor:text;align-items:center;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
+      <span style="width:36px;font-weight:600;color:#94a3b8;user-select:none;cursor:pointer;" title="Clique no número para selecionar a linha toda">${String(l.lineNumber).padStart(2, '0')}</span>
+      <span class="map-line-text" style="flex:1;white-space:pre-wrap;word-break:break-word;color:#1e293b;user-select:text;">${escapeHtml(l.text)}</span>
+    </div>
+  `).join('');
+
+  let activeSelectedText = '';
+  let activeSelectedLine = '';
+
+  const selectionBar = $('mapSelectionBar');
+  const selTextEl = $('mapSelectionText');
+  const selLineEl = $('mapSelectionLine');
+
+  // Captura seleção com o mouse (clicar e arrastar) dentro do visualizador
+  viewer.addEventListener('mouseup', () => {
+    const sel = window.getSelection();
+    const str = sel ? sel.toString().trim() : '';
+
+    if (str && str.length > 0) {
+      // Descobre qual linha foi selecionada
+      let anchorNode = sel.anchorNode;
+      if (anchorNode && anchorNode.nodeType === 3) anchorNode = anchorNode.parentElement;
+      const row = anchorNode ? anchorNode.closest('.map-line-row') : null;
+      const lineNum = row ? row.getAttribute('data-line') : '';
+
+      activeSelectedText = str;
+      activeSelectedLine = lineNum;
+
+      if (selectionBar && selTextEl && selLineEl) {
+        selTextEl.textContent = str;
+        selLineEl.textContent = lineNum || '?';
+        selectionBar.style.display = 'flex';
+      }
+    }
+  });
+
+  // Ações da barra flutuante de seleção
+  $('btnAssignToPilar1')?.addEventListener('click', () => {
+    if (!activeSelectedText) return;
+    if ($('mapPilar1Texto')) $('mapPilar1Texto').value = activeSelectedText;
+    if (activeSelectedLine && $('mapPilar1Linha')) $('mapPilar1Linha').value = activeSelectedLine;
+    if ($('mapPilar1Badge')) {
+      $('mapPilar1Badge').textContent = `Linha ${activeSelectedLine || '1'} (Manual)`;
+      $('mapPilar1Badge').style.background = '#dcfce7';
+      $('mapPilar1Badge').style.color = '#15803d';
+    }
+    toast.success(`"${activeSelectedText}" atribuído à Obrigação (Pilar 1).`);
+    if (selectionBar) selectionBar.style.display = 'none';
+  });
+
+  $('btnAssignToPilar2')?.addEventListener('click', () => {
+    if (!activeSelectedText) return;
+    if ($('mapPilar2Valor')) $('mapPilar2Valor').value = activeSelectedText;
+    if (activeSelectedLine && $('mapPilar2Linha')) $('mapPilar2Linha').value = activeSelectedLine;
+    const clean = activeSelectedText.replace(/\D/g, '');
+    const isCpf = clean.length === 11;
+    if ($('mapPilar2Tipo')) $('mapPilar2Tipo').value = isCpf ? 'CPF' : (clean.length === 8 ? 'CNPJ_BASE' : 'CNPJ');
+    if ($('mapPilar2Badge')) {
+      $('mapPilar2Badge').textContent = `Linha ${activeSelectedLine || '1'} (${isCpf ? 'CPF' : 'CNPJ'})`;
+      $('mapPilar2Badge').style.background = '#dcfce7';
+      $('mapPilar2Badge').style.color = '#15803d';
+    }
+    toast.success(`"${activeSelectedText}" atribuído à Inscrição (Pilar 2).`);
+    if (selectionBar) selectionBar.style.display = 'none';
+  });
+
+  $('btnAssignToPilar3')?.addEventListener('click', () => {
+    if (!activeSelectedText) return;
+    if ($('mapPilar3Texto')) $('mapPilar3Texto').value = activeSelectedText;
+    if (activeSelectedLine && $('mapPilar3Linha')) $('mapPilar3Linha').value = activeSelectedLine;
+    if ($('mapPilar3Badge')) {
+      $('mapPilar3Badge').textContent = `Linha ${activeSelectedLine || '1'} (Manual)`;
+      $('mapPilar3Badge').style.background = '#dcfce7';
+      $('mapPilar3Badge').style.color = '#15803d';
+    }
+    toast.success(`"${activeSelectedText}" atribuído à Competência (Pilar 3).`);
+    if (selectionBar) selectionBar.style.display = 'none';
+  });
+
+  // Clique no número da linha seleciona a linha inteira de forma prática
+  viewer.querySelectorAll('.map-line-row span:first-child').forEach(numSpan => {
+    numSpan.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const row = numSpan.closest('.map-line-row');
+      const lineNum = row.getAttribute('data-line');
+      const textSpan = row.querySelector('.map-line-text');
+      const lineText = textSpan ? textSpan.textContent.trim() : '';
+
+      if (!$('mapPilar1Linha').value) {
+        $('mapPilar1Linha').value = lineNum;
+        $('mapPilar1Texto').value = lineText;
+        $('mapPilar1Badge').textContent = `Linha ${lineNum}`;
+        $('mapPilar1Badge').style.background = '#dcfce7';
+        $('mapPilar1Badge').style.color = '#15803d';
+        toast.info(`Linha ${lineNum} definida para Obrigação (Pilar 1).`);
+      } else if (!$('mapPilar2Linha').value) {
+        $('mapPilar2Linha').value = lineNum;
+        $('mapPilar2Valor').value = lineText;
+        const clean = lineText.replace(/\D/g, '');
+        const isCpf = clean.length === 11;
+        if ($('mapPilar2Tipo')) $('mapPilar2Tipo').value = isCpf ? 'CPF' : (clean.length === 8 ? 'CNPJ_BASE' : 'CNPJ');
+        $('mapPilar2Badge').textContent = `Linha ${lineNum} (${isCpf ? 'CPF' : 'CNPJ'})`;
+        $('mapPilar2Badge').style.background = '#dcfce7';
+        $('mapPilar2Badge').style.color = '#15803d';
+        toast.info(`Linha ${lineNum} definida para Inscrição (Pilar 2).`);
+      } else {
+        $('mapPilar3Linha').value = lineNum;
+        $('mapPilar3Texto').value = lineText;
+        $('mapPilar3Badge').textContent = `Linha ${lineNum}`;
+        $('mapPilar3Badge').style.background = '#dcfce7';
+        $('mapPilar3Badge').style.color = '#15803d';
+        toast.info(`Linha ${lineNum} definida para Competência (Pilar 3).`);
+      }
+    });
+  });
+}
+
+function resetMappingPillars() {
+  if ($('mapPilar1Linha')) $('mapPilar1Linha').value = '';
+  if ($('mapPilar1Texto')) $('mapPilar1Texto').value = '';
+  if ($('mapPilar1Badge')) {
+    $('mapPilar1Badge').textContent = 'Pendente';
+    $('mapPilar1Badge').style.background = '#f1f5f9';
+    $('mapPilar1Badge').style.color = '#64748b';
+  }
+  if ($('mapPilar2Linha')) $('mapPilar2Linha').value = '';
+  if ($('mapPilar2Valor')) $('mapPilar2Valor').value = '';
+  if ($('mapPilar2Badge')) {
+    $('mapPilar2Badge').textContent = 'Pendente';
+    $('mapPilar2Badge').style.background = '#f1f5f9';
+    $('mapPilar2Badge').style.color = '#64748b';
+  }
+  if ($('mapPilar3Linha')) $('mapPilar3Linha').value = '';
+  if ($('mapPilar3Texto')) $('mapPilar3Texto').value = '';
+  if ($('mapPilar3Badge')) {
+    $('mapPilar3Badge').textContent = 'Pendente';
+    $('mapPilar3Badge').style.background = '#f1f5f9';
+    $('mapPilar3Badge').style.color = '#64748b';
+  }
+}
+
+function openValidaPdfInspectModal(result) {
+  if (!result) return;
+  currentInspectedResult = result;
+
+  const modal = $('modalValidaPdfInspect');
+  if (!modal) return;
+
+  $('modalValidaPdfTitle').textContent = `Inspeção: ${result.fileName || 'Documento PDF'}`;
+  if ($('modalValidaPdfSubtitle')) {
+    const loc = result.filePath || result.relPath || 'Arquivo enviado para conferência';
+    const sub = result.subpasta ? ` · Subpasta: ${result.subpasta}` : '';
+    $('modalValidaPdfSubtitle').innerHTML = `📍 Localização: <code>${escapeHtml(loc)}</code>${sub ? ` <span class="tag-pill" style="font-size:10.5px;background:#f0fdfa;color:#0f766e;border:1px solid #ccfbf1;">📁 ${escapeHtml(sub)}</span>` : ''}`;
+  }
+
+  const banner = $('modalValidaPdfStatusBanner');
+  if (banner) {
+    if (result.valido) {
+      banner.style.background = '#dcfce7';
+      banner.style.color = '#15803d';
+      banner.style.border = '1px solid #86efac';
+      banner.innerHTML = '<strong>✔ Arquivo Conforme:</strong> Atende a todas as 4 regras do Valida PDF e aos modelos do G-Click.';
+    } else {
+      banner.style.background = '#fee2e2';
+      banner.style.color = '#991b1b';
+      banner.style.border = '1px solid #fca5a5';
+      banner.innerHTML = `<strong>⚠️ Inconsistência Detectada:</strong> ${escapeHtml(result.mensagem || 'Não atendeu a todos os critérios de envio.')}`;
+    }
+  }
+
+  // Regra 1: Extração
+  const ext = result.regras?.extracaoTexto;
+  $('ruleIconExtracao').textContent = ext?.ok ? '✅' : '❌';
+  if ($('ruleLineExtracao')) {
+    $('ruleLineExtracao').textContent = ext?.linhas ? `${ext.linhas} linhas` : '';
+  }
+  $('ruleDetailExtracao').innerHTML = ext?.ok
+    ? `Texto extraído com sucesso via <code>pdftotext -layout</code>.<br><strong>${ext.linhas || result.totalLines || 0}</strong> linhas · <strong>${ext.caracteres || 0}</strong> caracteres legíveis.`
+    : '<span style="color:#dc2626;">PDF sem camada de texto selecionável ou imagem escaneada. Requer OCR antes do envio.</span>';
+
+  // Regra 2: Cliente
+  const cli = result.regras?.identificacaoCliente;
+  $('ruleIconCliente').textContent = cli?.ok ? '✅' : '❌';
+  if ($('ruleLineCliente')) {
+    $('ruleLineCliente').textContent = cli?.linhaCliente ? `Linha ${cli.linhaCliente}` : '';
+  }
+  let cliText = '';
+  if (cli?.cnpjs?.length) cliText += `<div><strong>CNPJ:</strong> ${cli.cnpjs.join(', ')}</div>`;
+  if (cli?.cnpjsBase?.length) cliText += `<div><strong>CNPJ Base:</strong> ${cli.cnpjsBase.join(', ')}</div>`;
+  if (cli?.cpfs?.length) cliText += `<div><strong>CPF:</strong> ${cli.cpfs.join(', ')}</div>`;
+  if (cli?.razaoSocial) cliText += `<div><strong>Razão Social:</strong> ${escapeHtml(cli.razaoSocial)}</div>`;
+  if (!cliText) cliText = '<span style="color:#dc2626;">Nenhum CNPJ, CNPJ Base ou CPF localizado no documento.</span>';
+  $('ruleDetailCliente').innerHTML = cliText;
+
+  // Regra 3: Competência
+  const comp = result.regras?.competencia;
+  $('ruleIconComp').textContent = comp?.ok ? '✅' : '❌';
+  if ($('ruleLineComp')) {
+    $('ruleLineComp').textContent = comp?.linhaCompetencia ? `Linha ${comp.linhaCompetencia}` : '';
+  }
+  let compText = '';
+  if (comp?.competenciaDetectada) {
+    compText = `<div><strong>Competência Principal:</strong> <span class="tag-pill" style="font-size:12px;font-weight:600;">${comp.competenciaDetectada}</span></div>`;
+    if (comp.candidatos?.length > 1) {
+      compText += `<div style="margin-top:4px;font-size:11.5px;color:#64748b;">Outros candidatos encontrados: ${comp.candidatos.map(c => c.normalizado).join(', ')}</div>`;
+    }
+  } else {
+    compText = '<span style="color:#dc2626;">Nenhuma competência no formato MM/AAAA ou mês por extenso encontrada no cabeçalho ou linhas.</span>';
+  }
+  $('ruleDetailComp').innerHTML = compText;
+
+  // Regra 4: Nome do Documento
+  const doc = result.regras?.nomeDocumento;
+  $('ruleIconDoc').textContent = doc?.ok ? '✅' : '❌';
+  if ($('ruleLineDoc')) {
+    $('ruleLineDoc').textContent = doc?.linhaIdentificada ? `Linha ${doc.linhaIdentificada}` : '';
+  }
+  let docText = '';
+  if (doc?.identificado) {
+    docText = `<div><strong>Documento:</strong> ${escapeHtml(doc.identificado)}</div>`;
+    if (doc.modelosCompativeis?.length) {
+      docText += `<div style="margin-top:4px;font-size:11.5px;color:#0f766e;"><strong>Modelo G-Click Vinculado:</strong> ${escapeHtml(doc.modelosCompativeis[0].nome)} (ID ${doc.modelosCompativeis[0].id})</div>`;
+    }
+  } else {
+    docText = '<span style="color:#dc2626;">Palavra-chave não coincidiu com os 184 modelos do G-Click nem com os padrões de folha/impostos.</span>';
+  }
+  $('ruleDetailDoc').innerHTML = docText;
+
+  // Diagnóstico & Checklist de Destravamento (#vocepode G-Click)
+  const diagWrap = $('modalValidaPdfDiagnosticoWrap');
+  const diag = result.diagnosticoGclick;
+  if (diagWrap && diag) {
+    diagWrap.hidden = false;
+    if ($('diagTitulo')) $('diagTitulo').textContent = diag.titulo || 'Diagnóstico G-Click';
+    
+    const badgeEl = $('diagBadge');
+    if (badgeEl) {
+      badgeEl.className = 'nav-badge';
+      if (diag.tipo === 'ok') {
+        badgeEl.classList.add('badge-ready');
+        badgeEl.textContent = '100% Conforme';
+      } else if (diag.tipo === 'erro_1_modelo') {
+        badgeEl.classList.add('badge-warn');
+        badgeEl.textContent = 'Erro 1 (Modelo)';
+      } else if (diag.tipo === 'erro_2_cliente') {
+        badgeEl.classList.add('badge-error');
+        badgeEl.textContent = 'Erro 2 (Cliente)';
+      } else if (diag.tipo === 'erro_3_tarefa') {
+        badgeEl.classList.add('badge-warn');
+        badgeEl.textContent = 'Erro 3 (Tarefa)';
+      } else {
+        badgeEl.classList.add('badge-neutral');
+        badgeEl.textContent = diag.codigo || 'Inconsistência';
+      }
+    }
+
+    if ($('diagAcaoRecomendada')) {
+      $('diagAcaoRecomendada').innerHTML = escapeHtml(diag.acaoRecomendada || '');
+    }
+
+    const itemsContainer = $('diagChecklistItems');
+    if (itemsContainer) {
+      itemsContainer.innerHTML = '';
+      if (Array.isArray(diag.checklist3Perguntas)) {
+        diag.checklist3Perguntas.forEach(item => {
+          const row = document.createElement('div');
+          row.style.display = 'flex';
+          row.style.alignItems = 'flex-start';
+          row.style.gap = '8px';
+          row.style.lineHeight = '1.4';
+          row.innerHTML = `
+            <span style="font-size:14px;line-height:1;">${item.ok ? '✅' : '⚠️'}</span>
+            <div><strong>${escapeHtml(item.pergunta)}:</strong> <span style="color:#334155;">${escapeHtml(item.resposta)}</span></div>
+          `;
+          itemsContainer.appendChild(row);
+        });
+      }
+
+      if (diag.sugestaoAnexoPorNome) {
+        const anexoRow = document.createElement('div');
+        anexoRow.style.marginTop = '8px';
+        anexoRow.style.padding = '8px 10px';
+        anexoRow.style.background = '#eef7f5';
+        anexoRow.style.border = '1px solid #c8d9d6';
+        anexoRow.style.borderRadius = '6px';
+        anexoRow.style.fontSize = '11.5px';
+        anexoRow.innerHTML = `
+          <strong>💡 Dica de Anexo por Nome:</strong> ${escapeHtml(diag.sugestaoAnexoPorNome.motivo)}<br>
+          <span style="font-family:var(--font-mono);font-size:11px;color:#0f766e;">Padrão: ${escapeHtml(diag.sugestaoAnexoPorNome.exemploNome)}</span>
+        `;
+        itemsContainer.appendChild(anexoRow);
+      }
+    }
+  } else if (diagWrap) {
+    diagWrap.hidden = true;
+  }
+
+  // Texto Completo Formatado com Numeração de Linhas e Destaques
+  const rawPre = $('modalValidaPdfRawText');
+  if (rawPre) {
+    if (result.rawText) {
+      const lines = result.rawText.split(/\r?\n/);
+      const lCli = cli?.linhaCliente;
+      const lDoc = doc?.linhaIdentificada;
+      const lComp = comp?.linhaCompetencia;
+
+      const formatted = lines.map((line, idx) => {
+        const lineNum = idx + 1;
+        const numStr = String(lineNum).padStart(3, '0');
+        let tag = '';
+        if (lineNum === lCli) tag += ' [CLIENTE]';
+        if (lineNum === lDoc) tag += ' [DOC]';
+        if (lineNum === lComp) tag += ' [COMP]';
+        return `${numStr} | ${line}${tag ? '  <<' + tag : ''}`;
+      }).join('\n');
+
+      rawPre.textContent = formatted;
+    } else {
+      rawPre.textContent = '(Texto não disponível ou arquivo sem OCR)';
+    }
+  }
+
+  // Reset e população dos controles do G-Click
+  const modelSelect = $('modalGclickModelSelect');
+  const openModelLink = $('btnOpenGclickModelLink');
+  const accountId = $('accountId')?.value?.trim() || '6019';
+  const defaultModelId = doc?.modelosCompativeis?.[0]?.id || '';
+
+  if (modelSelect) {
+    modelSelect.innerHTML = '<option value="">Detectar automaticamente ou testar na lista geral</option>';
+    if (Array.isArray(validaPdfModels) && validaPdfModels.length > 0) {
+      validaPdfModels.forEach(m => {
+        const opt = document.createElement('option');
+        opt.value = m.modelId || m.id;
+        opt.textContent = `${m.modelo || m.nome} (${m.departamento || 'G-Click'}) - ID ${m.modelId || m.id}`;
+        if (defaultModelId && String(opt.value) === String(defaultModelId)) {
+          opt.selected = true;
+        }
+        modelSelect.appendChild(opt);
+      });
+    }
+  }
+
+  const updateOpenLink = () => {
+    const selectedId = modelSelect?.value || defaultModelId;
+    if (openModelLink) {
+      if (selectedId) {
+        openModelLink.href = `https://app.gclick.com.br/configuracaoAbrir.do?obj=pdflayoutopen&id=${encodeURIComponent(selectedId)}&empId=${encodeURIComponent(accountId)}`;
+        openModelLink.title = `Abrir modelo ID ${selectedId} no G-Click`;
+      } else {
+        openModelLink.href = `https://app.gclick.com.br/configuracaoListar.do?obj=pdflayoutopen&tipo=0&empId=${encodeURIComponent(accountId)}`;
+        openModelLink.title = 'Abrir lista de modelos de PDF no G-Click';
+      }
+    }
+  };
+  updateOpenLink();
+  modelSelect?.addEventListener('change', updateOpenLink);
+
+  // Reset do Container G-Click
+  const gclickWrap = $('modalValidaPdfGclickWrap');
+  if (gclickWrap) {
+    gclickWrap.hidden = true;
+    if ($('gclickValidaMessage')) $('gclickValidaMessage').innerHTML = '';
+    if ($('gclickValidaItems')) $('gclickValidaItems').innerHTML = '';
+    if ($('gclickValidaDica')) $('gclickValidaDica').hidden = true;
+  }
+
+  modal.hidden = false;
+}
+
+function setupValidaPdfListeners() {
+  $('tabBtnValidaFiles')?.addEventListener('click', () => switchValidaPdfTab('files'));
+  $('tabBtnValidaModels')?.addEventListener('click', () => switchValidaPdfTab('models'));
+
+  $('validaModelSearch')?.addEventListener('input', () => renderValidaPdfModelsTable());
+  $('validaModelDeptoFilter')?.addEventListener('change', () => renderValidaPdfModelsTable());
+
+  $('validaFilterSearch')?.addEventListener('input', () => renderValidaPdfResultsTable());
+  $('validaFilterStatus')?.addEventListener('change', () => renderValidaPdfResultsTable());
+
+  $('btnClearValidaResults')?.addEventListener('click', () => {
+    validaPdfResults = [];
+    renderValidaPdfResultsTable();
+    toast.info('Lista de resultados limpa.', 'Valida PDF');
+  });
+
+  // Validação ao vivo no motor do G-Click
+  $('btnValidateOnGclick')?.addEventListener('click', async () => {
+    if (!currentInspectedResult) return;
+    const btn = $('btnValidateOnGclick');
+    const origHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span>⏳</span> Validando no G-Click...';
+
+    try {
+      const accountId = $('accountId')?.value?.trim() || '6019';
+      const modelId = $('modalGclickModelSelect')?.value || currentInspectedResult.regras?.nomeDocumento?.modelosCompativeis?.[0]?.id || null;
+
+      const res = await fetch('/api/valida-pdf/validate-on-gclick', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accountId,
+          filePath: currentInspectedResult.filePath,
+          fileBase64: currentInspectedResult.fileBase64,
+          modelId
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        toast.error(data.error || 'Falha ao validar no G-Click.', 'Validação G-Click');
+        return;
+      }
+
+      const wrap = $('modalValidaPdfGclickWrap');
+      const msg = $('gclickValidaMessage');
+      const badge = $('gclickValidaBadge');
+      const itemsEl = $('gclickValidaItems');
+      const dicaEl = $('gclickValidaDica');
+
+      if (wrap) {
+        wrap.hidden = false;
+        if (badge) {
+          badge.className = 'nav-badge ' + (data.validoGclick ? 'badge-ready' : 'badge-error');
+          badge.textContent = data.validoGclick ? 'G-Click: 100% Conforme' : 'G-Click: Divergência';
+        }
+
+        if (itemsEl) {
+          itemsEl.innerHTML = '';
+          const items = data.parsedGclick?.items || [];
+          if (items.length > 0) {
+            items.forEach(it => {
+              const row = document.createElement('div');
+              row.style.display = 'flex';
+              row.style.alignItems = 'center';
+              row.style.gap = '8px';
+              const isOk = it.status === 'ok';
+              row.innerHTML = `
+                <span style="font-size:14px;">${isOk ? '✅' : '❌'}</span>
+                <div><strong>${escapeHtml(it.label)}:</strong> <span style="color:#334155;">${escapeHtml(it.valor || (isOk ? 'OK' : 'Inconsistente'))}</span></div>
+              `;
+              itemsEl.appendChild(row);
+            });
+          } else {
+            itemsEl.innerHTML = `<div>${escapeHtml(data.retornoTexto || 'Teste concluído.')}</div>`;
+          }
+        }
+
+        if (dicaEl) {
+          if (data.parsedGclick?.diagnostico && !data.validoGclick) {
+            dicaEl.hidden = false;
+            dicaEl.style.background = '#ecfeff';
+            dicaEl.style.borderColor = '#06b6d4';
+            dicaEl.style.color = '#0e7490';
+            dicaEl.innerHTML = `<strong>💡 Diagnóstico Omie/G-Click:</strong> ${escapeHtml(data.parsedGclick.diagnostico)}`;
+          } else if (data.validoGclick) {
+            dicaEl.hidden = false;
+            dicaEl.style.background = '#f0fdf4';
+            dicaEl.style.borderColor = '#22c55e';
+            dicaEl.style.color = '#15803d';
+            dicaEl.innerHTML = '<strong>✔ Sucesso:</strong> O motor do G-Click validou o documento perfeitamente contra as regras deste modelo.';
+          } else {
+            dicaEl.hidden = true;
+          }
+        }
+
+        if (msg) {
+          msg.textContent = data.retornoTexto || data.retornoHtml || '';
+        }
+      }
+      toast.success(data.validoGclick ? 'Documento 100% validado pelo G-Click.' : 'Validação executada no G-Click com divergências.', 'G-Click ValidaPDF');
+    } catch (err) {
+      toast.error(err.message, 'Erro de Conexão G-Click');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = origHtml;
+    }
+  });
+
+  // Modal Fechamento
+  $('btnCloseValidaPdfInspect')?.addEventListener('click', () => {
+    $('modalValidaPdfInspect').hidden = true;
+  });
+  $('btnCloseValidaPdfModalBtn')?.addEventListener('click', () => {
+    $('modalValidaPdfInspect').hidden = true;
+  });
+
+  // Clique em Mapear ou Inspecionar na tabela
+  $('validaResultsBody')?.addEventListener('click', async (e) => {
+    const mapBtn = e.target.closest('.btn-map-pdf');
+    if (mapBtn) {
+      const idx = parseInt(mapBtn.dataset.idx, 10);
+      const item = validaPdfResults[idx];
+      if (item) {
+        await loadValidatedFileIntoMapping(item, idx);
+      }
+      return;
+    }
+
+    const btn = e.target.closest('.btn-inspect-pdf');
+    if (!btn) return;
+    const idx = parseInt(btn.dataset.idx, 10);
+    const item = validaPdfResults[idx];
+    if (!item) return;
+
+    if (!item.rawText && item.filePath) {
+      try {
+        const textRes = await api('valida-pdf/extract-text', { filePath: item.filePath });
+        item.rawText = textRes.rawText;
+      } catch {}
+    }
+    openValidaPdfInspectModal(item);
+  });
+
+  // Botão Sincronizar Modelos
+  $('btnSyncValidaModels')?.addEventListener('click', async () => {
+    const btn = $('btnSyncValidaModels');
+    if (btn) btn.disabled = true;
+    try {
+      toast.info('Sincronizando modelos com o G-Click…', 'Valida PDF');
+      const accountId = currentAccount() || '6019';
+      const res = await api('valida-pdf/sync-models', { accountId });
+      validaPdfModels = res.models || [];
+      renderValidaPdfModelsTable();
+      toast.success(res.message || 'Modelos sincronizados!', 'G-Click');
+    } catch (err) {
+      toast.error(err.message || 'Erro ao sincronizar modelos', 'Falha');
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  });
+
+  // Função de varredura recursiva de pasta no servidor/computador
+  async function executeDirectoryScan(dirPath) {
+    const btn = $('btnScanDirectory');
+    const origHtml = btn ? btn.innerHTML : '';
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<span>⏳</span> Varrando pasta…';
+    }
+
+    try {
+      const target = (dirPath || $('validaScanDirPath')?.value || '/home/piperun/Documentos/temp/G-click/PDF_Layout/Magnum').trim();
+      const accountId = $('accountId')?.value?.trim() || '6019';
+      const expectedCnpj = ($('validaExpectedDocId')?.value || '').trim();
+      const expectedCompetencia = ($('validaExpectedComp')?.value || '').trim();
+
+      toast.info(`Iniciando varredura recursiva em "${target}"…`, 'Valida PDF');
+
+      const res = await api('valida-pdf/validate-batch', {
+        dirPath: target,
+        accountId,
+        expectedCnpj,
+        expectedCompetencia
+      });
+
+      validaPdfResults = res.arquivos || res.validations || [];
+      renderValidaPdfResultsTable();
+
+      // Atualiza cards de estatísticas
+      const statsWrap = $('validaBatchStatsWrap');
+      const r = res.resumo || {};
+      if (statsWrap) {
+        statsWrap.hidden = false;
+        if ($('statTotalPdfs')) $('statTotalPdfs').textContent = r.total || 0;
+        if ($('statValidosPdfs')) $('statValidosPdfs').textContent = r.validos || 0;
+        if ($('statInconsistentesPdfs')) $('statInconsistentesPdfs').textContent = r.inconsistentes || 0;
+        if ($('statSemOcrPdfs')) $('statSemOcrPdfs').textContent = r.semTextoOcr || 0;
+        if ($('statSubpastasCount')) $('statSubpastasCount').textContent = r.totalSubpastas || res.subpastas?.length || 0;
+      }
+
+      toast.success(
+        `Varredura concluída: ${r.validos || 0} válidos e ${r.inconsistentes || 0} com pendências de ${r.total || 0} PDFs encontrados em ${r.totalSubpastas || 0} subpastas.`,
+        'Varredura Concluída'
+      );
+    } catch (err) {
+      toast.error(err.message || 'Erro ao varrer pasta de arquivos', 'Falha na Varredura');
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = origHtml;
+      }
+    }
+  }
+
+  // Botão de Varrer Pasta
+  $('btnScanDirectory')?.addEventListener('click', () => {
+    const dir = $('validaScanDirPath')?.value?.trim();
+    executeDirectoryScan(dir);
+  });
+
+  // Atalhos rápidos de diretórios
+  document.querySelectorAll('.btn-dir-shortcut').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const p = e.currentTarget.dataset.path;
+      if (p) {
+        if ($('validaScanDirPath')) $('validaScanDirPath').value = p;
+        executeDirectoryScan(p);
+      }
+    });
+  });
+
+  // Seletor de Pasta Local do Computador (webkitdirectory)
+  $('validaFolderPicker')?.addEventListener('change', async (e) => {
+    const files = Array.from(e.target.files || []).filter(f => f.name.toLowerCase().endsWith('.pdf'));
+    if (!files.length) {
+      toast.info('Nenhum arquivo PDF encontrado na pasta selecionada.', 'Valida PDF');
+      return;
+    }
+
+    toast.info(`Processando ${files.length} PDFs da pasta selecionada pelo navegador…`, 'Valida PDF');
+
+    const readAsBase64 = (file) => new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
+    const results = [];
+    const subpastasSet = new Set();
+    const accountId = $('accountId')?.value?.trim() || '6019';
+    const expectedCnpj = ($('validaExpectedDocId')?.value || '').trim();
+    const expectedCompetencia = ($('validaExpectedComp')?.value || '').trim();
+
+    // Processa os arquivos em chunks de 5 para não sobrecarregar o browser
+    const chunkSize = 5;
+    for (let i = 0; i < files.length; i += chunkSize) {
+      const chunk = files.slice(i, i + chunkSize);
+      await Promise.all(chunk.map(async (f) => {
+        try {
+          const base64 = await readAsBase64(f);
+          const rel = f.webkitRelativePath || f.name;
+          const sub = rel.includes('/') ? rel.substring(0, rel.lastIndexOf('/')) : '';
+          if (sub) subpastasSet.add(sub);
+
+          const res = await api('valida-pdf/validate-file', {
+            fileName: f.name,
+            fileBase64: base64,
+            accountId,
+            expectedCnpj,
+            expectedCompetencia
+          });
+
+          results.push({
+            ...res,
+            fileName: f.name,
+            relPath: rel,
+            subpasta: sub
+          });
+        } catch (err) {
+          console.error(`Erro ao validar arquivo ${f.name}:`, err);
+        }
+      }));
+    }
+
+    validaPdfResults = results;
+    renderValidaPdfResultsTable();
+
+    const statsWrap = $('validaBatchStatsWrap');
+    const validos = results.filter(r => r.valido).length;
+    const inconsistentes = results.length - validos;
+    const semOcr = results.filter(r => r.status === 'erro_extracao').length;
+
+    if (statsWrap) {
+      statsWrap.hidden = false;
+      if ($('statTotalPdfs')) $('statTotalPdfs').textContent = results.length;
+      if ($('statValidosPdfs')) $('statValidosPdfs').textContent = validos;
+      if ($('statInconsistentesPdfs')) $('statInconsistentesPdfs').textContent = inconsistentes;
+      if ($('statSemOcrPdfs')) $('statSemOcrPdfs').textContent = semOcr;
+      if ($('statSubpastasCount')) $('statSubpastasCount').textContent = subpastasSet.size;
+    }
+
+    toast.success(
+      `Pasta local processada: ${validos} válidos de ${results.length} PDFs.`,
+      'Varredura Concluída'
+    );
+  });
+
+  // Botão Validar Pasta de Amostras (retrocompatibilidade)
+  $('btnValidaSampleBatch')?.addEventListener('click', () => {
+    executeDirectoryScan('/home/piperun/Documentos/temp/G-click/PDF_Layout/Magnum');
+  });
+
+  // Drag and Drop
+  const dropZone = $('validaPdfDropZone');
+  const fileInput = $('validaPdfFileInput');
+
+  if (dropZone && fileInput) {
+    dropZone.addEventListener('click', () => fileInput.click());
+
+    ['dragenter', 'dragover'].forEach(eventName => {
+      dropZone.addEventListener(eventName, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dropZone.style.borderColor = 'var(--gclick-primary)';
+        dropZone.style.backgroundColor = '#ecfdf5';
+      });
+    });
+
+    ['dragleave', 'drop'].forEach(eventName => {
+      dropZone.addEventListener(eventName, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dropZone.style.borderColor = '#cbd5e1';
+        dropZone.style.backgroundColor = '#f8fafc';
+      });
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+      const dt = e.dataTransfer;
+      const files = dt?.files;
+      if (files?.length) {
+        processUploadedPdfFiles(files);
+      }
+    });
+
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files?.length) {
+        processUploadedPdfFiles(fileInput.files);
+        fileInput.value = '';
+      }
+    });
+  }
+
+  // Relatório de Diagnóstico de Validação (Melhoria #2)
+  $('btnGenerateDiagnosticReport')?.addEventListener('click', async () => {
+    if (!validaPdfResults.length) {
+      toast.warning('Nenhum resultado disponível para gerar relatório.', 'Valida PDF');
+      return;
+    }
+
+    const btn = $('btnGenerateDiagnosticReport');
+    const origHtml = btn ? btn.innerHTML : '';
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<span>⏳</span> Gerando Relatório…';
+    }
+
+    try {
+      const dirPath = $('validaScanDirPath')?.value?.trim() || 'Arquivos Selecionados';
+      const accountId = $('accountId')?.value?.trim() || '6019';
+
+      const res = await fetch('/api/valida-pdf/report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          files: validaPdfResults,
+          dirPath,
+          accountId,
+          accountName: 'CONTABILIDADE MAGNUM LTDA',
+          format: 'html'
+        })
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Falha ao gerar relatório de diagnóstico');
+      }
+
+      const htmlReport = await res.text();
+      const iframe = $('diagnosticReportIframe');
+      if (iframe) {
+        iframe.srcdoc = htmlReport;
+      }
+
+      const modal = $('modalDiagnosticReport');
+      if (modal) modal.hidden = false;
+
+      toast.success('Relatório analítico de diagnóstico gerado com sucesso.', 'Diagnóstico Concluído');
+    } catch (err) {
+      toast.error(err.message, 'Erro ao Gerar Relatório');
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = origHtml;
+      }
+    }
+  });
+
+  // Fechamento do Modal de Relatório
+  $('btnCloseDiagnosticReport')?.addEventListener('click', () => {
+    $('modalDiagnosticReport').hidden = true;
+  });
+  $('btnCloseDiagnosticReportBtn')?.addEventListener('click', () => {
+    $('modalDiagnosticReport').hidden = true;
+  });
+
+  // Imprimir Relatório
+  $('btnPrintDiagnosticReport')?.addEventListener('click', () => {
+    const iframe = $('diagnosticReportIframe');
+    if (iframe && iframe.contentWindow) {
+      iframe.contentWindow.print();
+    }
+  });
+
+  // Aba Mapeamento & Importação: Listener de Troca de Aba
+  $('tabBtnValidaMapping')?.addEventListener('click', () => switchValidaPdfTab('mapping'));
+
+  // Integração: Pegar dos Arquivos Validados
+  $('mapValidatedFilesSelect')?.addEventListener('change', (e) => {
+    const idx = parseInt(e.target.value, 10);
+    if (!isNaN(idx) && validaPdfResults[idx]) {
+      loadValidatedFileIntoMapping(validaPdfResults[idx], idx);
+    }
+  });
+
+  $('btnLoadSelectedValidatedFile')?.addEventListener('click', () => {
+    const select = $('mapValidatedFilesSelect');
+    const idx = parseInt(select?.value, 10);
+    if (!isNaN(idx) && validaPdfResults[idx]) {
+      loadValidatedFileIntoMapping(validaPdfResults[idx], idx);
+    } else {
+      toast.warning('Selecione um arquivo validado no menu acima.', 'Mapeamento');
+    }
+  });
+
+  $('btnReturnToFilesTab')?.addEventListener('click', () => {
+    switchValidaPdfTab('files');
+  });
+
+  $('btnGoToMappingFromFiles')?.addEventListener('click', () => {
+    if (!validaPdfResults.length) {
+      toast.warning('Nenhum arquivo validado disponível.', 'Mapeamento');
+      return;
+    }
+    const firstValidIdx = validaPdfResults.findIndex(r => r.valido);
+    const chosenIdx = firstValidIdx >= 0 ? firstValidIdx : 0;
+    loadValidatedFileIntoMapping(validaPdfResults[chosenIdx], chosenIdx);
+  });
+
+  // Escolher PDF local para mapeamento
+  $('btnPickMapPdfFile')?.addEventListener('click', () => {
+    $('mapPdfFileInput')?.click();
+  });
+
+  $('mapPdfFileInput')?.addEventListener('change', async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+      toast.warning('Selecione um arquivo PDF.', 'Formato Inválido');
+      return;
+    }
+
+    $('mapPdfFileName').textContent = `📄 ${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+    if (!$('mapModelName').value) {
+      const baseName = file.name.replace(/\.pdf$/i, '').replace(/[-_]/g, ' ');
+      $('mapModelName').value = baseName;
+    }
+
+    currentMapPdfBase64 = await readFileAsBase64(file);
+    currentMapPdfPath = null;
+    toast.info('PDF carregado. Clique em Autodetectar Campos.', 'Mapeamento');
+    runAutoDetectMapping();
+  });
+
+  // Usar Amostra Magnum (Recibo de Pagamento)
+  $('btnPickSampleMapPdf')?.addEventListener('click', async () => {
+    const samplePath = '/home/piperun/Documentos/temp/G-click/PDF_Layout/Magnum/Folha sem variavel/Recibo de Pagamento.pdf';
+    $('mapPdfFileName').textContent = '📁 Recibo de Pagamento.pdf (Amostra Magnum)';
+    $('mapModelName').value = 'Recibo de Pagamento 2';
+    $('mapObrigacaoNome').value = 'Adiantamento Salarial - Mensal';
+    currentMapPdfPath = samplePath;
+    currentMapPdfBase64 = null;
+    toast.info('Carregando amostra e autodetectando campos…', 'Mapeamento');
+    runAutoDetectMapping();
+  });
+
+  $('btnAutoDetectMapping')?.addEventListener('click', runAutoDetectMapping);
+
+  // Disparo para Criar e Mapear diretamente no G-Click
+  $('btnSubmitMappingToGclick')?.addEventListener('click', async () => {
+    const nomeModelo = $('mapModelName').value.trim();
+    const departamentoNome = $('mapModelDepto').value;
+    const obrigacaoNome = $('mapObrigacaoNome').value.trim();
+    const multiLinhas = $('mapMultiLinhas').checked;
+
+    if (!nomeModelo) {
+      toast.warning('Informe o Nome do Modelo.', 'Validação');
+      $('mapModelName').focus();
+      return;
+    }
+
+    if (!currentMapPdfPath && !currentMapPdfBase64) {
+      toast.warning('Selecione um arquivo PDF de modelo.', 'Validação');
+      return;
+    }
+
+    const pilar1Linha = parseInt($('mapPilar1Linha').value);
+    const pilar1Texto = $('mapPilar1Texto').value.trim();
+    if (!pilar1Linha || !pilar1Texto) {
+      toast.warning('Mapeie a linha e o texto da Obrigação (Pilar 1).', 'Validação');
+      return;
+    }
+
+    const pilar2Linha = parseInt($('mapPilar2Linha').value);
+    const pilar2Valor = $('mapPilar2Valor').value.trim();
+    const pilar2Tipo = $('mapPilar2Tipo')?.value || (pilar2Valor.replace(/\D/g, '').length === 11 ? 'CPF' : 'CNPJ');
+    if (!pilar2Linha) {
+      toast.warning('Mapeie a linha da Inscrição/CNPJ do Cliente (Pilar 2).', 'Validação');
+      return;
+    }
+
+    const pilar3Linha = parseInt($('mapPilar3Linha').value);
+    const pilar3Formato = $('mapPilar3Formato').value;
+    const pilar3Texto = $('mapPilar3Texto')?.value?.trim() || '';
+    if (!pilar3Linha) {
+      toast.warning('Mapeie a linha da Competência (Pilar 3).', 'Validação');
+      return;
+    }
+
+    const btn = $('btnSubmitMappingToGclick');
+    const origHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span>🚀</span> Criando no G-Click...';
+
+    // Inicializa o depurador visual
+    const dbgBox = $('mapDebuggerBox');
+    const dbgLogs = $('mapDebuggerLogs');
+    const dbgBadge = $('mapDebuggerStatusBadge');
+    if (dbgBox) dbgBox.style.display = 'block';
+    if (dbgBadge) {
+      dbgBadge.textContent = 'Executando…';
+      dbgBadge.style.background = '#eab308';
+    }
+    if (dbgLogs) {
+      dbgLogs.innerHTML = `
+        <div style="color:#38bdf8;">[${new Date().toLocaleTimeString()}] 🚀 Iniciando processo de criação e mapeamento do modelo "${nomeModelo}" no G-Click...</div>
+        <div style="color:#94a3b8;">[${new Date().toLocaleTimeString()}] Enviando requisição para a automação Playwright...</div>
+      `;
+    }
+
+    const appendDebugLog = (msg, color = '#e2e8f0') => {
+      if (!dbgLogs) return;
+      const el = document.createElement('div');
+      el.style.color = color;
+      el.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+      dbgLogs.appendChild(el);
+      dbgLogs.scrollTop = dbgLogs.scrollHeight;
+    };
+
+    $('btnClearMapDebugger')?.addEventListener('click', () => {
+      if (dbgLogs) dbgLogs.innerHTML = '<div style="color:#64748b;">Terminal de depuração limpo.</div>';
+    });
+
+    try {
+      const accountId = $('accountId')?.value?.trim() || '6019';
+      appendDebugLog(`Conta ativa: ${accountId} | Departamento: ${departamentoNome}`);
+      appendDebugLog(`Regra 1 (Obrigação): Linha ${pilar1Linha} -> "${pilar1Texto}"`);
+      appendDebugLog(`Regra 2 (Inscrição - ${pilar2Tipo}): Linha ${pilar2Linha} -> "${pilar2Valor}"`);
+      appendDebugLog(`Regra 3 (Competência): Linha ${pilar3Linha} -> "${pilar3Texto}" (${pilar3Formato})`);
+      appendDebugLog(`Multi-linhas ativado: ${multiLinhas ? 'Sim' : 'Não'}`);
+
+      const res = await fetch('/api/valida-pdf/create-model-gclick', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accountId,
+          nomeModelo,
+          departamentoNome,
+          obrigacaoNome,
+          multiLinhas,
+          filePath: currentMapPdfPath,
+          fileBase64: currentMapPdfBase64,
+          pilar1: { linha: pilar1Linha, texto: pilar1Texto, valor: pilar1Texto },
+          pilar2: { linha: pilar2Linha, tipo: pilar2Tipo, texto: pilar2Valor, valor: pilar2Valor },
+          pilar3: { linha: pilar3Linha, formato: pilar3Formato, texto: pilar3Texto, valor: pilar3Texto }
+        })
+      });
+
+      const data = await res.json();
+
+      // Renderiza passos retornados pelo backend se disponíveis
+      if (data.steps && Array.isArray(data.steps)) {
+        for (const s of data.steps) {
+          appendDebugLog(`Passo ${s.step}: ${s.msg}`, '#a7f3d0');
+        }
+      }
+
+      if (!res.ok || data.error) {
+        if (dbgBadge) {
+          dbgBadge.textContent = 'Erro';
+          dbgBadge.style.background = '#ef4444';
+        }
+        appendDebugLog(`❌ Falha na automação: ${data.error || 'Erro desconhecido'}`, '#f87171');
+        toast.error(data.error || 'Falha ao criar modelo no G-Click.', 'Erro G-Click');
+        return;
+      }
+
+      if (dbgBadge) {
+        dbgBadge.textContent = 'Concluído 100%';
+        dbgBadge.style.background = '#10b981';
+      }
+      appendDebugLog(`✅ Sucesso! Modelo cadastrado e mapeado com sucesso no G-Click.`, '#4ade80');
+      if (data.urlFinal) {
+        appendDebugLog(`🔗 URL no G-Click: ${data.urlFinal}`, '#38bdf8');
+      }
+
+      toast.success(`Modelo "${nomeModelo}" criado e mapeado com sucesso no G-Click!`, 'Sucesso');
+      // Recarrega catálogo de modelos na UI
+      if (typeof loadValidaPdfSection === 'function') {
+        loadValidaPdfSection().catch(() => {});
+      }
+    } catch (err) {
+      if (dbgBadge) {
+        dbgBadge.textContent = 'Erro';
+        dbgBadge.style.background = '#ef4444';
+      }
+      appendDebugLog(`❌ Erro de comunicação: ${err.message}`, '#f87171');
+      toast.error(`Erro ao criar no G-Click: ${err.message}`, 'Falha');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = origHtml;
+    }
+  });
+}
+
+async function processUploadedPdfFiles(fileList) {
+  const pdfs = Array.from(fileList).filter(f => f.name.toLowerCase().endsWith('.pdf'));
+  if (!pdfs.length) {
+    toast.warning('Selecione apenas arquivos no formato PDF (.pdf).', 'Arquivo Inválido');
+    return;
+  }
+
+  toast.info(`Processando ${pdfs.length} arquivo(s) PDF…`, 'Valida PDF');
+  const expectedCnpj = ($('validaExpectedDocId')?.value || '').trim();
+  const expectedCompetencia = ($('validaExpectedComp')?.value || '').trim();
+
+  for (const file of pdfs) {
+    try {
+      const base64 = await readFileAsBase64(file);
+      const res = await api('valida-pdf/validate-file', {
+        fileName: file.name,
+        fileBase64: base64,
+        expectedCnpj,
+        expectedCompetencia
+      });
+      validaPdfResults.unshift(res);
+      renderValidaPdfResultsTable();
+    } catch (err) {
+      toast.error(`Erro ao validar ${file.name}: ${err.message}`, 'Falha');
+    }
+  }
+
+  toast.success('Validação concluída.', 'Valida PDF');
+}
+
+function readFileAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+
+

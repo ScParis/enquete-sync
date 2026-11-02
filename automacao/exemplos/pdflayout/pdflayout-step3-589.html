@@ -1,0 +1,615 @@
+<html><head></head><body><div class="col-sm-12">
+	<div class="row">
+		<div class="col-sm-4">
+			<label class="control-label">Por Departamento:</label>
+		</div>
+		<div class="col-sm-4">
+			<label class="control-label">Por Obrigações:</label>
+		</div>
+	</div>		
+	<div class="row">
+		<div class="col-sm-4">
+			<select data-placeholder="Todos" id="configpdfadepartamentos" class="chosen-select" multiple="" style="width:100%;" onchange="buscarPorFiltro('pdflatividades');">								
+				
+					
+						<option selected="selected" value="4">Administrativo</option>
+					
+						<option value="21">Atualização de Orçamentos</option>
+					
+						<option value="11">BPO Financeiro</option>
+					
+						<option value="13">Certificado Digital</option>
+					
+						<option value="15">CND</option>
+					
+						<option value="10">Comercial</option>
+					
+						<option value="18">Conciliações</option>
+					
+						<option value="1">Contabilidade</option>
+					
+						<option value="19">Contas a Pagar</option>
+					
+						<option value="17">Contas a Receber</option>
+					
+						<option value="3">Departamento Pessoal</option>
+					
+						<option value="9">Diretoria</option>
+					
+						<option value="20">Fechamentos e Resultados</option>
+					
+						<option value="5">Financeiro</option>
+					
+						<option value="2">Fiscal</option>
+					
+						<option value="14">IRPF</option>
+					
+						<option value="22">IRPF - Documentação</option>
+					
+						<option value="23">IRPF - Elaboração</option>
+					
+						<option value="26">IRPF - Restituição</option>
+					
+						<option value="25">IRPF - Transmissão</option>
+					
+						<option value="24">IRPF - Validação</option>
+					
+						<option value="7">Legalização</option>
+					
+						<option value="16">Recursos Humanos (RH)</option>
+					
+						<option value="27">Reforma Tributária</option>
+					
+						<option value="12">Sucesso do Cliente</option>
+					
+						<option value="6">TI</option>
+					
+				
+			</select>	
+		</div>
+		<div class="col-sm-4">
+			<select data-placeholder="Todos" id="configpdfaobrigacoestodas" class="chosen-select" multiple="" style="width:100%;">								
+				
+			</select>	 
+		</div>
+		<div class="col-sm-4">
+			<button type="button" class="btn btn-success" onclick="buscarPorFiltro('pdflatividades')"><i class="fa fa-search"></i> Buscar</button>
+			<button data-toggle="modal" data-target="#dialogoAtividade" class="btn btn-success pull-right" onclick="initDialogoAddAtividade()">
+		 			<i class="fa fa-plus"></i> Adicionar Atividade</button>
+		</div>
+	</div>
+	<div class="row">&nbsp;</div>
+	<div class="row">
+		<div class="col-sm-4"><b><input type="checkbox" id="configpdfatividadesfiltro" onclick="buscarPorFiltro('pdflatividades')" value="aconfigfmvinculado"> Exibir somente as obrigações com o modelo atual vinculado.</b></div>
+	</div>
+	<div class="row">&nbsp;</div>
+	<div class="row">		
+		
+		
+		<div class="row">	
+			<div class="col-sm-12">
+				<div class="alert alert-warning" align="center"><i class="fa fa-warning"></i> Não foram encontradas atividades com este modelo vinculado. Altere os filtros de busca para continuar.</div>
+			</div>
+		</div>
+		
+	</div>
+</div>
+
+<div class="modal inmodal" id="dialogoAtividadePDFRemoveModelo" tabindex="-1" role="dialog" aria-hidden="true">
+	<div class="modal-dialog">
+		<div class="modal-content">
+			<div class="modal-header">
+				<button type="button" class="close" data-dismiss="modal"><span aria-hidden="true">×</span><span class="sr-only">Close</span></button>
+				<h4 class="modal-title">Removendo </h4>
+			</div>
+			<div class="modal-body">
+				<div class="row">
+					<div class="col-sm-12"> 
+						<h4 align="center">Realmente deseja remover o modelo desta atividade?</h4>
+					</div>	
+				</div>				
+			</div>
+			<div class="modal-footer">
+				<div class="row">
+					<div class="col-sm-12"> 
+						<input type="hidden" id="dconfigatividadepdfaid" value="">
+						<input type="hidden" id="dconfigatividadepdfanome" value="">
+						<input type="hidden" id="dconfigatividadepdfoid" value="">
+						<input type="hidden" id="dconfigatividadepdfcoid" value="">
+						<button type="button" class="btn btn-danger pull-left" data-dismiss="modal" onclick="confirmarAtividadePDFAddModelo('pdflatividades')">Confirmar</button>
+						<button type="button" class="btn btn-white" data-dismiss="modal">Fechar</button>
+					</div>
+				</div>											
+			</div>
+		</div>
+	</div>
+</div>
+<div class="modal inmodal" id="dialogoAtividade" tabindex="-1" role="dialog" aria-hidden="true">
+	<div class="modal-dialog">
+		<div class="modal-content">
+			<div class="modal-header">
+				<button type="button" class="close" data-dismiss="modal"><span aria-hidden="true">×</span><span class="sr-only">Close</span></button>
+				<h4 class="modal-title" id="titleaatividade">Adicionando Atividade</h4>
+			</div>
+			<div class="modal-body">				
+				<div class="row" id="viewdatividade1">
+					<div class="col-sm-12">
+						<div class="row">
+							<div class="col-sm-12">
+								<label class="control-label">Obrigação</label>
+								<select class="form-control" id="dconfigobrigacaoid">
+									<option value="">Selecione...</option>
+									
+								</select>
+							</div>
+						</div>
+					</div>
+				</div>
+				<div class="row" id="viewdatividade2">&nbsp;</div>
+				<div class="row" id="viewdatividade3">
+					<div class="col-sm-12">
+						<div class="row">
+							<div class="col-sm-8">
+								<label class="control-label">Tipo</label>
+								<select class="form-control" id="dconfigatividadetipo">
+									<option value="P">ValidaPDF</option>
+								</select>
+							</div>
+						</div>
+						<div class="row">&nbsp;</div>
+						<div class="row">
+							<div class="col-sm-10">
+								<label class="control-label">Texto para ser adicionado</label>
+								
+								<select id="dconfigatividadetexto" class="form-control">
+									
+										<option value="">Selecione...</option>
+										
+										<option value="1002">Anexar Boleto</option>
+										
+										<option value="963">Anexar Darf Previdenciária</option>
+										
+										<option value="1000">Anexar Fatura</option>
+										
+										<option value="955">Anexar Folha de Pagamento</option>
+										
+										<option value="780">Anexar GISS P</option>
+										
+										<option value="781">Anexar GISS T</option>
+										
+										<option value="1001">Anexar Nota Fiscal</option>
+										
+										<option value="956">Anexar Recibo de Pagamento (Holerite)</option>
+										
+										<option value="975">Boleto Honorário</option>
+										
+										<option value="576">CSLL</option>
+										
+										<option value="454">DAE</option>
+										
+										<option value="594">DAP</option>
+										
+										<option value="599">DARF 0561</option>
+										
+										<option value="428">DAS - Declaração</option>
+										
+										<option value="427">DAS - Recibo</option>
+										
+										<option value="430">DCTF - Declaração</option>
+										
+										<option value="429">DCTF - Recibo</option>
+										
+										<option value="961">DCTFWEB</option>
+										
+										<option value="489">Declaração</option>
+										
+										<option value="726">Declaração Anual do SIMEI</option>
+										
+										<option value="953">Declaração PGDAS</option>
+										
+										<option value="432">DEFIS - Declaração</option>
+										
+										<option value="431">DEFIS - Recibo</option>
+										
+										<option value="973">Demonstrativo de Pagamento</option>
+										
+										<option value="490">Documento de Arrecadação - Simples</option>
+										
+										<option value="727">e-Social</option>
+										
+										<option value="435">EFD Contribuições - Recibo</option>
+										
+										<option value="791">EFD ICMS/IPI</option>
+										
+										<option value="968">Enviar ao Cliente</option>
+										
+										<option value="441">FGTS</option>
+										
+										<option value="962">FGTS DIGITAL</option>
+										
+										<option value="440">GPS/INSS</option>
+										
+										<option value="426">Guia COFINS</option>
+										
+										<option value="724">Guia DAS MEI</option>
+										
+										<option value="455">Guia ICMS</option>
+										
+										<option value="492">Guia ISS</option>
+										
+										<option value="425">GUIA PIS</option>
+										
+										<option value="450">IPI</option>
+										
+										<option value="577">IRPJ</option>
+										
+										<option value="723">PIS S/ Folha</option>
+										
+										<option value="789">PMS/IBGE - Recibo</option>
+										
+										<option value="914">Recibo - DIRBI</option>
+										
+										<option value="960">Recibo - EFD ICMS/IPI</option>
+										
+										<option value="453">Recibo DAMEF-VAF-MG</option>
+										
+										<option value="958">Recibo de Pagamento</option>
+										
+										<option value="959">Recibo de Pagamento</option>
+										
+										<option value="706">Recibo DeSTDA</option>
+										
+										<option value="491">Recibo ECF</option>
+										
+										<option value="451">Recibo GIA</option>
+										
+										<option value="954">Recibo PGDAS</option>
+										
+										<option value="452">Recibo transmissão GIA-RS</option>
+										
+										<option value="957">Relatório de Fechamento - EFD REINF</option>
+										
+										<option value="972">Relatório de Líquidos</option>
+										
+										<option value="974">Relatorio Esocial Domestica</option>
+										
+										<option value="436">SEF - Recibo</option>
+										
+										<option value="449">SEFIP</option>
+										
+										<option value="434">SPED - Recibo</option>
+										
+									
+								</select>
+							</div>
+							<div class="col-sm-2">
+								<label class="control-label">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</label>
+								<input type="hidden" id="dconfigatividadeoid" value="">
+								<input type="hidden" id="dconfigatividadecoid" value="">
+								<button class="btn btn-primary" onclick="salvarAtividadeConfiguracao('aconfig')"><i class="fa fa-plus"></i></button>
+							</div>
+						</div>
+					</div>				
+				</div>
+				<div class="row" id="viewdatividade4"><hr></div>
+				<div class="row" id="viewdatividade5">
+					<div class="col-sm-12">
+						<div class="row">
+							<div class="col-sm-10">
+								<label class="control-label"><span id="textonome">Novo Texto</span></label>
+								<input id="dconfigatividadetextonovo" class="form-control" maxlength="200" placeholder="Digite um novo texto...">
+							</div>
+							<div class="col-sm-2">
+								<label class="control-label">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</label>
+								<button id="btnnovaatividadepadrao" type="button" class="btn btn-primary" onclick="novaAtividadePadraoConfiguracao('aconfig')">Nova</button>
+							</div>
+						</div>
+					</div>				
+				</div>
+				<div class="row" id="viewdatividade6">
+					<div class="col-sm-12">
+						<div class="row">
+							<div class="col-sm-12" align="center">
+								<div class="alert alert-warning"><i class="fa fa-warning"></i> Apenas as tarefas que estiverem abertas e<br>sem nenhuma atividade respondida serão atualizadas.</div>
+								<div class="col-sm-12" id="viewareajustesclientes"></div>
+							</div>
+						</div>
+						<div class="row">&nbsp;</div>
+						<div class="row" id="viewar1" style="display: none;">
+							<div class="col-sm-12" align="center">
+							<!-- <h3>Realmente deseja atualizar as tarefas?</h3> -->
+							</div>				
+						</div>
+						<div class="row" id="viewar2" style="display: none;">
+							<div class="col-sm-12" id="viewareajustes" style="height:300px;overflow: scroll;"></div>
+						</div>
+					</div>
+				</div>
+			</div>
+			<div class="modal-footer" id="viewdatividade7">
+				<div class="col-sm-4">&nbsp;</div>										
+				<div class="col-sm-4">
+					<div class="sk-spinner sk-spinner-wave" id="progressareajustes">
+						<div class="sk-rect1"></div>
+						<div class="sk-rect2"></div>
+						<div class="sk-rect3"></div>
+						<div class="sk-rect4"></div>
+						<div class="sk-rect5"></div>
+					</div>
+				</div>
+				<div class="col-sm-4">
+					<button type="button" class="btn btn-white pull-right" data-dismiss="modal">Fechar</button>
+				</div>
+			</div>
+		</div>
+	</div>
+</div>
+<script>
+function reajustarTarefasAbrir(coid,oid,obj){
+	$('#titleaatividade').html('Atualizando Tarefas Abertas');
+	$('#dialogoareajustecoid').val(coid);
+	$('#dconfigatividadeoid').val(oid);
+	$('#viewar1').hide();
+	$('#viewar2').hide();
+	$('#btnareajustes').prop('disabled', true);
+	limpa('viewareajustes');
+	$('#progressareajustes').show();
+	limpa('viewareajustesclientes');
+	var url = 'coListar.do?obj=' + obj;		
+	url = url + '&coid=' + coid;
+	url = url + '&obrId=' + oid;
+	url = url + '&empId=' + $('#empId').val();
+	$.get(url, viewareajustesclientes);
+}
+function viewareajustesclientes(data, status) {
+	if (status == 'success') {
+		if (erro(data)){
+			$('#viewareajustesclientes').html(data);
+			$('#progressareajustes').hide();
+			$('#btnareajustes').prop('disabled', false);
+			$('#viewar1').show();
+			$('#btnareajustes').prop('disabled', false);
+			document.getElementById('configclientesid').checked = true;
+			marcarTodosClientes(document.getElementById('configclientesid'),'configclientes',$('#configqtd').val());
+			reajustarTarefas('coearejuste');
+		}
+	}
+}
+function reajustarTarefas(){
+	$('#viewar2').show();
+	limpaValue('msg');
+	var ok = true;
+	var clientes = $('#configclientes');
+	if (clientes.val() == ',') {
+		toastr.warning('', ' Selecione um cliente.');		
+		ok = false;
+	}
+	if(ok){
+		$('#viewareajustes').html('');
+		$('#progressareajustes').show();
+		$('#btnareajustes').prop('disabled', true);
+		reajustandoTarefas(0);
+	}
+}
+function reajustandoTarefas(num){
+	limpaValue('msg');
+	limpaValue('configlinha');
+	var cb = document.getElementById('cb.'+num);
+	if(cb){
+		if(cb.checked){
+			$('#configlinha').val(num);
+			var url = 'coAlterar.do?obj=coearejuste';		
+			url = url + '&coid=4';// + $('#dialogoareajustecoid').val();			                          
+			url = url + '&oid=' + $('#dconfigatividadeoid').val();
+			url = url + '&opub='+checkbox($('#pub'));
+			url = url + '&cliid=' + cb.value;
+			url = url + '&clinome=' + acento($('#configcliapelido'+num).val());
+			url = url + '&empId=' + $('#empId').val();
+			$.get(url, viewareajustes);			
+		} else {
+			reajustandoTarefas(parseInt(num)+1);
+		}
+	} else {
+		$('#viewareajustes').html($('#viewareajustes').html()+'<div class="alert alert-success" align=center>Reajuste das tarefas abertas realizado com sucesso!</div>');
+		$('#progressareajustes').hide();
+		$('#btnareajustes').prop('disabled', false);
+	}
+}
+function viewareajustes(data, status) {
+	if (status == 'success') {
+		if (erro(data)){
+			var linha = $('#configlinha').val();			
+			document.getElementById('linha'+linha).style.backgroundColor = 'mediumaquamarine';
+			$('#viewareajustes').html($('#viewareajustes').html()+data);
+			reajustandoTarefas(parseInt(linha)+1);
+		}
+	}
+}
+function configuracaoAbrirObrigacao(oid,coid,obj){
+	var url = 'configuracaoAbrir.do?obj=' + obj;
+	url = url + '&id='+oid;
+	url = url + '&coid='+coid;
+	url = url + '&empId=' + $('#empId').val();
+	$.get(url, viewconfiguracoes);
+}
+function viewconfiguracoes(data, status) {
+	if (status == 'success') {
+		if (erro(data)){
+			$('#viewprincipal').html(data);
+		}
+	}
+}
+function buscarPorFiltro(obj){
+	var url = 'configuracaoAbrir.do?obj='+obj;
+	url = url + '&id=' + $('#id').val();
+	if(document.getElementById('configpdfatividadesfiltro').checked){
+		url = url + '&filtro='+$('#configpdfatividadesfiltro').val();	
+	}
+	url = url + '&departamentos='+selectmultiple('configpdfadepartamentos');
+	url = url + '&obrigacoesfiltro='+selectmultiple('configpdfaobrigacoestodas');
+	url = url + '&empId=' + $('#empId').val();
+	$.get(url,viewpdfpasso3);
+}
+function addConfiguracaoPDFLayoutDaAtividade(aid,anome,oid,coid,obj){
+	$('#dconfigatividadepdfoid').val(oid);
+	$('#dconfigatividadepdfcoid').val(coid);
+	$('#dconfigatividadepdfaid').val(aid);
+	$('#msg').val('Modelo adicionado com sucesso!');
+	var url = 'configuracaoSalvar.do?obj='+obj;
+	url = url + '&coid='+ coid;
+	url = url + '&oid=' + oid;
+	url = url + '&aid=' + aid;
+	url = url + '&anome=' + acento(anome);
+	url = url + '&pdfid=' + $('#id').val();
+	url = url + '&empId=' + $('#empId').val();
+	$.get(url, viewaconfigpdfs);
+}
+function confirmarAtividadePDFAddModelo(obj){
+	var aid = $('#dconfigatividadepdfaid').val();
+	$('#dconfigatividadepdfaid').val(aid);
+	$('#msg').val('Modelo removido com sucesso!');
+	var url = 'configuracaoRemover.do?obj='+obj;
+	url = url + '&oid='+$('#dconfigatividadepdfoid').val();
+	url = url + '&coid='+$('#dconfigatividadepdfcoid').val();
+	url = url + '&aid=' + aid;
+	url = url + '&anome=' + acento($('#dconfigatividadepdfanome').val());
+	url = url + '&pdfid=' + $('#id').val();
+	url = url + '&empId=' + $('#empId').val();
+	$.get(url, viewaconfigpdfs);
+}
+function viewaconfigpdfs(data, status) {
+	if (status == 'success') {
+		if (erro(data)){
+			var aid = $('#dconfigatividadepdfaid').val();
+			var coid = $('#dconfigatividadepdfcoid').val();
+			$('#viewaconfigpdfs'+coid+'a'+aid).html(data);
+			//document.getElementById('viewaconfigpdfs'+coid+'a'+aid).style.borderLeftColor = $('#configatividadepdfcor'+coid+'a'+aid).val();
+		}
+	}
+}
+function initAtividadePDFAddModelo(aid,anome,oid,coid){
+	$('#dconfigatividadepdfaid').val(aid);
+	$('#dconfigatividadepdfanome').val(anome);
+	$('#dconfigatividadepdfoid').val(oid);
+	$('#dconfigatividadepdfcoid').val(coid);
+}
+function initDialogoAddAtividade(){
+	$('#titleaatividade').html('Adicionado Atividade');
+	$('#viewdatividade1').show();
+	$('#viewdatividade2').show();
+	$('#viewdatividade3').show();
+	$('#viewdatividade4').show();
+	$('#viewdatividade5').show();
+	$('#viewdatividade6').hide();
+	$('#viewdatividade7').hide();
+	//$('#dconfigatividadeoid').val(oid);
+	//$('#dconfigatividadecoid').val(coid);
+}
+function salvarAtividadeConfiguracao(obj){
+	var ok = true;
+	var obrigacao = $('#dconfigobrigacaoid option:selected');
+	if (obrigacao.val() == '') {
+		toastr.warning('', ' Obrigação em branco.');
+		obrigacao.focus();
+		ok = false;
+	}
+	var tipo = $('#dconfigatividadetipo option:selected');
+	var texto = $('#dconfigatividadetexto option:selected');
+	if (texto.val() == '') {
+		toastr.warning('', ' Texto da Atividade em branco.');
+		texto.focus();
+		ok = false;
+	}	
+	if (ok) {		
+		$('#dconfigatividadeoid').val(obrigacao.val());
+		$('#dconfigatividadecoid').val('4');
+		$('#msg').val('Atividade salva com sucesso!');
+		var url = 'configuracaoSalvar.do?obj='+obj;
+		url = url + '&coid=4';//+$('#dconfigatividadecoid').val();
+		url = url + '&oid=' + obrigacao.val();
+		url = url + '&tipo=' + tipo.val();
+		url = url + '&texto=' + acento(texto.text());
+		url = url + '&pdfid=' + $('#id').val();
+		url = url + '&empId=' + $('#empId').val();
+		$.get(url, viewaconfigs);
+	}
+}
+function viewaconfigs(data, status) {
+	if (status == 'success') {
+		if (erro(data)){
+			var oid = $('#dconfigatividadeoid').val();
+			var coid = $('#dconfigatividadecoid').val();
+			$('#viewaconfigs'+coid+'o'+oid).html(data);			
+			//document.getElementById('bordaresp'+oid).style.borderLeftColor = 'mediumaquamarine';
+			$('#viewdatividade1').hide();
+			$('#viewdatividade2').hide();
+			$('#viewdatividade3').hide();
+			$('#viewdatividade4').hide();
+			$('#viewdatividade5').hide();
+			$('#viewdatividade6').show();
+			$('#viewdatividade7').show();
+			reajustarTarefasAbrir(coid,oid,'coearejuste');			
+		}
+	}
+}
+function novaAtividadePadraoConfiguracao(obj){
+	var ok = true;	
+	var tipo = $('#dconfigatividadetipo option:selected');
+	var obrigacao = $('#dconfigobrigacaoid option:selected');
+	if (obrigacao.val() == '') {
+		toastr.warning('', ' Obrigação em branco.');
+		obrigacao.focus();
+		ok = false;
+	}
+	var texto = $('#dconfigatividadetextonovo').val();
+	if (ok && texto == '') {
+		toastr.warning('', ' Texto da Atividade em branco.');
+		$('#natexto').focus();
+		ok = false;
+	}
+	if(ok && texto.includes('\\')){
+		toastr.warning('', ' Por favor, não utilizar o caracter \\ (barra invertida).');
+		$('#natexto').focus();
+		ok = false;
+	}
+	if(ok && texto.includes('%')){
+		toastr.warning('', ' Por favor, não utilizar o caracter % (percentual).');
+		$('#natexto').focus();
+		ok = false;
+	}
+	if(ok && texto.includes('"')){
+		toastr.warning('', ' Por favor, não utilizar o caracter " (aspas duplas).');
+		$('#natexto').focus();
+		ok = false;
+	}
+	if(ok && texto.includes('\'')){
+		toastr.warning('', ' Por favor, não utilizar o caracter \' (aspas simples).');
+		$('#natexto').focus();
+		ok = false;
+	}
+	if(ok && texto.includes('#')){
+		toastr.warning('', ' Por favor, não utilizar o caracter # (hastag).');
+		$('#natexto').focus();
+		ok = false;
+	}
+	if(ok && texto.includes('|')){
+		toastr.warning('', ' Por favor, não utilizar o caracter | (pipe).');
+		$('#natexto').focus();
+		ok = false;
+	}
+	if (ok) {
+		$('#dconfigatividadeoid').val(obrigacao.val());
+		$('#dconfigatividadecoid').val('4');
+		$('#msg').val('Nova Atividade criada com sucesso!');
+		var url = 'configuracaoSalvar.do?obj='+obj;
+		url = url + '&coid=4';//+$('#dconfigatividadecoid').val();
+		url = url + '&oid=' + obrigacao.val();
+		url = url + '&tipo=' + tipo.val();
+		url = url + '&texto=' + acento(texto);
+		url = url + '&pdfid=' + $('#id').val();
+		url = url + '&empId=' + $('#empId').val();
+		$.get(url, viewaconfigs);
+	}
+}
+</script>
+</body></html>

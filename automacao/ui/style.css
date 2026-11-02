@@ -2890,3 +2890,56 @@ button.ghost.btn-loading::after,
 .conn-contingency-details[open] .conn-form {
   margin-top: 12px;
 }
+
+/* ENQUETE CADASTRO DE RESPOSTAS */
+.badge-cad {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.badge-cad-existente {
+  background: #ecfdf5;
+  color: #15803d;
+  border: 1px solid #a7f3d0;
+}
+
+.badge-cad-faltante {
+  background: #fef3c7;
+  color: #b45309;
+  border: 1px solid #fcd34d;
+}
+
+.badge-cad-sim {
+  background: #e0f2fe;
+  color: #0369a1;
+  border: 1px solid #bae6fd;
+}
+
+.badge-cad-success {
+  background: #ecfdf5;
+  color: #15803d;
+  border: 1px solid #86efac;
+}
+
+.badge-cad-error {
+  background: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid #fca5a5;
+}
+
+.cat-select-cell {
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color, #cbd5e1);
+  font-size: 12px;
+  background: #ffffff;
+  color: var(--text-main);
+  max-width: 160px;
+}
+

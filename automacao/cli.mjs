@@ -3,10 +3,11 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 import { parseCsv, readScope, makePlan } from './lib/data.mjs';
 import { LOGIN_URL, waitForEnquete, openBrowser, readGoogleCsv, openQuestion, inspectAll, applyQuestionWithOperator } from './lib/gclick.mjs';
 
-const root = path.dirname(new URL(import.meta.url).pathname);
+const root = path.dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
 const command = args.shift();
 const get = key => { const i = args.indexOf(key); return i < 0 ? null : args[i + 1]; };

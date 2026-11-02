@@ -127,6 +127,11 @@
               <span class="nav-text">Sincronização com Sheets</span>
               <span class="nav-badge" id="navBadgeWriter"></span>
             </button>
+            <button type="button" class="nav-btn nav-sub-item" data-section="enquete-cadastro" id="navEnqueteCadastro" title="Conferência inteligente e cadastro de respostas faltantes">
+              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></span>
+              <span class="nav-text">Cadastro de Respostas</span>
+              <span class="nav-badge" id="navBadgeEnqueteCadastro"></span>
+            </button>
           </div>
         </div>
 
@@ -161,6 +166,26 @@
               <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/></svg></span>
               <span class="nav-text">Carteira por Usuário</span>
               <span class="nav-badge" id="navBadgeCarteira"></span>
+            </button>
+          </div>
+        </div>
+
+        <!-- VALIDAÇÃO DE PDF (G-CLICK PDF LAYOUT) -->
+        <div class="nav-group nav-submodule" id="submoduleValidaPdf">
+          <div class="nav-group-title nav-submodule-header" id="headerSubmoduleValidaPdf" role="button" tabindex="0" title="Mostrar ou esconder Valida PDF">
+            <span class="nav-group-label">Valida PDF</span>
+            <span class="nav-submodule-chevron" aria-hidden="true">▾</span>
+          </div>
+          <div class="nav-group-items nav-submodule-content" id="contentSubmoduleValidaPdf">
+            <button type="button" class="nav-btn nav-sub-item" data-section="valida-pdf" id="navValidaPdf" title="Validação de documentos PDF contra regras e modelos G-Click">
+              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span>
+              <span class="nav-text">Validador de Arquivos</span>
+              <span class="nav-badge" id="navBadgeValidaPdf"></span>
+            </button>
+            <button type="button" class="nav-btn nav-sub-item" data-action="valida-pdf-models" id="navValidaPdfModels" title="Modelos de PDF cadastrados no G-Click">
+              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5zM4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/><path d="M9 10h6M9 14h6"/></svg></span>
+              <span class="nav-text">Modelos G-Click</span>
+              <span class="nav-badge" id="navBadgeValidaPdfModels">184</span>
             </button>
           </div>
         </div>
@@ -1645,6 +1670,574 @@ Atenciosamente,</textarea>
           </section>
         </div>
 
+      <!-- SEÇÃO ENQUETE-CADASTRO: CONFERÊNCIA E CADASTRO DE RESPOSTAS -->
+      <div id="section-enquete-cadastro" class="app-section" hidden>
+        <div class="section-banner">
+          <div class="section-title-wrap">
+            <span class="step">06</span>
+            <div>
+              <h2>Cadastro de Respostas da Enquete</h2>
+              <p>Cruza a planilha modelo com a Enquete da conta ativa, identifica respostas faltantes por similaridade e automatiza a criação de particularidades e vinculação.</p>
+            </div>
+          </div>
+        </div>
+
+        <section class="card">
+          <div class="card-headline">
+            <div>
+              <h3>Fonte do Modelo & Conferência</h3>
+              <span class="sub-hint">Informe o link público do Google Sheets com a estrutura modelo de Grupos, Perguntas e Respostas.</span>
+            </div>
+          </div>
+
+          <div class="conn-form" style="max-width:100%;margin-bottom:16px;">
+            <label class="conn-field" style="max-width:none;flex:1;">
+              Link da Planilha Modelo (Google Sheets)
+              <input id="enqueteModelSheetUrl" type="url" value="https://docs.google.com/spreadsheets/d/1fxVpJ6WMWFdsQmmquaJK-_7IFTeIBepVGoBPUSHED5g/edit?gid=278193778#gid=278193778" placeholder="https://docs.google.com/spreadsheets/d/..." autocomplete="off">
+            </label>
+            <button id="btnEnqueteConferir" type="button" class="btn btn-primary btn-md">
+              <span>🔍</span> Carregar e Conferir
+            </button>
+          </div>
+
+          <!-- Métricas Resumo -->
+          <div class="enquete-cad-metrics" id="enqueteCadMetrics" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:12px;margin-bottom:20px;">
+            <div class="metric-card" style="background:#f8fafc;padding:12px 14px;border-radius:8px;border:1px solid #e2e8f0;">
+              <span style="font-size:12px;color:var(--text-muted);display:block;">Perguntas no Modelo</span>
+              <strong id="metricTotalPerguntas" style="font-size:18px;color:var(--text-main);">0</strong>
+            </div>
+            <div class="metric-card" style="background:#f8fafc;padding:12px 14px;border-radius:8px;border:1px solid #e2e8f0;">
+              <span style="font-size:12px;color:var(--text-muted);display:block;">Respostas no Modelo</span>
+              <strong id="metricTotalRespostas" style="font-size:18px;color:var(--text-main);">0</strong>
+            </div>
+            <div class="metric-card" style="background:#ecfdf5;padding:12px 14px;border-radius:8px;border:1px solid #a7f3d0;">
+              <span style="font-size:12px;color:#15803d;display:block;">Já Existentes no G-Click</span>
+              <strong id="metricRespostasExistentes" style="font-size:18px;color:#15803d;">0</strong>
+            </div>
+            <div class="metric-card" style="background:#fef3c7;padding:12px 14px;border-radius:8px;border:1px solid #fcd34d;">
+              <span style="font-size:12px;color:#b45309;display:block;">Respostas Faltantes</span>
+              <strong id="metricRespostasFaltantes" style="font-size:18px;color:#b45309;">0</strong>
+            </div>
+          </div>
+
+          <!-- Barra de Ações & Filtros -->
+          <div class="enquete-cad-toolbar" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:14px;">
+            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+              <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;user-select:none;font-weight:600;">
+                <input type="checkbox" id="selectAllEnqueteFaltantes">
+                <span>Selecionar todas as faltantes</span>
+              </label>
+              <div class="segmented" style="margin:0;">
+                <label><input type="radio" name="enqueteFilterStatus" value="all" checked><span>Todas</span></label>
+                <label><input type="radio" name="enqueteFilterStatus" value="faltante"><span>Faltantes</span></label>
+                <label><input type="radio" name="enqueteFilterStatus" value="ja_existe"><span>Já Existentes</span></label>
+              </div>
+            </div>
+
+            <div style="display:flex;align-items:center;gap:10px;">
+              <input id="enqueteSearchInput" type="search" placeholder="Filtrar por pergunta ou resposta…" class="empresa-search-input" style="width:240px;" autocomplete="off">
+              <button id="btnCadastrarRespostasSelecionadas" type="button" class="btn btn-primary btn-md" disabled>
+                <span>➕</span> Cadastrar Selecionadas (<span id="countSelectedCad">0</span>)
+              </button>
+            </div>
+          </div>
+
+          <!-- Tabela de Conferência -->
+          <div class="table-container" style="overflow-x:auto;">
+            <table class="table-preview" id="tableEnqueteCadastro" style="width:100%;">
+              <thead>
+                <tr>
+                  <th style="width:36px;text-align:center;">#</th>
+                  <th>Grupo / Depto</th>
+                  <th>Pergunta (Modelo)</th>
+                  <th>Pergunta no G-Click</th>
+                  <th>Resposta (Modelo)</th>
+                  <th>Status</th>
+                  <th>Categoria a Criar</th>
+                  <th style="text-align:right;">Ação</th>
+                </tr>
+              </thead>
+              <tbody id="tbodyEnqueteCadastro">
+                <tr>
+                  <td colspan="8" style="text-align:center;padding:32px;color:var(--text-muted);">
+                    Clique em <strong>Carregar e Conferir</strong> para cruzar os dados da planilha modelo com a Enquete da conta ativa.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Painel de Feedback / Log em Tempo Real -->
+          <div id="enqueteProgressPanel" class="enquete-progress-panel" hidden style="margin-top:20px;padding:16px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+              <strong id="enqueteProgressTitle" style="font-size:13.5px;color:var(--text-main);">Processando cadastros…</strong>
+              <span id="enqueteProgressPercent" style="font-size:12px;font-weight:600;color:var(--gclick-primary);">0%</span>
+            </div>
+            <div style="height:6px;background:#e2e8f0;border-radius:3px;overflow:hidden;margin-bottom:12px;">
+              <div id="enqueteProgressBar" style="height:100%;width:0%;background:var(--gclick-primary);transition:width 0.3s ease;"></div>
+            </div>
+            <div id="enqueteProgressLogs" style="max-height:160px;overflow-y:auto;font-family:var(--font-mono);font-size:11.5px;color:#334155;background:#ffffff;padding:10px;border-radius:6px;border:1px solid #e2e8f0;line-height:1.5;"></div>
+          </div>
+        </section>
+      </div>
+
+      <!-- SEÇÃO: VALIDA PDF (G-CLICK PDF LAYOUT) -->
+      <div id="section-valida-pdf" class="app-section" hidden>
+        <div class="section-banner">
+          <div class="section-title-wrap">
+            <span class="step">📄</span>
+            <div>
+              <h2>Valida PDF (Layouts G-Click)</h2>
+              <p>Extração automática e validação de documentos PDF contra as 4 regras do G-Click: Extração de Texto selecionável, Identificação do Cliente (CNPJ, CNPJ Base ou CPF), Detecção de Competência (referência/apuração) e Nome do Documento vinculado aos modelos cadastrados.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- CARDS DE MÉTRICAS -->
+        <div class="obrig-metrics-grid" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:14px;margin-bottom:20px;">
+          <div class="metrics-kpi-card kpi-brand">
+            <p class="eyebrow">MODELOS G-CLICK</p>
+            <h3 id="validaPdfMetricModels" class="metrics-kpi-val">184</h3>
+            <span class="sub-hint" id="validaPdfMetricModelsHint">Conta ativa 6019</span>
+          </div>
+          <div class="metrics-kpi-card kpi-indigo">
+            <p class="eyebrow">PROCESSADOS</p>
+            <h3 id="validaPdfMetricTotal" class="metrics-kpi-val">0</h3>
+            <span class="sub-hint">Arquivos no lote</span>
+          </div>
+          <div class="metrics-kpi-card kpi-success">
+            <p class="eyebrow">100% VÁLIDOS</p>
+            <h3 id="validaPdfMetricValid" class="metrics-kpi-val">0</h3>
+            <span class="sub-hint">Aptos para envio</span>
+          </div>
+          <div class="metrics-kpi-card kpi-warning">
+            <p class="eyebrow">COM PENDÊNCIAS</p>
+            <h3 id="validaPdfMetricInvalid" class="metrics-kpi-val">0</h3>
+            <span class="sub-hint">Requerem conferência</span>
+          </div>
+        </div>
+
+        <!-- GUIA RÁPIDO #VOCEPODE: DESTRAVANDO O VALIDAPDF (ALISSON CARRASCO / MICHAEL) -->
+        <details class="card" style="padding:14px 18px;margin-bottom:18px;background:#f0fdf4;border:1px solid #bbf7d0;">
+          <summary style="font-size:13.5px;font-weight:600;color:#15803d;cursor:pointer;display:flex;align-items:center;gap:8px;">
+            <span>💡</span> Guia Rápido de Destravamento: Os 3 Erros do ValidaPDF (#vocepode G-Click)
+            <span style="font-size:11.5px;font-weight:normal;color:#166534;margin-left:auto;">Clique para ver o checklist e como resolver documentos travados ▾</span>
+          </summary>
+          <div style="margin-top:12px;display:grid;grid-template-columns:repeat(auto-fit, minmax(260px, 1fr));gap:12px;font-size:12.5px;color:#1e293b;line-height:1.5;">
+            <div style="background:#fff;padding:12px;border-radius:8px;border:1px solid #dcfce7;">
+              <strong style="color:#b45309;display:block;margin-bottom:4px;">1. Modelo Não Encontrado</strong>
+              <p style="margin:0 0 6px 0;">A estrutura de linhas mudou (ex.: palavra-chave estava na linha 2 e foi para a 4).</p>
+              <span style="color:#15803d;font-weight:500;">Solução:</span> Cadastre um modelo adicional dando alternativas A, B, C ao G-Click. Para folha com eventos variáveis, use o <strong>Anexo por Nome</strong>.
+            </div>
+            <div style="background:#fff;padding:12px;border-radius:8px;border:1px solid #dcfce7;">
+              <strong style="color:#b91c1c;display:block;margin-bottom:4px;">2. Cliente Não Encontrado (Crítico)</strong>
+              <p style="margin:0 0 6px 0;">O CNPJ/CPF não existe no sistema, ou o recibo não tem CNPJ impresso.</p>
+              <span style="color:#15803d;font-weight:500;">Solução:</span> Cadastre o cliente e gere tarefas. Para recibos sem CNPJ, use <strong>Campo Adicional</strong> (IE/IM/Código ERP) no cadastro.
+            </div>
+            <div style="background:#fff;padding:12px;border-radius:8px;border:1px solid #dcfce7;">
+              <strong style="color:#0369a1;display:block;margin-bottom:4px;">3. Tarefa Não Encontrada</strong>
+              <p style="margin:0 0 6px 0;">O modelo e o cliente foram reconhecidos, mas a gaveta da competência não foi gerada.</p>
+              <span style="color:#15803d;font-weight:500;">Solução:</span> Acesse o cliente ou obrigação e gere a tarefa no G-Click para essa competência.
+            </div>
+            <div style="background:#fff;padding:12px;border-radius:8px;border:1px solid #dcfce7;">
+              <strong style="color:#0f766e;display:block;margin-bottom:4px;">⚡ Folha com Rubricas? Use Anexo por Nome!</strong>
+              <p style="margin:0 0 6px 0;">Holerites variam linhas todo mês. Padronize o nome do arquivo para entrega direta sem depender de linhas fixas.</p>
+              <span style="color:#0f766e;font-weight:500;">Padrão:</span> <code>[Obrigação]-[CNPJ]-[Competência].pdf</code>
+            </div>
+          </div>
+        </details>
+
+        <!-- ABAS DO MÓDULO VALIDA PDF -->
+        <div class="enquete-tabs-bar" style="display:flex;gap:8px;border-bottom:2px solid #e2e8f0;margin-bottom:18px;">
+          <button type="button" class="enquete-tab-btn active" id="tabBtnValidaFiles" style="padding:10px 16px;border:none;background:none;font-weight:600;font-size:14px;color:var(--gclick-primary);border-bottom:2px solid var(--gclick-primary);cursor:pointer;">
+            📁 Validador de Arquivos
+          </button>
+          <button type="button" class="enquete-tab-btn" id="tabBtnValidaMapping" style="padding:10px 16px;border:none;background:none;font-weight:600;font-size:14px;color:#64748b;cursor:pointer;">
+            🛠️ Novo Mapeamento & Importação
+          </button>
+          <button type="button" class="enquete-tab-btn" id="tabBtnValidaModels" style="padding:10px 16px;border:none;background:none;font-weight:600;font-size:14px;color:#64748b;cursor:pointer;">
+            📑 Modelos de Layout G-Click (<span id="validaModelsTabBadge">184</span>)
+          </button>
+        </div>
+
+        <!-- ABA 1: VALIDADOR DE ARQUIVOS -->
+        <div id="tabValidaFilesContent">
+          <!-- CARD DE ENTRADA / UPLOAD -->
+          <section class="card" style="padding:20px;margin-bottom:20px;">
+            <div style="margin-bottom:16px;">
+              <h3 style="margin:0 0 4px 0;font-size:16px;">Varredura & Conferência de Pasta de PDFs</h3>
+              <span class="sub-hint">Informe ou selecione a pasta de documentos do escritório (ex.: Magnum) para varrer, reconhecer e validar todos os PDFs e subpastas.</span>
+            </div>
+
+            <!-- PAINEL DE VARREDURA DE PASTA -->
+            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin-bottom:16px;">
+              <label for="validaScanDirPath" style="display:block;font-size:12.5px;font-weight:600;color:#334155;margin-bottom:6px;">
+                📂 Caminho da Pasta para Varredura Recursiva:
+              </label>
+              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
+                <input type="text" id="validaScanDirPath" class="form-control" style="flex:1;min-width:300px;font-size:13px;padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;font-family:var(--font-mono);" value="/home/piperun/Documentos/temp/G-click/PDF_Layout/Magnum" placeholder="/caminho/para/pasta/de/pdfs">
+                <button type="button" id="btnScanDirectory" class="btn btn-primary btn-md" style="display:flex;align-items:center;gap:6px;font-weight:600;">
+                  <span>🔎</span> Varrer e Validar Pasta
+                </button>
+                <label for="validaFolderPicker" class="btn btn-secondary btn-md" style="margin:0;cursor:pointer;display:inline-flex;align-items:center;gap:6px;" title="Selecionar uma pasta do computador pelo navegador">
+                  <span>📂</span> Escolher Pasta...
+                  <input type="file" id="validaFolderPicker" webkitdirectory directory multiple style="display:none;">
+                </label>
+              </div>
+
+              <!-- ATALHOS RÁPIDOS DE DIRETÓRIOS -->
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;">
+                <span style="color:#64748b;font-weight:500;">Atalhos:</span>
+                <button type="button" class="btn-dir-shortcut tag-pill" data-path="/home/piperun/Documentos/temp/G-click/PDF_Layout/Magnum" style="cursor:pointer;border:1px solid #cbd5e1;background:#fff;color:#0f766e;font-size:11.5px;padding:3px 8px;border-radius:4px;">
+                  🏢 Escritório Magnum (46 PDFs)
+                </button>
+                <button type="button" class="btn-dir-shortcut tag-pill" data-path="/home/piperun/Documentos/temp/G-click/PDF_Layout" style="cursor:pointer;border:1px solid #cbd5e1;background:#fff;color:#334155;font-size:11.5px;padding:3px 8px;border-radius:4px;">
+                  📁 Pasta Geral PDF_Layout
+                </button>
+              </div>
+            </div>
+
+            <!-- CARDS DE ESTATÍSTICAS DA VARREDURA -->
+            <div id="validaBatchStatsWrap" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(130px, 1fr));gap:10px;margin-bottom:16px;" hidden>
+              <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:10px 12px;text-align:center;">
+                <span style="font-size:11px;color:#64748b;display:block;text-transform:uppercase;font-weight:600;">Total PDFs</span>
+                <strong id="statTotalPdfs" style="font-size:20px;color:#1e293b;">0</strong>
+              </div>
+              <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:10px 12px;text-align:center;">
+                <span style="font-size:11px;color:#166534;display:block;text-transform:uppercase;font-weight:600;">100% Válidos</span>
+                <strong id="statValidosPdfs" style="font-size:20px;color:#15803d;">0</strong>
+              </div>
+              <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:10px 12px;text-align:center;">
+                <span style="font-size:11px;color:#991b1b;display:block;text-transform:uppercase;font-weight:600;">Inconsistentes</span>
+                <strong id="statInconsistentesPdfs" style="font-size:20px;color:#b91c1c;">0</strong>
+              </div>
+              <div style="background:#fff7ed;border:1px solid #ffedd5;border-radius:6px;padding:10px 12px;text-align:center;">
+                <span style="font-size:11px;color:#9a3412;display:block;text-transform:uppercase;font-weight:600;">Sem OCR / Imagem</span>
+                <strong id="statSemOcrPdfs" style="font-size:20px;color:#ea580c;">0</strong>
+              </div>
+              <div style="background:#f0fdfa;border:1px solid #ccfbf1;border-radius:6px;padding:10px 12px;text-align:center;">
+                <span style="font-size:11px;color:#0f766e;display:block;text-transform:uppercase;font-weight:600;">Subpastas</span>
+                <strong id="statSubpastasCount" style="font-size:20px;color:#0f766e;">0</strong>
+              </div>
+            </div>
+
+            <!-- DROP ZONE AVULSO -->
+            <div id="validaPdfDropZone" style="border:2px dashed #cbd5e1;border-radius:10px;padding:20px;text-align:center;background:#f8fafc;cursor:pointer;transition:border-color 0.2s, background-color 0.2s;">
+              <input type="file" id="validaPdfFileInput" multiple accept=".pdf" style="display:none;">
+              <div style="font-size:24px;margin-bottom:4px;">📄</div>
+              <strong style="font-size:13.5px;color:#1e293b;display:block;margin-bottom:2px;">Arraste e solte arquivos avulsos aqui</strong>
+              <span style="font-size:12px;color:#64748b;">ou <span style="color:var(--gclick-primary);text-decoration:underline;">clique para procurar</span> no computador</span>
+            </div>
+
+            <!-- OPÇÕES AVANÇADAS DE CONFERÊNCIA (OMIE / G-CLICK RULE) -->
+            <details style="margin-top:14px;">
+              <summary style="font-size:12.5px;color:#475569;cursor:pointer;font-weight:500;">
+                ⚙️ Validar contra Cliente ou Competência esperados (Opcional - Simulação de Envio)
+              </summary>
+              <div style="display:flex;gap:12px;margin-top:10px;flex-wrap:wrap;background:#f1f5f9;padding:12px;border-radius:8px;">
+                <label style="font-size:12px;display:flex;flex-direction:column;gap:4px;flex:1;min-width:200px;">
+                  CNPJ ou CPF Esperado:
+                  <input type="text" id="validaExpectedDocId" placeholder="ex: 17.218.165/0001-37 ou 17308338" style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;">
+                </label>
+                <label style="font-size:12px;display:flex;flex-direction:column;gap:4px;flex:1;min-width:180px;">
+                  Competência Esperada:
+                  <input type="text" id="validaExpectedComp" placeholder="ex: 09/2026 ou 13/2026" style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;">
+                </label>
+              </div>
+            </details>
+          </section>
+
+          <!-- TABELA DE RESULTADOS -->
+          <section class="card" style="padding:20px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:14px;">
+              <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:280px;">
+                <input type="text" id="validaFilterSearch" placeholder="🔍 Filtrar resultados por nome, cliente, competência..." style="padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;flex:1;">
+                <select id="validaFilterStatus" style="padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;">
+                  <option value="">Todos os Resultados</option>
+                  <option value="valido">Apenas 100% Válidos</option>
+                  <option value="invalido">Apenas com Pendências / Inconsistentes</option>
+                  <option value="erro_extracao">Scanned / Sem OCR</option>
+                </select>
+              </div>
+              <div style="display:flex;gap:8px;align-items:center;">
+                <button type="button" id="btnGoToMappingFromFiles" class="btn btn-primary btn-sm" style="display:none;align-items:center;gap:6px;" title="Levar arquivos validados para mapear no G-Click">
+                  <span>🛠️</span> Mapear no G-Click (<span id="validaCountForMapping">0</span>)
+                </button>
+                <button type="button" id="btnGenerateDiagnosticReport" class="btn btn-secondary btn-sm" style="display:none;align-items:center;gap:6px;" title="Gerar documento analítico de diagnóstico com todas as falhas, identificação e caminhos no disco">
+                  <span>📋</span> Relatório de Diagnóstico
+                </button>
+                <button type="button" id="btnClearValidaResults" class="btn btn-secondary btn-sm" style="display:none;">Limpar Lista</button>
+              </div>
+            </div>
+
+            <div style="overflow-x:auto;">
+              <table id="validaResultsTable" class="app-table" style="width:100%;">
+                <thead>
+                  <tr>
+                    <th style="width:130px;">Status</th>
+                    <th>Arquivo</th>
+                    <th>Documento Identificado</th>
+                    <th>Cliente Identificado</th>
+                    <th style="width:110px;">Competência</th>
+                    <th style="text-align:right;width:210px;">Ações</th>
+                  </tr>
+                </thead>
+                <tbody id="validaResultsBody">
+                  <tr>
+                    <td colspan="6" style="text-align:center;padding:36px;color:#64748b;">
+                      Nenhum arquivo validado ainda. Selecione arquivos acima ou clique em <strong>Validar Pasta de Amostras</strong> para começar.
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;font-size:12.5px;color:#64748b;">
+              <span id="validaResultsCount">Exibindo 0 registros</span>
+              <span id="validaResultsHint"></span>
+            </div>
+          </section>
+        </div>
+
+        <!-- ABA 2: NOVO MAPEAMENTO & IMPORTAÇÃO DE PDF -->
+        <div id="tabValidaMappingContent" hidden>
+          <section class="card" style="padding:22px;margin-bottom:18px;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;">
+              <div>
+                <h3 style="margin:0 0 4px 0;font-size:16px;color:#0f172a;">Mapeamento & Criação de Modelo de PDF</h3>
+                <p style="margin:0;color:#64748b;font-size:13px;">Selecione um PDF modelo, autodetecte os 3 pilares ou ajuste as linhas manualmente, e crie o modelo no G-Click.</p>
+              </div>
+              <div style="display:flex;gap:8px;">
+                <button type="button" id="btnAutoDetectMapping" class="btn btn-secondary btn-md">
+                  🪄 Autodetectar Campos (IA/Motor)
+                </button>
+                <button type="button" id="btnSubmitMappingToGclick" class="btn btn-primary btn-md">
+                  🚀 Criar & Mapear no G-Click
+                </button>
+              </div>
+            </div>
+
+            <!-- INTEGRAÇÃO COM ARQUIVOS VALIDADOS -->
+            <div id="mapValidatedSourceBanner" style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px 16px;margin-bottom:18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+              <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:300px;">
+                <span style="font-size:22px;">📂</span>
+                <div style="flex:1;">
+                  <label style="font-size:12px;font-weight:700;color:#1e40af;display:block;margin-bottom:3px;">
+                    Pegar dos Arquivos Validados (Aba "Validador de arquivos"):
+                  </label>
+                  <select id="mapValidatedFilesSelect" style="width:100%;padding:7px 10px;border:1px solid #93c5fd;border-radius:6px;font-size:12.5px;background:#fff;color:#1e293b;">
+                    <option value="">-- Nenhum arquivo validado disponível ainda --</option>
+                  </select>
+                </div>
+              </div>
+              <div style="display:flex;gap:6px;align-items:center;">
+                <button type="button" id="btnLoadSelectedValidatedFile" class="btn btn-primary btn-sm" style="padding:7px 14px;font-size:12px;">
+                  ⚡ Carregar & Autodetectar
+                </button>
+                <button type="button" id="btnReturnToFilesTab" class="btn btn-secondary btn-sm" style="padding:7px 12px;font-size:12px;" title="Voltar para a lista do validador de arquivos">
+                  🔙 Voltar ao Validador
+                </button>
+              </div>
+            </div>
+
+            <!-- FORMULÁRIO DE DADOS BÁSICOS -->
+            <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(240px, 1fr));gap:14px;background:#f8fafc;padding:16px;border-radius:8px;border:1px solid #e2e8f0;margin-bottom:18px;">
+              <div>
+                <label style="display:block;font-size:12px;font-weight:600;color:#475569;margin-bottom:4px;">Nome do Modelo *</label>
+                <input type="text" id="mapModelName" placeholder="Ex: Recibo de Pagamento 2" style="width:100%;padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;">
+              </div>
+              <div>
+                <label style="display:block;font-size:12px;font-weight:600;color:#475569;margin-bottom:4px;">Departamento *</label>
+                <select id="mapModelDepto" style="width:100%;padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;">
+                  <option value="Departamento Pessoal" selected>Departamento Pessoal</option>
+                  <option value="Fiscal">Fiscal</option>
+                  <option value="Financeiro">Financeiro</option>
+                  <option value="Contabilidade">Contabilidade</option>
+                  <option value="Administrativo">Administrativo</option>
+                </select>
+              </div>
+              <div>
+                <label style="display:block;font-size:12px;font-weight:600;color:#475569;margin-bottom:4px;">Obrigação a Vincular (Opcional)</label>
+                <input type="text" id="mapObrigacaoNome" placeholder="Ex: Adiantamento Salarial - Mensal" style="width:100%;padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;">
+              </div>
+              <div>
+                <label style="display:block;font-size:12px;font-weight:600;color:#475569;margin-bottom:4px;">Arquivo PDF Modelo *</label>
+                <div style="display:flex;gap:6px;">
+                  <input type="file" id="mapPdfFileInput" accept=".pdf" style="display:none;">
+                  <button type="button" id="btnPickMapPdfFile" class="btn btn-secondary btn-md" style="flex:1;">
+                    📄 Escolher PDF
+                  </button>
+                  <button type="button" id="btnPickSampleMapPdf" class="btn btn-ghost btn-md" title="Usar Recibo de Pagamento de Amostra">
+                    📁 Amostra
+                  </button>
+                </div>
+                <div id="mapPdfFileName" style="font-size:11.5px;color:#0f766e;margin-top:4px;word-break:break-all;">Nenhum arquivo carregado</div>
+              </div>
+            </div>
+
+            <!-- PAINEL DE 2 COLUNAS: VISOR DE LINHAS (ESQ) E 3 PILARES (DIR) -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;">
+              <!-- COLUNA ESQUERDA: VISOR DE LINHAS NUMERADAS -->
+              <div style="border:1px solid #e2e8f0;border-radius:8px;padding:14px;background:#ffffff;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                  <div>
+                    <strong style="font-size:13px;color:#0f172a;">Linhas do Arquivo PDF (1ª Página)</strong>
+                    <span style="font-size:11px;color:#64748b;margin-left:6px;">(Grife com o mouse para selecionar o trecho exato)</span>
+                  </div>
+                  <span id="mapLinesCount" style="font-size:11.5px;color:#64748b;">0 linhas</span>
+                </div>
+                <!-- BARRA FLUTUANTE DE ATRIBUIÇÃO DE SELEÇÃO MANUAL -->
+                <div id="mapSelectionBar" style="display:none;background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:8px 12px;margin-bottom:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+                  <div style="font-size:12px;color:#166534;max-width:280px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                    <strong>Trecho grifado:</strong> "<span id="mapSelectionText" style="font-weight:700;background:#fef08a;padding:1px 4px;border-radius:3px;"></span>" (Linha <span id="mapSelectionLine"></span>)
+                  </div>
+                  <div style="display:flex;gap:6px;">
+                    <button type="button" id="btnAssignToPilar1" class="btn btn-sm" style="background:#0f766e;color:#fff;border:none;padding:4px 8px;font-size:11.5px;border-radius:4px;cursor:pointer;" title="Atribuir trecho ao Pilar 1 (Obrigação)">
+                      + 1. Obrigação
+                    </button>
+                    <button type="button" id="btnAssignToPilar2" class="btn btn-sm" style="background:#2563eb;color:#fff;border:none;padding:4px 8px;font-size:11.5px;border-radius:4px;cursor:pointer;" title="Atribuir trecho ao Pilar 2 (CNPJ/CPF)">
+                      + 2. Inscrição
+                    </button>
+                    <button type="button" id="btnAssignToPilar3" class="btn btn-sm" style="background:#d97706;color:#fff;border:none;padding:4px 8px;font-size:11.5px;border-radius:4px;cursor:pointer;" title="Atribuir trecho ao Pilar 3 (Competência)">
+                      + 3. Competência
+                    </button>
+                  </div>
+                </div>
+                <div id="mapLinesViewer" style="height:420px;overflow-y:auto;border:1px solid #cbd5e1;border-radius:6px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:12px;background:#fafafa;user-select:text;">
+                  <div style="padding:24px;text-align:center;color:#94a3b8;">Carregue um arquivo PDF para inspecionar e mapear as linhas.</div>
+                </div>
+              </div>
+
+              <!-- COLUNA DIREITA: OS 3 PILARES E MULTILINHAS -->
+              <div style="display:flex;flex-direction:column;gap:14px;">
+                <!-- PILAR 1 -->
+                <div class="card" style="padding:14px;border-left:4px solid #0f766e;margin:0;">
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                    <strong style="font-size:13px;color:#0f766e;">1. Palavra-chave ou código (Obrigação)</strong>
+                    <span id="mapPilar1Badge" class="fail-badge" style="background:#e0f2fe;color:#0369a1;border-color:#bae6fd;">Pendente</span>
+                  </div>
+                  <p style="margin:0 0 8px 0;font-size:11.5px;color:#64748b;">Identifica o tipo de documento. Selecione a linha correspondente à esquerda.</p>
+                  <div style="display:flex;gap:8px;align-items:center;">
+                    <input type="number" id="mapPilar1Linha" placeholder="Linha" style="width:70px;padding:6px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;">
+                    <input type="text" id="mapPilar1Texto" placeholder="Texto da obrigação..." style="flex:1;padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;">
+                  </div>
+                </div>
+
+                <!-- PILAR 2 -->
+                <div class="card" style="padding:14px;border-left:4px solid #2563eb;margin:0;">
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                    <strong style="font-size:13px;color:#2563eb;">2. Inscrição do Cliente (CNPJ / CPF)</strong>
+                    <span id="mapPilar2Badge" class="fail-badge" style="background:#e0f2fe;color:#0369a1;border-color:#bae6fd;">Pendente</span>
+                  </div>
+                  <p style="margin:0 0 8px 0;font-size:11.5px;color:#64748b;">Opção 1: Inscrição / CNPJ / CPF. Selecione a linha correspondente à esquerda.</p>
+                  <div style="display:grid;grid-template-columns:130px 70px 1fr;gap:8px;align-items:center;">
+                    <select id="mapPilar2Tipo" style="padding:6px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;">
+                      <option value="CPF">CPF (11 dígitos)</option>
+                      <option value="CNPJ" selected>CNPJ (14 dígitos)</option>
+                      <option value="CNPJ_BASE">CNPJ Raiz (8 dígitos)</option>
+                    </select>
+                    <input type="number" id="mapPilar2Linha" placeholder="Linha" style="width:70px;padding:6px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;">
+                    <input type="text" id="mapPilar2Valor" placeholder="CNPJ / CPF do cliente..." style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;">
+                  </div>
+                </div>
+
+                <!-- PILAR 3 -->
+                <div class="card" style="padding:14px;border-left:4px solid #d97706;margin:0;">
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                    <strong style="font-size:13px;color:#d97706;">3. Competência da Obrigação</strong>
+                    <span id="mapPilar3Badge" class="fail-badge" style="background:#e0f2fe;color:#0369a1;border-color:#bae6fd;">Pendente</span>
+                  </div>
+                  <p style="margin:0 0 8px 0;font-size:11.5px;color:#64748b;">Selecione a ordem da data (Mês e ano) e a linha correspondente.</p>
+                  <div style="display:grid;grid-template-columns:130px 70px 1fr;gap:8px;align-items:center;">
+                    <select id="mapPilar3Formato" style="padding:6px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;">
+                      <option value="mes_ano" selected>Mês e ano (Ex: 11/2025)</option>
+                      <option value="dia_mes_ano">Dia, mês e ano (Ex: 01/11/2025)</option>
+                      <option value="ano_mes">Ano e mês (Ex: 2025/11)</option>
+                      <option value="ano">Ano (Ex: 2025)</option>
+                    </select>
+                    <input type="number" id="mapPilar3Linha" placeholder="Linha" style="width:70px;padding:6px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;">
+                    <input type="text" id="mapPilar3Texto" placeholder="Competência..." style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;">
+                  </div>
+                </div>
+
+                <!-- MULTI-LINHAS CHECKBOX -->
+                <div style="background:#f1f5f9;padding:12px;border-radius:6px;font-size:12.5px;color:#334155;">
+                  <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin:0;">
+                    <input type="checkbox" id="mapMultiLinhas" checked style="width:16px;height:16px;">
+                    <strong>Buscar informações em diferentes linhas</strong>
+                  </label>
+                  <p style="margin:4px 0 0 24px;font-size:11.5px;color:#64748b;">Essa opção é ideal para arquivos de contracheque/holerite que possuem mais de um recibo ou linhas variáveis por página.</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- PAINEL DE DEPURAÇÃO AO VIVO (PASSO A PASSO G-CLICK) -->
+            <div id="mapDebuggerBox" style="display:none;margin-top:20px;background:#0f172a;border:1px solid #1e293b;border-radius:8px;padding:16px;color:#e2e8f0;">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;border-bottom:1px solid #334155;padding-bottom:8px;">
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <span style="font-size:16px;">🐛</span>
+                  <strong style="font-size:13px;color:#38bdf8;">Depurador da Automação G-Click (Passo a Passo)</strong>
+                  <span id="mapDebuggerStatusBadge" class="nav-badge" style="background:#0284c7;color:#fff;font-size:11px;">Aguardando</span>
+                </div>
+                <button type="button" id="btnClearMapDebugger" class="ghost" style="color:#94a3b8;font-size:12px;padding:2px 8px;cursor:pointer;" title="Limpar terminal de depuração">
+                  🧹 Limpar
+                </button>
+              </div>
+              <div id="mapDebuggerLogs" style="font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:11.5px;line-height:1.5;max-height:220px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;">
+                <div style="color:#64748b;">Nenhuma execução de depuração iniciada. Ao clicar em "Criar & Mapear no G-Click", os eventos do navegador serão listados aqui em tempo real.</div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <!-- ABA 3: MODELOS G-CLICK -->
+        <div id="tabValidaModelsContent" hidden>
+          <section class="card" style="padding:20px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:14px;">
+              <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:300px;">
+                <input type="text" id="validaModelSearch" placeholder="🔍 Buscar modelos por nome, palavra-chave, obrigação..." style="padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;flex:1;">
+                <select id="validaModelDeptoFilter" style="padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;">
+                  <option value="">Todos os Departamentos</option>
+                  <option value="Fiscal">Fiscal</option>
+                  <option value="Departamento Pessoal">Departamento Pessoal</option>
+                  <option value="Financeiro">Financeiro</option>
+                  <option value="Contabilidade">Contabilidade</option>
+                  <option value="Administrativo">Administrativo</option>
+                </select>
+              </div>
+              <div>
+                <button type="button" id="btnSyncValidaModels" class="btn btn-secondary btn-md" title="Sincronizar modelos ao vivo no G-Click">
+                  🔄 Sincronizar com G-Click
+                </button>
+              </div>
+            </div>
+
+            <div style="overflow-x:auto;">
+              <table id="validaModelsTable" class="app-table" style="width:100%;">
+                <thead>
+                  <tr>
+                    <th style="width:70px;">ID</th>
+                    <th>Nome do Modelo</th>
+                    <th style="width:160px;">Departamento</th>
+                    <th>Palavra-Chave / Identificador</th>
+                    <th style="width:120px;">Tipo Inscrição</th>
+                    <th style="width:110px;">Competência</th>
+                    <th>Obrigação Associada</th>
+                  </tr>
+                </thead>
+                <tbody id="validaModelsBody">
+                  <tr>
+                    <td colspan="7" style="text-align:center;padding:24px;color:#64748b;">Carregando modelos do G-Click…</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div style="margin-top:12px;font-size:12.5px;color:#64748b;" id="validaModelsCount">
+              Exibindo 0 modelos
+            </div>
+          </section>
+        </div>
+      </div>
+
       <!-- SEÇÃO 7: ADMINISTRAÇÃO & USUÁRIOS (RBAC) -->
       <div id="section-users" class="app-section" hidden>
         <div class="section-banner">
@@ -1789,6 +2382,121 @@ Atenciosamente,</textarea>
     </div>
   </div>
 
+  <!-- MODAL DE INSPEÇÃO DETALHADA DO VALIDA PDF -->
+  <div id="modalValidaPdfInspect" class="modal-overlay" hidden>
+    <div class="modal-box" style="max-width:840px;width:95%;">
+      <div class="modal-header" style="display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <h3 id="modalValidaPdfTitle" style="margin:0;font-size:16px;">Inspeção do Arquivo</h3>
+          <span id="modalValidaPdfSubtitle" class="sub-hint" style="font-size:12px;"></span>
+        </div>
+        <button type="button" id="btnCloseValidaPdfInspect" class="ghost" style="font-size:18px;cursor:pointer;">✕</button>
+      </div>
+      <div class="modal-body" style="padding:18px;max-height:75vh;overflow-y:auto;">
+        <!-- STATUS GERAL -->
+        <div id="modalValidaPdfStatusBanner" style="padding:12px 16px;border-radius:8px;margin-bottom:16px;font-size:13.5px;font-weight:500;"></div>
+
+        <!-- 4 REGRAS EM GRID 2x2 -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(340px, 1fr));gap:14px;margin-bottom:16px;">
+          <!-- Regra 1: Extração -->
+          <div class="card" style="padding:14px;background:#f8fafc;border:1px solid #e2e8f0;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+              <span id="ruleIconExtracao" style="font-size:18px;">⏳</span>
+              <strong style="font-size:13.5px;">1. Extração de Texto</strong>
+              <span id="ruleLineExtracao" class="tag-pill" style="margin-left:auto;font-size:11px;background:#f1f5f9;color:#475569;"></span>
+            </div>
+            <div id="ruleDetailExtracao" style="font-size:12.5px;color:#475569;line-height:1.5;"></div>
+          </div>
+
+          <!-- Regra 2: Cliente -->
+          <div class="card" style="padding:14px;background:#f8fafc;border:1px solid #e2e8f0;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+              <span id="ruleIconCliente" style="font-size:18px;">⏳</span>
+              <strong style="font-size:13.5px;">2. Identificação do Cliente</strong>
+              <span id="ruleLineCliente" class="tag-pill" style="margin-left:auto;font-size:11px;background:#f1f5f9;color:#475569;"></span>
+            </div>
+            <div id="ruleDetailCliente" style="font-size:12.5px;color:#475569;line-height:1.5;"></div>
+          </div>
+
+          <!-- Regra 3: Competência -->
+          <div class="card" style="padding:14px;background:#f8fafc;border:1px solid #e2e8f0;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+              <span id="ruleIconComp" style="font-size:18px;">⏳</span>
+              <strong style="font-size:13.5px;">3. Competência (Referência/Apuração)</strong>
+              <span id="ruleLineComp" class="tag-pill" style="margin-left:auto;font-size:11px;background:#f1f5f9;color:#475569;"></span>
+            </div>
+            <div id="ruleDetailComp" style="font-size:12.5px;color:#475569;line-height:1.5;"></div>
+          </div>
+
+          <!-- Regra 4: Nome do Documento -->
+          <div class="card" style="padding:14px;background:#f8fafc;border:1px solid #e2e8f0;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+              <span id="ruleIconDoc" style="font-size:18px;">⏳</span>
+              <strong style="font-size:13.5px;">4. Nome do Documento & Modelo</strong>
+              <span id="ruleLineDoc" class="tag-pill" style="margin-left:auto;font-size:11px;background:#f1f5f9;color:#475569;"></span>
+            </div>
+            <div id="ruleDetailDoc" style="font-size:12.5px;color:#475569;line-height:1.5;"></div>
+          </div>
+        </div>
+
+        <!-- DIAGNÓSTICO & CHECKLIST DE DESTRAVAMENTO (#VOCEPODE G-CLICK) -->
+        <div id="modalValidaPdfDiagnosticoWrap" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin-bottom:16px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+            <strong id="diagTitulo" style="font-size:13px;color:#1e293b;">Diagnóstico & Checklist de Destravamento</strong>
+            <span id="diagBadge" class="nav-badge badge-neutral" style="font-size:11px;"></span>
+          </div>
+          <p id="diagAcaoRecomendada" style="margin:0 0 10px 0;font-size:12.5px;color:#475569;line-height:1.5;"></p>
+          <div id="diagChecklistItems" style="display:flex;flex-direction:column;gap:6px;font-size:12px;"></div>
+        </div>
+
+        <!-- CONTROLE DO MODELO NO G-CLICK -->
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin-bottom:16px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;">
+          <div style="flex:1;min-width:240px;">
+            <label for="modalGclickModelSelect" style="display:block;font-size:12px;font-weight:600;color:#334155;margin-bottom:4px;">
+              🎯 Modelo do G-Click para Validação / Comparação:
+            </label>
+            <select id="modalGclickModelSelect" class="form-control" style="width:100%;font-size:12.5px;padding:6px 10px;border-radius:6px;border:1px solid #cbd5e1;">
+              <option value="">Detectar automaticamente ou testar na lista geral</option>
+            </select>
+          </div>
+          <div style="display:flex;align-items:flex-end;">
+            <a id="btnOpenGclickModelLink" href="https://app.gclick.com.br/configuracaoListar.do?obj=pdflayoutopen&tipo=0&empId=6019" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" style="display:inline-flex;align-items:center;gap:5px;font-size:12px;padding:6px 12px;text-decoration:none;">
+              <span>🔗</span> Abrir no G-Click
+            </a>
+          </div>
+        </div>
+
+        <!-- RETORNO DA VALIDAÇÃO OFICIAL NO G-CLICK -->
+        <div id="modalValidaPdfGclickWrap" style="background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;padding:14px;margin-bottom:16px;" hidden>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+            <strong style="font-size:13px;color:#0f766e;">Resultado Oficial do Motor G-Click</strong>
+            <span id="gclickValidaBadge" class="nav-badge badge-ready" style="font-size:11px;">G-Click</span>
+          </div>
+          <div id="gclickValidaItems" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px;font-size:12.5px;"></div>
+          <div id="gclickValidaDica" style="font-size:12px;color:#0e7490;background:#ecfeff;border-left:3px solid #06b6d4;padding:8px 10px;border-radius:4px;margin-top:6px;" hidden></div>
+          <details style="margin-top:8px;">
+            <summary style="font-size:11.5px;color:#0f766e;cursor:pointer;">Ver log retornado da tela do G-Click</summary>
+            <pre id="gclickValidaMessage" style="margin-top:6px;padding:8px;background:#134e4a;color:#ccfbf1;border-radius:4px;font-size:11px;max-height:160px;overflow:auto;white-space:pre-wrap;"></pre>
+          </details>
+        </div>
+
+        <!-- ABA DE TEXTO EXTRAÍDO -->
+        <details id="modalValidaPdfTextDetails" style="margin-top:10px;">
+          <summary style="font-size:13px;font-weight:600;color:var(--gclick-primary);cursor:pointer;padding:8px 0;">
+            🔍 Ver Texto Completo Extraído do PDF (pdftotext -layout)
+          </summary>
+          <pre id="modalValidaPdfRawText" style="margin-top:10px;padding:12px;background:#0f172a;color:#e2e8f0;border-radius:6px;font-family:var(--font-mono);font-size:11.5px;max-height:280px;overflow:auto;white-space:pre-wrap;line-height:1.4;"></pre>
+        </details>
+      </div>
+      <div class="modal-footer" style="display:flex;justify-content:space-between;align-items:center;padding:12px 18px;border-top:1px solid #e2e8f0;">
+        <button type="button" id="btnValidateOnGclick" class="btn btn-primary btn-md" style="display:flex;align-items:center;gap:6px;">
+          <span>🌐</span> Testar Validação no G-Click
+        </button>
+        <button type="button" id="btnCloseValidaPdfModalBtn" class="btn btn-secondary btn-md">Fechar</button>
+      </div>
+    </div>
+  </div>
+
   <!-- MODAL DE CONFIRMAÇÃO DE CANCELAMENTO -->
   <div id="modalConfirmCancel" class="modal-overlay" hidden>
     <div class="modal-box" style="max-width:440px">
@@ -1828,8 +2536,29 @@ Atenciosamente,</textarea>
         <div id="loginError" class="alert bad" style="margin-bottom:14px;padding:8px 12px;font-size:13px;background:#fef2f2;border:1px solid #fecaca;color:#991b1b;border-radius:6px" hidden></div>
         <button type="submit" id="btnLoginSubmit" class="btn btn-primary btn-lg btn-block">Entrar no Sistema</button>
       </form>
-      <div style="margin-top:16px;text-align:center;font-size:11px;color:#64748b">
-        Primeiro acesso? Use <code>admin@gclick.local</code> / <code>Admin@123456</code>
+  <!-- MODAL DE RELATÓRIO DE DIAGNÓSTICO -->
+  <div id="modalDiagnosticReport" class="modal-overlay" hidden>
+    <div class="modal-box" style="max-width:980px;width:95%;max-height:92vh;display:flex;flex-direction:column;">
+      <div class="modal-header" style="display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <h3 style="margin:0;font-size:17px;color:#0f766e;">📋 Relatório de Diagnóstico de Validação</h3>
+          <span style="font-size:12px;color:#64748b;">Mapeamento detalhado de falhas, localização física no disco e ações de destravamento</span>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button type="button" id="btnPrintDiagnosticReport" class="btn btn-secondary btn-sm" style="display:flex;align-items:center;gap:4px;">
+            🖨️ Imprimir / Salvar PDF
+          </button>
+          <button type="button" id="btnCloseDiagnosticReport" class="ghost">✕</button>
+        </div>
+      </div>
+      <div class="modal-body" style="padding:16px;overflow-y:auto;flex:1;">
+        <div id="diagnosticReportFrameWrap" style="width:100%;min-height:520px;background:#fff;border:1px solid #cbd5e1;border-radius:6px;overflow:hidden;">
+          <iframe id="diagnosticReportIframe" style="width:100%;height:520px;border:none;"></iframe>
+        </div>
+      </div>
+      <div class="modal-footer" style="display:flex;justify-content:space-between;align-items:center;padding:12px 18px;border-top:1px solid #e2e8f0;">
+        <span style="font-size:12px;color:#64748b;">Dica: Clique em "Imprimir / Salvar PDF" para emitir o documento oficial para a equipe.</span>
+        <button type="button" id="btnCloseDiagnosticReportBtn" class="btn btn-secondary btn-md">Fechar</button>
       </div>
     </div>
   </div>

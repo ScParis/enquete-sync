@@ -1,0 +1,401 @@
+<html><head></head><body><div class="col-sm-8">	
+	
+		<div class="alert alert-danger" align="center">arquivo vazio</div>
+	
+</div>
+<div class="col-sm-4" id="viewcampos">
+	
+	<div class="row">
+		<div class="col-sm-12 tabs-container">
+			<ul class="nav nav-tabs">
+				<li class="active white-bg"><a data-toggle="tab" href="#tab1"> 1. Palavra-chave ou código para identificar a Obrigação</a></li>
+			</ul>			
+			<div class="tab-content white-bg">				
+				<div id="tab1" class="tab-pane active">					
+					<div class="panel-body">
+						<div class="alert alert-info"><i class="fa fa-info-circle"></i>&nbsp;&nbsp;É possível selecionar vários textos em diferentes linhas.</div>						
+						<input type="hidden" id="n1" value="Obrigatório">
+						<div class="input-group">
+							<span class="input-group-btn" onclick="salvaSelecao('1')">
+							<button class="btn btn-info"><i class="fa fa-angle-double-right"></i></button>
+							</span>
+							<input id="t1" type="text" title="Selecione um texto a esquerda e clique no botão para salvar." placeholder="Selecione um texto a esquerda e clique para salvar" class="form-control" value="" disabled="disabled">
+						</div>
+						
+							<table class="table table-bordered" style="background-color: white">
+							<tbody><tr><td width="5%"><i class="fa fa-circle" style="color:#ADFF2F"></i></td><td>Obrigatório - Texto - linha 16 <span style="color:white">posInicial[0]</span><div><br><span style="font-size: medium;">GFD - Guia do FGTS Digital</span></div></td><td width="5%"><i class="fa fa-trash" style="color:red;cursor: pointer;" onclick="removerConfiguracaoPDFCampo('2206','1','16','GFD - Guia do FGTS Digital','#ADFF2F','pdfcampo')"></i></td></tr>
+							</tbody></table>						
+						
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>	
+	
+	<div class="row">&nbsp;</div>
+	<div class="row">
+	<div class="col-sm-12 tabs-container">
+		<ul class="nav nav-tabs">
+			<li class="active white-bg"><a data-toggle="tab" href="#tab2">  2. Inscrição ou campo adicional para identificar o cliente:</a></li>
+		</ul>
+		<div class="tab-content white-bg">
+			<div id="tab2" class="tab-pane active">
+				<div class="panel-body">
+					
+					<div class="row">
+						<div class="col-sm-12">			
+							
+								
+									<label class="control-label">Opção 1. Selecione o tipo da inscrição</label>
+									<table class="table table-bordered" style="background-color: white">
+									<tbody><tr><td width="5%"><i class="fa fa-circle" style="color:#FFD700"></i></td><td>Inscrição - CNPJ RAIZ - linha 2 <span style="color:white">posInicial[0]</span><div><br><span style="font-size: medium;">05.254.372</span></div></td><td width="5%"><i class="fa fa-trash" style="color:red;cursor: pointer;" onclick="removerConfiguracaoPDFCampo('2205','24','2','05.254.372','#FFD700','pdfcampo')"></i></td></tr>
+									</tbody></table>			
+								
+							
+						</div>
+					</div>	
+					
+					
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+	
+	
+	<div class="row">&nbsp;</div>
+	<div class="row">
+		<div class="col-sm-12 tabs-container">
+			<ul class="nav nav-tabs">
+				<li class="active white-bg"><a data-toggle="tab" href="#tab3"> 3. Competência da obrigação</a></li>
+			</ul>
+			<div class="tab-content white-bg">
+				<div id="tab3" class="tab-pane active">
+					<div class="panel-body">
+						<div class="alert alert-info"><i class="fa fa-info-circle"></i>&nbsp;&nbsp;Selecione a ordem correta da data conforme o arquivo.<br>Exemplo: 01/2025 = Mês e ano.</div>
+						
+							
+								<table class="table table-bordered" style="background-color: white">
+								<tbody><tr><td width="5%"><i class="fa fa-circle" style="color:#87CEEB"></i></td><td>Competência - Mês/Ano - linha 10 <span style="color:white">posInicial[9]</span><div><br><span style="font-size: medium;">07/2024</span></div></td><td width="5%"><i class="fa fa-trash" style="color:red;cursor: pointer;" onclick="removerConfiguracaoPDFCampo('2207','316','10','07/2024','#87CEEB','pdfcampo')"></i></td></tr>
+								</tbody></table>
+							
+						
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+	
+	
+	<div class="row">
+		<div class="col-sm-12">
+			<br><p><input type="checkbox" id="fdadofixolinha" onclick="procurarCamposPorTodoArquivo();" checked="checked"> <b>Buscar informações em diferentes linhas.</b></p> 
+			<div class="alert alert-info"><i class="fa fa-info-circle"></i>&nbsp;&nbsp;Essa opção é ideal para arquivos de contracheque/holerite.<b> <a href="https://ajuda.gclick.com.br/pt-BR/articles/5195687-anexo-com-validacao-de-arquivos-via-pdf-layout#h_d603890b5a" target="_blank">Saiba +</a></b></div>
+		</div>
+	</div>
+	<div class="row">&nbsp;</div>
+	<div class="row">
+		<div class="col-sm-6">
+			<button class="btn btn-default" style="width: 100%" data-toggle="modal" data-target="#dialogovalidar" onclick="abrirValidacao();" title="Testar arquivo com o modelo definido"><i class="fa fa-paperclip"></i> Testar campos</button>
+		</div>
+		<div class="col-sm-6">
+			<button type="button" style="width: 100%" class="btn btn-info" data-toggle="modal" data-target="#dialogopdflayoutvalidacao" onclick="$('#pdflayoutconflito').val('false');buscarPdfLayoutModelos('pdflmodelo')"><i class="fa fa-check-square-o"></i> Salvar e continuar</button>
+		</div>		
+	</div>
+	<div class="row">
+		<div class="col-sm-12" id="viewpdflayoutmodeloresultado">
+			<br><div class="alert alert-success" align="center"><i class="fa fa-check-circle"></i> Campos salvos com sucesso! Vá ao próximo passo para concluir as configurações.</div>
+		</div>
+		<div class="col-sm-12" id="viewpdflayoutmodeloresultadoerro" style="display: none;">
+			<br><div class="alert alert-danger" align="center"><i class="fa fa-times-circle"></i> Ainda falta salvar os campos para que possa continuar!</div>
+		</div>
+	</div>
+	<input type="hidden" id="bcampos" value="1">
+	
+</div>
+
+<script>
+	if(!window.Texto){
+		Texto = {};
+	}
+
+	Texto.Selector = {};
+	Texto.Selector.getSelected = function(){
+		var t = '';
+		if(window.getSelection){
+			t = window.getSelection();
+		}else if(document.getSelection){
+			t = document.getSelection();
+		}else if(document.selection){
+			t = document.selection.createRange().text;
+		}
+		return t;
+	}
+
+	Texto.Selector.mouseup = function(){
+		var st = Texto.Selector.getSelected();
+		if(st!=''){
+			$('#selecionado').val(st);
+		}
+	}
+
+	$(document).ready(function(){
+		$(document).bind("mouseup", Texto.Selector.mouseup);
+	}); 
+	
+	function line(e){
+		$('#linha').val(e.id);
+		$('#linhaselecionada').val($('#'+e.id).html().replace('&amp;','&').replace('&nbsp;',' '));
+	}	
+	
+	function salvaSelecao(num){
+		var selecionado = $('#selecionado').val();
+		$('#t'+num).val(selecionado);
+		var linha = $('#linha').val();
+		if(linha != '' && linha != 'undefined'){
+			//var texto = $('#'+linha);
+			//texto.html((texto.html()).replace(selecionado,'<span style="background-color:'+cor(num)+'">'+selecionado+'</span>'));
+			salvarConfiguracaoPDFCampo(num);	
+		} else {
+			toastr.error('', ' Seleção incorreta! Por favor, selecionar o texto desejado novamente.');
+		}
+	}
+	function salvarConfiguracaoPDFCampo(num){
+		var ok = true;
+		var selecionado = $('#selecionado').val();
+		var linha = $('#linha').val();
+		var nome = $('#n'+num).val();
+		var pos = posicao(num,linha,selecionado);
+		if(pos == -1){
+			ok = false;
+		}
+		if(ok){
+			var texto = $('#'+linha);
+			if(selecionado.length == 1){
+				texto.html(selecionadoTexto(texto.html()));
+			} else {
+				texto.html((texto.html()).replace(selecionado,'<span style="background-color:'+cor(num)+'">'+selecionado+'</span>'));
+			}
+			$('msg').val('Campo salvo com sucesso!');
+			var url = 'configuracaoSalvar.do?obj=pdfcampo';
+			url = url + '&layout=' + $('#id').val();
+			if(num == 4){
+				url = url + '&nome='+acento($('#f'+num+' option:selected').text());
+			} else {
+				url = url + '&nome='+acento(nome);	
+			}
+			url = url + '&exemplo=' + acento(selecionado);
+			if(num == 3 || num == 2){
+				url = url + '&tipo=' + $('#f'+num+' option:selected').val();
+			} else {
+				url = url + '&tipo='+num;				
+			}
+			url = url + '&linha=' + linha;
+			url = url + '&posinicial=' + pos;
+			url = url + '&empId=' + $('#empId').val();
+			$.get(url, viewcampos);	
+		}
+	}
+	function selecionadoTexto(input) {
+	    let lastVisibleIndex = -1;
+	    let insideTag = false;
+
+	    for (let i = 0; i < input.length; i++) {
+	        const c = input[i];
+
+	        if (c === '<') {
+	            insideTag = true;
+	        } else if (c === '>') {
+	            insideTag = false;
+	        } else if (!insideTag && c.trim() !== '') {
+	            // guarda o último caractere visível (ignora espaços)
+	            lastVisibleIndex = i;
+	        }
+	    }
+
+	    // faz a substituição
+	    if (lastVisibleIndex !== -1) {
+	        return input.substring(0, lastVisibleIndex)
+	            + '<span style="background-color:#ADFF2F">'
+	            + input[lastVisibleIndex]
+	            + '</span>'
+	            + input.substring(lastVisibleIndex + 1);
+	    }
+
+	    return input;
+	}
+	function viewcampos(data, status) {
+		if (status == 'success') {
+			if (erro(data)){
+				$('#viewcampos').html(data);
+				limpaValue('t1');
+				limpaValue('t2');
+				limpaValue('t4');
+				//limpaValue('t5');
+				//limpaValue('n5');
+				limpaValue('selecionado');
+				limpaValue('linhaselecionada');
+				limpaValue('linha');
+				var bcampos = document.getElementById('bcampos');
+				if(bcampos && bcampos.value == '1'){
+					$('#pdflayoutconflito').val('false');
+					buscarPdfLayoutModelos('pdflmodelo');
+					$('#dialogopdflayoutvalidacao').modal();
+				}
+			}
+		}
+	}
+	function salvarConfiguracaoPDFCampoOpcao(num,pos,i){
+		var ok = true;
+		var selecionado = $('#selecionado').val();
+		var linha = $('#linha').val();
+		var nome = $('#n'+num).val();		
+		if(pos == -1){
+			ok = false;
+		}
+		if(ok){
+			var j = 0;
+			var linhaselecionada = $('#linhaselecionada');
+			var posicao = linhaselecionada.val().indexOf(selecionado);
+			while(posicao != -1){
+				if(j == i){
+					var nova = (linhaselecionada.val()).replace(selecionado,'<span style="background-color:'+cor(num)+'">'+selecionado+'</span>');
+					$('#'+linha).html(nova);
+					break;
+				} else {
+					linhaselecionada.val(linhaselecionada.val().replace(selecionado,gerabloco(selecionado)));
+				}
+				j = j+1;
+				posicao = linhaselecionada.val().indexOf(selecionado);
+			}			
+			$('#'+linha).html(replaceAll2($('#'+linha).html(),gerabloco(selecionado),selecionado));
+			//$('#'+linha).html(($('#'+linha).html()).replace(gerabloco(selecionado),selecionado));
+			$('msg').val('Campo salvo com sucesso!');
+			var url = 'configuracaoSalvar.do?obj=pdfcampo';
+			url = url + '&layout=' + $('#id').val();
+			if(num == 4){
+				url = url + '&nome='+acento($('#f'+num+' option:selected').text());
+			} else {
+				url = url + '&nome='+acento(nome);	
+			}
+			url = url + '&exemplo=' + acento(selecionado);
+			if(num == 3 || num == 2){
+				url = url + '&tipo=' + $('#f'+num+' option:selected').val();
+			} else {
+				url = url + '&tipo='+num;				
+			}
+			url = url + '&linha=' + linha;
+			url = url + '&posinicial=' + pos;
+			url = url + '&empId=' + $('#empId').val();
+			$.get(url, viewcampos);	
+		}
+	}
+	function replaceAll2(aux, token, newtoken) {
+	    return aux.replaceAll(token, newtoken);
+	}
+	function gerabloco(nome){
+		var aux = '';
+		for (let i = 0; i < nome.length; i++) {
+		  aux =  aux + '|';
+		}
+		return aux;
+	}
+	function removerConfiguracaoPDFCampo(id,tipo,linha,exemplo,cor,obj){
+		var texto = $('#l'+linha);
+		texto.html((texto.html()).replace('<span style="background-color:'+cor+'">'+exemplo+'</span>',exemplo));
+		$('msg').val('Campo removido com sucesso!');
+		var url = 'configuracaoRemover.do?obj='+obj;
+		url = url + '&id=' + id;
+		url = url + '&tipo=' + tipo;
+		url = url + '&layout=' + $('#id').val();
+		url = url + '&empId=' + $('#empId').val();
+		$.get(url, viewcampos);
+	}
+	function posicao(num){
+		var l = $('#linhaselecionada');		
+		l.val(replaceAll(l.val(),'&amp;','&'));
+		l.val(replaceAll(l.val(),'&nbsp;',' '));
+		l.val(replaceAll(l.val(),'&gt;','>'));
+		l.val(replaceAll(l.val(),'&lt;','<'));
+		l.val(l.val().replace('<span style="color: #F5F5F5">.</span>',''));
+		if(l.val().indexOf('<span style="background-color:#FFD700">') != -1){
+			l.val(l.val().replace('<span style="background-color:#FFD700">',''));
+			l.val(l.val().replace('</span>',''));
+		}
+		if(l.val().indexOf('<span style="background-color:#87CEEB">') != -1){
+			l.val(l.val().replace('<span style="background-color:#87CEEB">',''));
+			l.val(l.val().replace('</span>',''));
+		}
+		if(l.val().indexOf('<span style="background-color:#ADFF2F">') != -1){
+			l.val(replaceAll(l.val(),'<span style="background-color:#ADFF2F">',''));
+			l.val(replaceAll(l.val(),'</span>',''));
+		}
+		if(l.val().indexOf('<span style="background-color:#D2B48C">') != -1){
+			l.val(l.val().replace('<span style="background-color:#D2B48C">',''));
+			l.val(l.val().replace('</span>',''));
+		}
+		//var pos = l.val().indexOf(selecao);			
+		//if(pos < 0){
+		//	return 0;
+		//} 
+		//return pos;
+		
+		
+		// VERIFICA se se encontra mais de uma vez na linha
+		// selecao: 01/2023
+		// linha: Emissão: 02/01/2023 Referência: 12/2022 Vencimento: 15/01/2023
+		$('#selecionado').val(replaceAll($('#selecionado').val(),' ',' '));// parece ser um espaço mas é um carater de espaço especial
+		$('#selecionado').val(replaceAll($('#selecionado').val(),'&nbsp;',' '));
+		$('#selecionado').val(replaceAll($('#selecionado').val(),'&gt;','>'));
+		$('#selecionado').val(replaceAll($('#selecionado').val(),'&lt;','<'));
+		var selecionado = $('#selecionado').val();
+		var opcoes = [];
+		var aaa = selecionado.split(' ');
+		var pos = l.val().indexOf(selecionado);
+		if(pos >=0){			
+			while(pos != -1){
+				opcoes.push(pos);
+				pos = l.val().indexOf(selecionado,pos+selecionado.length);
+			}
+			if(opcoes.length > 1){			
+				var i = 0;
+				var aux = ''+l.val();			
+				//while (aux.indexOf(selecionado) != -1) {
+				//	aux = aux.replace(selecionado,'<button class="btn btn-warning btn-sm" onclick="salvarConfiguracaoPDFCampoOpcao('+num+','+opcoes[i]+','+i+');">opçao '+(i+1)+'</button>');
+				//	i = i+1;
+				//}
+				let partes = aux.split(selecionado);
+				let resultado = '';
+				for (let idx = 0; idx < partes.length - 1; idx++) {
+				    resultado += partes[idx];
+				    resultado += '<button class="btn btn-warning btn-sm" onclick="salvarConfiguracaoPDFCampoOpcao(' 
+				        + num + ',' + opcoes[idx] + ',' + idx + ');">opçao ' + (idx + 1) + '</button>';
+				}
+				// adiciona o resto final
+				resultado += partes[partes.length - 1];				
+				aux = resultado;
+				$('#'+$('#linha').val()).html(aux);
+				return -1;
+			}
+			return opcoes[0];	
+		}
+		toastr.warning('', ' Ops, encontramos um problema no texto selecionado, parece ter um caractere especial escondido, tente novamente selecionando uma palavra, somente.');
+		return -1; 
+	}
+	function cor(num){
+		if(num == 1){ // OBRIGATORIO
+			return '#ADFF2F';
+		}
+		if(num == 2){ // INSCRICAO
+			return '#FFD700';
+		}
+		if(num == 3){ // COMPETENCIA
+			return '#87CEEB';
+		}
+		if(num == 4){ // CAMPO ADICIONAL
+			return '#D2B48C';	
+		}
+		return '#FA8072';
+	}
+</script>	
+</body></html>
