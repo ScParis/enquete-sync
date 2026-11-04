@@ -48,6 +48,10 @@
         <span class="cmd-text">Buscar</span>
         <kbd class="cmd-kbd">Ctrl K</kbd>
       </button>
+      <button type="button" id="btnTopHelp" class="topbar-cmd-btn" title="Central de Ajuda & Tutoriais para Usuários" style="border-color:#14b8a6;color:#ccfbf1;">
+        <span style="font-size:14px;">❓</span>
+        <span class="cmd-text">Ajuda & Tutoriais</span>
+      </button>
       <button type="button" class="account-chip" id="topAccountPill" data-state="idle" title="Abrir Conexão G-Click">
         <span class="account-avatar" aria-hidden="true">
           <img id="topAccountFoto" alt="" hidden>
@@ -73,132 +77,62 @@
       </div>
 
       <nav class="sidebar-nav" id="sidebarNav">
-        <button type="button" class="nav-btn nav-overview active" data-section="all" id="navAll" title="Dashboard Geral do escritório">
-          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></span>
-          <span class="nav-text">Dashboard Geral</span>
-        </button>
-
-        <!-- PREPARAÇÃO: pré-requisitos de todos os módulos -->
+        <!-- MÓDULOS DE OPERAÇÃO -->
         <div class="nav-group">
-          <div class="nav-group-title"><span class="nav-group-label">Preparação</span></div>
+          <div class="nav-group-title"><span class="nav-group-label">Módulos</span></div>
+          <div class="nav-group-items">
+            <button type="button" class="nav-btn nav-sub-item active" data-section="enquete" id="navEnquete" title="Enquete G-Click: Planilha, Mapeamento, Conferência e Gravação">
+              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></span>
+              <span class="nav-text">Enquete G-Click</span>
+              <span class="nav-badge" id="navBadgeEnquete"></span>
+            </button>
+            <button type="button" class="nav-btn nav-sub-item" data-section="obrigacoes" id="navObrigacoes" title="Obrigações, Paridade WhatsApp e E-mail">
+              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></span>
+              <span class="nav-text">Obrigações & Canais</span>
+              <span class="nav-badge" id="navBadgeObrigacoes"></span>
+            </button>
+            <button type="button" class="nav-btn nav-sub-item" data-section="carteira" id="navCarteira" title="Conferência e vínculo de empresas aos responsáveis no G-Click">
+              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/></svg></span>
+              <span class="nav-text">Carteira de Clientes</span>
+              <span class="nav-badge" id="navBadgeCarteira"></span>
+            </button>
+            <button type="button" class="nav-btn nav-sub-item" data-section="valida-pdf" id="navValidaPdf" title="Validação, Conciliação e Modelos de Layout PDF">
+              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span>
+              <span class="nav-text">Validador de PDF</span>
+              <span class="nav-badge" id="navBadgeValidaPdf"></span>
+            </button>
+          </div>
+        </div>
+
+        <!-- CONFIGURAÇÃO & GOVERNANÇA -->
+        <div class="nav-group">
+          <div class="nav-group-title"><span class="nav-group-label">Configuração</span></div>
           <div class="nav-group-items">
             <button type="button" class="nav-btn nav-sub-item" data-section="connection" id="navConnection" title="Conexão com a conta do escritório no G-Click">
               <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2v6M15 2v6M6 8h12v4a6 6 0 0 1-12 0zM12 18v4"/></svg></span>
               <span class="nav-text">Conexão G-Click</span>
               <span class="nav-badge" id="navBadgeConnection"></span>
             </button>
-            <button type="button" class="nav-btn nav-sub-item" data-section="source" id="navSource" title="Planilhas de cada uso (Enquete e Carteira) com DE/PARA de colunas">
-              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/></svg></span>
-              <span class="nav-text">Planilhas</span>
-              <span class="nav-badge" id="navBadgeSource"></span>
+            <button type="button" class="nav-btn nav-sub-item" data-section="help" id="navHelp" title="Central de Ajuda, Guias Passo a Passo e Tutoriais">
+              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3M12 17h.01"/></svg></span>
+              <span class="nav-text">Central de Ajuda</span>
+              <span class="nav-badge" id="navBadgeHelp" style="background:#ccfbf1;color:#0f766e;font-weight:700;">Novo</span>
             </button>
-          </div>
-        </div>
-
-        <!-- ENQUETE G-CLICK -->
-        <div class="nav-group nav-submodule" id="submoduleEnquete">
-          <div class="nav-group-title nav-submodule-header" id="headerSubmoduleEnquete" role="button" tabindex="0" title="Mostrar ou esconder Enquete G-Click">
-            <span class="nav-group-label">Enquete G-Click</span>
-            <span class="nav-submodule-chevron" aria-hidden="true">▾</span>
-          </div>
-          <div class="nav-group-items nav-submodule-content" id="contentSubmoduleEnquete">
-            <button type="button" class="nav-btn nav-sub-item" data-section="catalog" id="navCatalog" title="Perguntas e respostas da Enquete do escritório">
-              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5zM4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/></svg></span>
-              <span class="nav-text">Catálogo de Perguntas</span>
-              <span class="nav-badge" id="navBadgeCatalog"></span>
-            </button>
-            <button type="button" class="nav-btn nav-sub-item" data-section="mapping" id="navMapping" title="Associação das tarefas da planilha às respostas da Enquete">
-              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg></span>
-              <span class="nav-text">Mapeamento de Tarefas</span>
-              <span class="nav-badge" id="navBadgeMapping"></span>
-            </button>
-            <button type="button" class="nav-btn nav-sub-item" data-section="audit" id="navAudit" title="Conferência ao vivo na Enquete">
-              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg></span>
-              <span class="nav-text">Conferência</span>
-              <span class="nav-badge" id="navBadgeAudit"></span>
-            </button>
-            <button type="button" class="nav-btn nav-sub-item" data-section="apply" id="navApply" title="Gravação das respostas na Enquete">
-              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m9 11 3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></span>
-              <span class="nav-text">Gravação no G-Click</span>
-              <span class="nav-badge" id="navBadgeApply"></span>
-            </button>
-            <button type="button" class="nav-btn nav-sub-item" data-section="writer" id="navWriter" title="Devolve à planilha o que foi gravado">
-              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16M3 12a9 9 0 0 1 15.5-6.2L21 8M21 3v5h-5M3 21v-5h5"/></svg></span>
-              <span class="nav-text">Sincronização com Sheets</span>
-              <span class="nav-badge" id="navBadgeWriter"></span>
-            </button>
-            <button type="button" class="nav-btn nav-sub-item" data-section="enquete-cadastro" id="navEnqueteCadastro" title="Conferência inteligente e cadastro de respostas faltantes">
-              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></span>
-              <span class="nav-text">Cadastro de Respostas</span>
-              <span class="nav-badge" id="navBadgeEnqueteCadastro"></span>
-            </button>
-          </div>
-        </div>
-
-        <!-- OBRIGAÇÕES & CANAIS -->
-        <div class="nav-group nav-submodule" id="submoduleObrigacoes">
-          <div class="nav-group-title nav-submodule-header" id="headerSubmoduleObrigacoes" role="button" tabindex="0" title="Mostrar ou esconder Obrigações & Canais">
-            <span class="nav-group-label">Obrigações & Canais</span>
-            <span class="nav-submodule-chevron" aria-hidden="true">▾</span>
-          </div>
-          <div class="nav-group-items nav-submodule-content" id="contentSubmoduleObrigacoes">
-            <button type="button" class="nav-btn nav-sub-item" data-section="obrigacoes" id="navObrigacoes" title="Obrigações, WhatsApp e e-mail">
-              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></span>
-              <span class="nav-text">Catálogo & Paridade</span>
-              <span class="nav-badge" id="navBadgeObrigacoes"></span>
-            </button>
-            <button type="button" class="nav-btn nav-sub-item" data-action="obrig-batch" id="navObrigBatch" title="Atalho: configuração em massa de e-mail e WhatsApp">
-              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m12 2 10 5-10 5L2 7z"/><path d="m2 17 10 5 10-5M2 12l10 5 10-5"/></svg></span>
-              <span class="nav-text">Configuração em Massa</span>
-            </button>
-            <button type="button" class="nav-btn nav-sub-item" data-action="obrig-templates" id="navObrigTemplates" title="Atalho: modelos de mensagem">
-              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
-              <span class="nav-text">Modelos de Mensagem</span>
-            </button>
-          </div>
-        </div>
-
-        <!-- CARTEIRA DE CLIENTES -->
-        <div class="nav-group" id="submoduleCarteira">
-          <div class="nav-group-title"><span class="nav-group-label">Carteira de Clientes</span></div>
-          <div class="nav-group-items">
-            <button type="button" class="nav-btn nav-sub-item" data-section="carteira" id="navCarteira" title="Conferência e vínculo de empresas aos responsáveis no G-Click">
-              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/></svg></span>
-              <span class="nav-text">Carteira por Usuário</span>
-              <span class="nav-badge" id="navBadgeCarteira"></span>
-            </button>
-          </div>
-        </div>
-
-        <!-- VALIDAÇÃO DE PDF (G-CLICK PDF LAYOUT) -->
-        <div class="nav-group nav-submodule" id="submoduleValidaPdf">
-          <div class="nav-group-title nav-submodule-header" id="headerSubmoduleValidaPdf" role="button" tabindex="0" title="Mostrar ou esconder Valida PDF">
-            <span class="nav-group-label">Valida PDF</span>
-            <span class="nav-submodule-chevron" aria-hidden="true">▾</span>
-          </div>
-          <div class="nav-group-items nav-submodule-content" id="contentSubmoduleValidaPdf">
-            <button type="button" class="nav-btn nav-sub-item" data-section="valida-pdf" id="navValidaPdf" title="Validação de documentos PDF contra regras e modelos G-Click">
-              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span>
-              <span class="nav-text">Validador de Arquivos</span>
-              <span class="nav-badge" id="navBadgeValidaPdf"></span>
-            </button>
-            <button type="button" class="nav-btn nav-sub-item" data-action="valida-pdf-models" id="navValidaPdfModels" title="Modelos de PDF cadastrados no G-Click">
-              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5zM4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/><path d="M9 10h6M9 14h6"/></svg></span>
-              <span class="nav-text">Modelos G-Click</span>
-              <span class="nav-badge" id="navBadgeValidaPdfModels">184</span>
-            </button>
-          </div>
-        </div>
-
-        <!-- GOVERNANÇA -->
-        <div class="nav-group" id="navModuleAdmin" hidden>
-          <div class="nav-group-title"><span class="nav-group-label">Governança</span></div>
-          <div class="nav-group-items">
             <button type="button" class="nav-btn nav-sub-item" data-section="users" id="navUsers" title="Usuários do painel e permissões por conta">
               <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span>
               <span class="nav-text">Usuários & Permissões</span>
             </button>
           </div>
+        </div>
+
+        <div id="submoduleValidaPdf" hidden style="display:none;" aria-hidden="true"></div>
+        <div class="legacy-compat-elements" hidden style="display:none;" aria-hidden="true">
+          <span id="navBadgeSource"></span>
+          <span id="navBadgeMapping"></span>
+          <span id="navBadgeAudit"></span>
+          <span id="navBadgeApply"></span>
+          <span id="navBadgeWriter"></span>
+          <button id="navEnqueteCadastro" type="button"></button>
         </div>
       </nav>
 
@@ -236,48 +170,7 @@
         </div>
       </div>
 
-      <!-- WORKBENCH PIPELINE STEPPER INTERATIVO -->
-      <nav class="workbench-pipeline" id="enquetePipeline" aria-label="Fluxo da Enquete">
-        <button type="button" class="pipeline-step active" data-step="connection" id="stepConnection">
-          <span class="step-num">1</span>
-          <div class="step-meta">
-            <strong>Conexão G-Click</strong>
-            <span id="stepMetaConnection">Aguardando login</span>
-          </div>
-        </button>
-        <span class="pipeline-arrow">➔</span>
-        <button type="button" class="pipeline-step" data-step="source" id="stepSource">
-          <span class="step-num">2</span>
-          <div class="step-meta">
-            <strong>Planilha</strong>
-            <span id="stepMetaSource">Selecionar dados</span>
-          </div>
-        </button>
-        <span class="pipeline-arrow">➔</span>
-        <button type="button" class="pipeline-step" data-step="mapping" id="stepMapping">
-          <span class="step-num">3</span>
-          <div class="step-meta">
-            <strong>Mapeamento de Tarefas</strong>
-            <span id="stepMetaMapping">Definir regras</span>
-          </div>
-        </button>
-        <span class="pipeline-arrow">➔</span>
-        <button type="button" class="pipeline-step" data-step="audit" id="stepAudit">
-          <span class="step-num">4</span>
-          <div class="step-meta">
-            <strong>Conferência</strong>
-            <span id="stepMetaAudit">Auditar divergências</span>
-          </div>
-        </button>
-        <span class="pipeline-arrow">➔</span>
-        <button type="button" class="pipeline-step" data-step="apply" id="stepApply">
-          <span class="step-num">5</span>
-          <div class="step-meta">
-            <strong>Gravação no G-Click</strong>
-            <span id="stepMetaApply">Executar robô</span>
-          </div>
-        </button>
-      </nav>
+
 
 
       <!-- SEÇÃO 1: CONEXÃO & CONTA G-CLICK -->
@@ -342,19 +235,38 @@
         </section>
       </div>
 
-      <!-- SEÇÃO 2: FONTE (IMPORTAÇÃO) -->
-      <div id="section-source" class="app-section">
+      <!-- WORKSPACE UNIFICADO: ENQUETE G-CLICK -->
+      <div id="section-enquete" class="app-section">
         <div class="section-banner">
           <div class="section-title-wrap">
-            <span class="step">02</span>
+            <span class="step">📝</span>
             <div>
-              <h2>Planilhas</h2>
-              <p>Traga a planilha de cada uso do escritório. O DE/PARA de colunas de cada planilha fica salvo e é aplicado nas próximas leituras.</p>
+              <h2>Enquete G-Click</h2>
+              <p>Workspace integrado: importe sua planilha, mapeie tarefas, audite divergências ao vivo e grave respostas no G-Click.</p>
             </div>
           </div>
         </div>
 
-        <section class="card">
+        <!-- ABAS DE NAVEGAÇÃO INTERNA DO WORKSPACE ENQUETE -->
+        <div class="module-tabs" id="enqueteTabs" role="tablist" aria-label="Etapas da Enquete">
+          <button type="button" class="module-tab-btn active" data-enquete-tab="dados-mapeamento" id="tabEnqueteDados">
+            <span class="tab-icon">🚀</span>
+            <span>Operação da Enquete (Planilha, Mapeamento &amp; Gravação)</span>
+          </button>
+          <button type="button" class="module-tab-btn" data-enquete-tab="cadastro-respostas" id="tabEnqueteCadastro">
+            <span class="tab-icon">✍️</span>
+            <span>Cadastro de Respostas (Particularidades)</span>
+          </button>
+          <button type="button" class="module-tab-btn" data-enquete-tab="sincronizacao-sheets" id="tabEnqueteSheets">
+            <span class="tab-icon">🔄</span>
+            <span>Sincronização Sheets</span>
+          </button>
+        </div>
+
+        <!-- SUB-ABA 1: DADOS & MAPEAMENTO (FONTE + CATÁLOGO + MAPEAMENTO DE TAREFAS) -->
+        <div id="enqueteTabPaneDados" class="enquete-tab-pane">
+
+        <section class="card" id="section-source">
           <div class="source-use">
             <span class="field-label">Para que serve esta planilha?</span>
             <div class="segmented">
@@ -474,63 +386,43 @@
             </div>
           </section>
         </section>
-      </div>
 
-      <!-- SEÇÃO 4: MAPEAMENTO DAS PERGUNTAS E RESPOSTAS DA ENQUETE -->
-      <div id="section-catalog" class="app-section">
-        <div class="section-banner">
-          <div class="section-title-wrap">
-            <span class="step">📑</span>
-            <div>
-              <h2>Catálogo de Perguntas</h2>
-              <p>Consulte e explore o catálogo de perguntas e respostas cadastradas no G-Click para a conta selecionada.</p>
+        <!-- SEÇÃO: MAPEAMENTO DAS PERGUNTAS E RESPOSTAS DA ENQUETE (INTEGRADO) -->
+        <div id="section-catalog" class="enquete-subcard-wrap" style="margin-top:16px;">
+          <section class="card">
+            <!-- CABEÇALHO COM BOTÃO DE BUSCA MANUAL SOB-DEMANDA -->
+            <div class="card-action-header">
+              <div>
+                <h3 style="margin:0 0 4px">Catálogo de Perguntas e Respostas da Conta</h3>
+                <p class="sub-hint" style="margin:0">Catálogo capturado diretamente da Enquete do escritório.</p>
+              </div>
+              <button id="refreshCatalogManual" type="button" class="btn btn-primary btn-md btn-demand">
+                <span class="btn-icon">🔄</span> Buscar Perguntas e Respostas (Sob Demanda)
+              </button>
             </div>
-          </div>
+
+            <!-- EMPTY STATE SE NÃO TIVER CATÁLOGO -->
+            <div id="catalogEmptyState" class="empty-state-box">
+              <span class="empty-icon">📋</span>
+              <h4>Nenhum catálogo carregado no momento</h4>
+              <p>Conecte a conta do escritório ou clique no botão acima para realizar a busca manual sob-demanda das perguntas e respostas da Enquete.</p>
+            </div>
+
+            <!-- PAINEL COM LISTA E FILTRO -->
+            <div id="catalogOverview" class="catalog-overview" hidden>
+              <div class="catalog-overview-header">
+                <strong id="catalogOverviewStatus"></strong>
+              </div>
+              <div class="catalog-search-wrap">
+                <input id="catalogOverviewSearch" type="search" placeholder="🔍 Filtrar por pergunta, resposta ou categoria…">
+              </div>
+              <div id="catalogOverviewList" class="catalog-overview-list"></div>
+            </div>
+          </section>
         </div>
 
-        <section class="card">
-          <!-- CABEÇALHO COM BOTÃO DE BUSCA MANUAL SOB-DEMANDA -->
-          <div class="card-action-header">
-            <div>
-              <h3 style="margin:0 0 4px">Perguntas e Respostas da Conta</h3>
-              <p class="sub-hint" style="margin:0">Catálogo capturado diretamente da Enquete do escritório.</p>
-            </div>
-            <button id="refreshCatalogManual" type="button" class="btn btn-primary btn-md btn-demand">
-              <span class="btn-icon">🔄</span> Buscar Perguntas e Respostas (Sob Demanda)
-            </button>
-          </div>
-
-          <!-- EMPTY STATE SE NÃO TIVER CATÁLOGO -->
-          <div id="catalogEmptyState" class="empty-state-box">
-            <span class="empty-icon">📋</span>
-            <h4>Nenhum catálogo carregado no momento</h4>
-            <p>Conecte a conta do escritório ou clique no botão acima para realizar a busca manual sob-demanda das perguntas e respostas da Enquete.</p>
-          </div>
-
-          <!-- PAINEL COM LISTA E FILTRO -->
-          <div id="catalogOverview" class="catalog-overview" hidden>
-            <div class="catalog-overview-header">
-              <strong id="catalogOverviewStatus"></strong>
-            </div>
-            <div class="catalog-search-wrap">
-              <input id="catalogOverviewSearch" type="search" placeholder="🔍 Filtrar por pergunta, resposta ou categoria…">
-            </div>
-            <div id="catalogOverviewList" class="catalog-overview-list"></div>
-          </div>
-        </section>
-      </div>
-
-      <!-- SEÇÃO 5: TAREFAS E MAPEAMENTO DA ENQUETE -->
-      <div id="section-mapping" class="app-section">
-        <div class="section-banner">
-          <div class="section-title-wrap">
-            <span class="step">🔀</span>
-            <div>
-              <h2>Mapeamento de Tarefas</h2>
-              <p>Associe cada obrigação lida na planilha às perguntas e respostas da Enquete no G-Click.</p>
-            </div>
-          </div>
-        </div>
+        <!-- SEÇÃO: TAREFAS E MAPEAMENTO DA ENQUETE (INTEGRADO) -->
+        <div id="section-mapping" class="enquete-subcard-wrap" style="margin-top:16px;">
 
         <section class="card" id="mappingQueue">
           <p id="taskStatus" class="hint" style="margin-top:0"></p>
@@ -563,18 +455,10 @@
         </section>
       </div>
 
-      <!-- SEÇÃO: GRAVAÇÃO NO G-CLICK -->
-      <div id="section-apply" class="app-section">
-        <div class="section-banner">
-          <div class="section-title-wrap">
-            <span class="step">⚡</span>
-            <div>
-              <h2>Gravação no G-Click</h2>
-              <p>O robô marca as respostas pendentes e aguarda sua confirmação visual pergunta a pergunta.</p>
-            </div>
-          </div>
-        </div>
+      <div id="enqueteTabPaneConferencia" style="display:none;" hidden aria-hidden="true"></div>
 
+      <!-- SEÇÃO: GRAVAÇÃO NO G-CLICK -->
+      <div id="section-apply" class="enquete-subcard-wrap">
         <section class="card" id="applyAuditNeeded" style="border-left:4px solid #1c8b82;" hidden>
           <p class="eyebrow" style="color:#1c8b82;">ETAPA PRÉVIA NECESSÁRIA</p>
           <h2 style="font-size:16px;margin:4px 0 8px;">Conferência na Enquete Necessária</h2>
@@ -587,7 +471,7 @@
         </section>
 
         <section class="card apply-card" id="applyCard" hidden>
-          <p class="eyebrow">GRAVAÇÃO</p>
+          <p class="eyebrow">GRAVAÇÃO NO G-CLICK</p>
           <h2>Marcar no G-Click</h2>
           <p>O robô abre cada pergunta, marca as respostas de todos os CNPJs pendentes e clica em Alterar. Você só confere o diálogo do G-Click e clica em <strong>Confirmar</strong> (ou fecha para cancelar aquela pergunta). Respostas divergentes nunca são trocadas.</p>
           <button id="apply" type="button" class="btn btn-danger btn-md btn-block" disabled>Marcar respostas no G-Click</button>
@@ -597,16 +481,7 @@
       </div>
 
       <!-- SEÇÃO: AUDITORIA & CONFERÊNCIA NA ENQUETE -->
-      <div id="section-audit" class="app-section">
-        <div class="section-banner">
-          <div class="section-title-wrap">
-            <span class="step">🔍</span>
-            <div>
-              <h2>Conferência</h2>
-              <p>Consulte o estado de cada CNPJ na Enquete: confira todas as tarefas ou filtre por uma obrigação específica.</p>
-            </div>
-          </div>
-        </div>
+      <div id="section-audit" class="enquete-subcard-wrap" style="margin-top:16px;">
 
         <div id="auditPanel" class="audit-panel">
           <div class="audit-header">
@@ -728,23 +603,20 @@
             </div>
           </div>
         </section>
-      </div>
+      </div> <!-- FIM #section-audit -->
+    </div> <!-- FIM SUB-ABA 1: OPERAÇÃO DA ENQUETE (DADOS, MAPEAMENTO & GRAVAÇÃO) -->
 
-
-      <!-- SEÇÃO 3: SINCRONIZAÇÃO COM GOOGLE SHEETS -->
-      <div id="section-writer" class="app-section">
-        <div class="section-banner">
-          <div class="section-title-wrap">
-            <span class="step">🔄</span>
+    <!-- SUB-ABA 4: SINCRONIZAÇÃO COM GOOGLE SHEETS -->
+    <div id="enqueteTabPaneSheets" class="enquete-tab-pane" hidden>
+      <div id="section-writer" class="enquete-subcard-wrap">
+        <section class="card" id="writerCard">
+          <div class="card-headline">
             <div>
-              <h2>Sincronização com Sheets</h2>
-              <p>Preenchimento automático da coluna “Enquete G-Click” na planilha após cada lote gravado.</p>
+              <h3>Sincronização com Google Sheets</h3>
+              <p class="sub-hint" style="margin:0">Preenchimento automático da coluna “Enquete G-Click” na planilha após cada lote gravado.</p>
             </div>
           </div>
-        </div>
-
-        <section class="card" id="writerCard">
-          <p id="writerStatus" class="hint" style="margin-top:0">Informe a conta para ver a configuração.</p>
+          <p id="writerStatus" class="hint" style="margin-top:10px">Informe a conta para ver a configuração.</p>
           <details id="writerSetup">
             <summary>Configurar nesta planilha (uma vez)</summary>
             <ol class="writer-steps">
@@ -760,6 +632,112 @@
           </div>
         </section>
       </div>
+    </div> <!-- FIM SUB-ABA 4: SINCRONIZAÇÃO SHEETS -->
+
+    <!-- SUB-ABA 3: CADASTRO DE RESPOSTAS (PARTICULARIDADES) -->
+    <div id="enqueteTabPaneCadastro" class="enquete-tab-pane" hidden>
+      <div id="section-enquete-cadastro" class="enquete-subcard-wrap">
+        <section class="card">
+          <div class="card-headline">
+            <div>
+              <h3>Fonte do Modelo &amp; Conferência de Respostas</h3>
+              <span class="sub-hint">Informe o link público do Google Sheets com a estrutura modelo de Grupos, Perguntas e Respostas para criar particularidades faltantes.</span>
+            </div>
+          </div>
+
+          <div class="conn-form" style="max-width:100%;margin-bottom:16px;">
+            <label class="conn-field" style="max-width:none;flex:1;">
+              Link da Planilha Modelo (Google Sheets)
+              <input id="enqueteModelSheetUrl" type="url" value="https://docs.google.com/spreadsheets/d/1fxVpJ6WMWFdsQmmquaJK-_7IFTeIBepVGoBPUSHED5g/edit?gid=278193778#gid=278193778" placeholder="https://docs.google.com/spreadsheets/d/..." autocomplete="off">
+            </label>
+            <button id="btnEnqueteConferir" type="button" class="btn btn-primary btn-md">
+              <span>🔍</span> Carregar e Conferir
+            </button>
+          </div>
+
+          <!-- Métricas Resumo -->
+          <div class="enquete-cad-metrics" id="enqueteCadMetrics" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:12px;margin-bottom:20px;">
+            <div class="metric-card" style="background:#f8fafc;padding:12px 14px;border-radius:8px;border:1px solid #e2e8f0;">
+              <span style="font-size:12px;color:var(--text-muted);display:block;">Perguntas no Modelo</span>
+              <strong id="metricTotalPerguntas" style="font-size:18px;color:var(--text-main);">0</strong>
+            </div>
+            <div class="metric-card" style="background:#f8fafc;padding:12px 14px;border-radius:8px;border:1px solid #e2e8f0;">
+              <span style="font-size:12px;color:var(--text-muted);display:block;">Respostas no Modelo</span>
+              <strong id="metricTotalRespostas" style="font-size:18px;color:var(--text-main);">0</strong>
+            </div>
+            <div class="metric-card" style="background:#ecfdf5;padding:12px 14px;border-radius:8px;border:1px solid #a7f3d0;">
+              <span style="font-size:12px;color:#15803d;display:block;">Já Existentes no G-Click</span>
+              <strong id="metricRespostasExistentes" style="font-size:18px;color:#15803d;">0</strong>
+            </div>
+            <div class="metric-card" style="background:#fef3c7;padding:12px 14px;border-radius:8px;border:1px solid #fcd34d;">
+              <span style="font-size:12px;color:#b45309;display:block;">Respostas Faltantes</span>
+              <strong id="metricRespostasFaltantes" style="font-size:18px;color:#b45309;">0</strong>
+            </div>
+          </div>
+
+          <!-- Barra de Ações & Filtros -->
+          <div class="enquete-cad-toolbar" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:14px;">
+            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+              <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;user-select:none;font-weight:600;">
+                <input type="checkbox" id="selectAllEnqueteFaltantes">
+                <span>Selecionar todas as faltantes</span>
+              </label>
+              <div class="segmented" style="margin:0;">
+                <label><input type="radio" name="enqueteFilterStatus" value="all" checked><span>Todas</span></label>
+                <label><input type="radio" name="enqueteFilterStatus" value="faltante"><span>Faltantes</span></label>
+                <label><input type="radio" name="enqueteFilterStatus" value="ja_existe"><span>Já Existentes</span></label>
+              </div>
+            </div>
+
+            <div style="display:flex;align-items:center;gap:10px;">
+              <input id="enqueteSearchInput" type="search" placeholder="Filtrar por pergunta ou resposta…" class="empresa-search-input" style="width:240px;" autocomplete="off">
+              <button id="btnCadastrarRespostasSelecionadas" type="button" class="btn btn-primary btn-md" disabled>
+                <span>➕</span> Cadastrar Selecionadas (<span id="countSelectedCad">0</span>)
+              </button>
+            </div>
+          </div>
+
+          <!-- Tabela de Conferência -->
+          <div class="table-container" style="overflow-x:auto;">
+            <table class="table-preview" id="tableEnqueteCadastro" style="width:100%;">
+              <thead>
+                <tr>
+                  <th style="width:36px;text-align:center;">#</th>
+                  <th>Grupo / Depto</th>
+                  <th>Pergunta (Modelo)</th>
+                  <th>Pergunta no G-Click</th>
+                  <th>Resposta (Modelo)</th>
+                  <th>Status</th>
+                  <th>Categoria a Criar</th>
+                  <th style="text-align:right;">Ação</th>
+                </tr>
+              </thead>
+              <tbody id="tbodyEnqueteCadastro">
+                <tr>
+                  <td colspan="8" style="text-align:center;padding:32px;color:var(--text-muted);">
+                    Clique em <strong>Carregar e Conferir</strong> para cruzar os dados da planilha modelo com a Enquete da conta ativa.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Painel de Feedback / Log em Tempo Real -->
+          <div id="enqueteProgressPanel" class="enquete-progress-panel" hidden style="margin-top:20px;padding:16px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+              <strong id="enqueteProgressTitle" style="font-size:13.5px;color:var(--text-main);">Processando cadastros…</strong>
+              <span id="enqueteProgressPercent" style="font-size:12px;font-weight:600;color:var(--gclick-primary);">0%</span>
+            </div>
+            <div style="height:6px;background:#e2e8f0;border-radius:3px;overflow:hidden;margin-bottom:12px;">
+              <div id="enqueteProgressBar" style="height:100%;width:0%;background:var(--gclick-primary);transition:width 0.3s ease;"></div>
+            </div>
+            <div id="enqueteProgressLogs" style="max-height:160px;overflow-y:auto;font-family:var(--font-mono);font-size:11.5px;color:#334155;background:#ffffff;padding:10px;border-radius:6px;border:1px solid #e2e8f0;line-height:1.5;"></div>
+          </div>
+        </section>
+      </div>
+    </div> <!-- FIM SUB-ABA 3: CADASTRO DE RESPOSTAS -->
+
+  </div> <!-- FIM WORKSPACE UNIFICADO: ENQUETE G-CLICK (#section-enquete) -->
 
       <!-- SEÇÃO 8: OBRIGAÇÕES (MÓDULO DE OBRIGAÇÕES & PARIDADE) -->
       <div id="section-obrigacoes" class="app-section" hidden>
@@ -1670,116 +1648,7 @@ Atenciosamente,</textarea>
           </section>
         </div>
 
-      <!-- SEÇÃO ENQUETE-CADASTRO: CONFERÊNCIA E CADASTRO DE RESPOSTAS -->
-      <div id="section-enquete-cadastro" class="app-section" hidden>
-        <div class="section-banner">
-          <div class="section-title-wrap">
-            <span class="step">06</span>
-            <div>
-              <h2>Cadastro de Respostas da Enquete</h2>
-              <p>Cruza a planilha modelo com a Enquete da conta ativa, identifica respostas faltantes por similaridade e automatiza a criação de particularidades e vinculação.</p>
-            </div>
-          </div>
-        </div>
 
-        <section class="card">
-          <div class="card-headline">
-            <div>
-              <h3>Fonte do Modelo & Conferência</h3>
-              <span class="sub-hint">Informe o link público do Google Sheets com a estrutura modelo de Grupos, Perguntas e Respostas.</span>
-            </div>
-          </div>
-
-          <div class="conn-form" style="max-width:100%;margin-bottom:16px;">
-            <label class="conn-field" style="max-width:none;flex:1;">
-              Link da Planilha Modelo (Google Sheets)
-              <input id="enqueteModelSheetUrl" type="url" value="https://docs.google.com/spreadsheets/d/1fxVpJ6WMWFdsQmmquaJK-_7IFTeIBepVGoBPUSHED5g/edit?gid=278193778#gid=278193778" placeholder="https://docs.google.com/spreadsheets/d/..." autocomplete="off">
-            </label>
-            <button id="btnEnqueteConferir" type="button" class="btn btn-primary btn-md">
-              <span>🔍</span> Carregar e Conferir
-            </button>
-          </div>
-
-          <!-- Métricas Resumo -->
-          <div class="enquete-cad-metrics" id="enqueteCadMetrics" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:12px;margin-bottom:20px;">
-            <div class="metric-card" style="background:#f8fafc;padding:12px 14px;border-radius:8px;border:1px solid #e2e8f0;">
-              <span style="font-size:12px;color:var(--text-muted);display:block;">Perguntas no Modelo</span>
-              <strong id="metricTotalPerguntas" style="font-size:18px;color:var(--text-main);">0</strong>
-            </div>
-            <div class="metric-card" style="background:#f8fafc;padding:12px 14px;border-radius:8px;border:1px solid #e2e8f0;">
-              <span style="font-size:12px;color:var(--text-muted);display:block;">Respostas no Modelo</span>
-              <strong id="metricTotalRespostas" style="font-size:18px;color:var(--text-main);">0</strong>
-            </div>
-            <div class="metric-card" style="background:#ecfdf5;padding:12px 14px;border-radius:8px;border:1px solid #a7f3d0;">
-              <span style="font-size:12px;color:#15803d;display:block;">Já Existentes no G-Click</span>
-              <strong id="metricRespostasExistentes" style="font-size:18px;color:#15803d;">0</strong>
-            </div>
-            <div class="metric-card" style="background:#fef3c7;padding:12px 14px;border-radius:8px;border:1px solid #fcd34d;">
-              <span style="font-size:12px;color:#b45309;display:block;">Respostas Faltantes</span>
-              <strong id="metricRespostasFaltantes" style="font-size:18px;color:#b45309;">0</strong>
-            </div>
-          </div>
-
-          <!-- Barra de Ações & Filtros -->
-          <div class="enquete-cad-toolbar" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:14px;">
-            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-              <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;user-select:none;font-weight:600;">
-                <input type="checkbox" id="selectAllEnqueteFaltantes">
-                <span>Selecionar todas as faltantes</span>
-              </label>
-              <div class="segmented" style="margin:0;">
-                <label><input type="radio" name="enqueteFilterStatus" value="all" checked><span>Todas</span></label>
-                <label><input type="radio" name="enqueteFilterStatus" value="faltante"><span>Faltantes</span></label>
-                <label><input type="radio" name="enqueteFilterStatus" value="ja_existe"><span>Já Existentes</span></label>
-              </div>
-            </div>
-
-            <div style="display:flex;align-items:center;gap:10px;">
-              <input id="enqueteSearchInput" type="search" placeholder="Filtrar por pergunta ou resposta…" class="empresa-search-input" style="width:240px;" autocomplete="off">
-              <button id="btnCadastrarRespostasSelecionadas" type="button" class="btn btn-primary btn-md" disabled>
-                <span>➕</span> Cadastrar Selecionadas (<span id="countSelectedCad">0</span>)
-              </button>
-            </div>
-          </div>
-
-          <!-- Tabela de Conferência -->
-          <div class="table-container" style="overflow-x:auto;">
-            <table class="table-preview" id="tableEnqueteCadastro" style="width:100%;">
-              <thead>
-                <tr>
-                  <th style="width:36px;text-align:center;">#</th>
-                  <th>Grupo / Depto</th>
-                  <th>Pergunta (Modelo)</th>
-                  <th>Pergunta no G-Click</th>
-                  <th>Resposta (Modelo)</th>
-                  <th>Status</th>
-                  <th>Categoria a Criar</th>
-                  <th style="text-align:right;">Ação</th>
-                </tr>
-              </thead>
-              <tbody id="tbodyEnqueteCadastro">
-                <tr>
-                  <td colspan="8" style="text-align:center;padding:32px;color:var(--text-muted);">
-                    Clique em <strong>Carregar e Conferir</strong> para cruzar os dados da planilha modelo com a Enquete da conta ativa.
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <!-- Painel de Feedback / Log em Tempo Real -->
-          <div id="enqueteProgressPanel" class="enquete-progress-panel" hidden style="margin-top:20px;padding:16px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px;">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-              <strong id="enqueteProgressTitle" style="font-size:13.5px;color:var(--text-main);">Processando cadastros…</strong>
-              <span id="enqueteProgressPercent" style="font-size:12px;font-weight:600;color:var(--gclick-primary);">0%</span>
-            </div>
-            <div style="height:6px;background:#e2e8f0;border-radius:3px;overflow:hidden;margin-bottom:12px;">
-              <div id="enqueteProgressBar" style="height:100%;width:0%;background:var(--gclick-primary);transition:width 0.3s ease;"></div>
-            </div>
-            <div id="enqueteProgressLogs" style="max-height:160px;overflow-y:auto;font-family:var(--font-mono);font-size:11.5px;color:#334155;background:#ffffff;padding:10px;border-radius:6px;border:1px solid #e2e8f0;line-height:1.5;"></div>
-          </div>
-        </section>
-      </div>
 
       <!-- SEÇÃO: VALIDA PDF (G-CLICK PDF LAYOUT) -->
       <div id="section-valida-pdf" class="app-section" hidden>
@@ -1793,13 +1662,8 @@ Atenciosamente,</textarea>
           </div>
         </div>
 
-        <!-- CARDS DE MÉTRICAS -->
+        <!-- CARDS DE MÉTRICAS UNIFICADOS -->
         <div class="obrig-metrics-grid" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:14px;margin-bottom:20px;">
-          <div class="metrics-kpi-card kpi-brand">
-            <p class="eyebrow">MODELOS G-CLICK</p>
-            <h3 id="validaPdfMetricModels" class="metrics-kpi-val">184</h3>
-            <span class="sub-hint" id="validaPdfMetricModelsHint">Conta ativa 6019</span>
-          </div>
           <div class="metrics-kpi-card kpi-indigo">
             <p class="eyebrow">PROCESSADOS</p>
             <h3 id="validaPdfMetricTotal" class="metrics-kpi-val">0</h3>
@@ -1813,7 +1677,17 @@ Atenciosamente,</textarea>
           <div class="metrics-kpi-card kpi-warning">
             <p class="eyebrow">COM PENDÊNCIAS</p>
             <h3 id="validaPdfMetricInvalid" class="metrics-kpi-val">0</h3>
-            <span class="sub-hint">Requerem conferência</span>
+            <span class="sub-hint">Requerem modelo/ajuste</span>
+          </div>
+          <div class="metrics-kpi-card" style="background:#fffbeb;border:1px solid #fde68a;">
+            <p class="eyebrow" style="color:#b45309;">DUPLICIDADES & RETIFICAÇÕES</p>
+            <h3 id="validaPdfMetricDupes" class="metrics-kpi-val" style="color:#b45309;">0</h3>
+            <span class="sub-hint" id="validaPdfMetricDupesHint">Conflitos de conteúdo</span>
+          </div>
+          <div class="metrics-kpi-card kpi-brand">
+            <p class="eyebrow">MODELOS G-CLICK</p>
+            <h3 id="validaPdfMetricModels" class="metrics-kpi-val">185</h3>
+            <span class="sub-hint" id="validaPdfMetricModelsHint">Conta ativa 6019</span>
           </div>
         </div>
 
@@ -1847,18 +1721,7 @@ Atenciosamente,</textarea>
           </div>
         </details>
 
-        <!-- ABAS DO MÓDULO VALIDA PDF -->
-        <div class="enquete-tabs-bar" style="display:flex;gap:8px;border-bottom:2px solid #e2e8f0;margin-bottom:18px;">
-          <button type="button" class="enquete-tab-btn active" id="tabBtnValidaFiles" style="padding:10px 16px;border:none;background:none;font-weight:600;font-size:14px;color:var(--gclick-primary);border-bottom:2px solid var(--gclick-primary);cursor:pointer;">
-            📁 Validador de Arquivos
-          </button>
-          <button type="button" class="enquete-tab-btn" id="tabBtnValidaMapping" style="padding:10px 16px;border:none;background:none;font-weight:600;font-size:14px;color:#64748b;cursor:pointer;">
-            🛠️ Novo Mapeamento & Importação
-          </button>
-          <button type="button" class="enquete-tab-btn" id="tabBtnValidaModels" style="padding:10px 16px;border:none;background:none;font-weight:600;font-size:14px;color:#64748b;cursor:pointer;">
-            📑 Modelos de Layout G-Click (<span id="validaModelsTabBadge">184</span>)
-          </button>
-        </div>
+
 
         <!-- ABA 1: VALIDADOR DE ARQUIVOS -->
         <div id="tabValidaFilesContent">
@@ -1877,7 +1740,7 @@ Atenciosamente,</textarea>
               <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
                 <input type="text" id="validaScanDirPath" class="form-control" style="flex:1;min-width:300px;font-size:13px;padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;font-family:var(--font-mono);" value="/home/piperun/Documentos/temp/G-click/PDF_Layout/Magnum" placeholder="/caminho/para/pasta/de/pdfs">
                 <button type="button" id="btnScanDirectory" class="btn btn-primary btn-md" style="display:flex;align-items:center;gap:6px;font-weight:600;">
-                  <span>🔎</span> Varrer e Validar Pasta
+                  <span>🚀</span> Analisar, Conciliar & Validar Pasta
                 </button>
                 <label for="validaFolderPicker" class="btn btn-secondary btn-md" style="margin:0;cursor:pointer;display:inline-flex;align-items:center;gap:6px;" title="Selecionar uma pasta do computador pelo navegador">
                   <span>📂</span> Escolher Pasta...
@@ -1947,74 +1810,240 @@ Atenciosamente,</textarea>
             </details>
           </section>
 
-          <!-- TABELA DE RESULTADOS -->
+          <!-- WORKSPACE UNIFICADO: CHIPS BAR & VISÕES -->
           <section class="card" style="padding:20px;">
-            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:14px;">
-              <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:280px;">
-                <input type="text" id="validaFilterSearch" placeholder="🔍 Filtrar resultados por nome, cliente, competência..." style="padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;flex:1;">
-                <select id="validaFilterStatus" style="padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;">
-                  <option value="">Todos os Resultados</option>
-                  <option value="valido">Apenas 100% Válidos</option>
-                  <option value="invalido">Apenas com Pendências / Inconsistentes</option>
-                  <option value="erro_extracao">Scanned / Sem OCR</option>
-                </select>
+            <!-- CHIPS BAR COM CONTADORES -->
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:16px;border-bottom:1px solid #e2e8f0;padding-bottom:12px;">
+              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                <button type="button" id="chipValidaAll" class="btn btn-sm btn-chip-active" data-chip="all" style="border-radius:20px;padding:6px 14px;font-weight:600;display:flex;align-items:center;gap:6px;">
+                  📋 Todos (<span id="countChipAll">0</span>)
+                </button>
+                <button type="button" id="chipValidaReady" class="btn btn-sm btn-ghost" data-chip="ready" style="border-radius:20px;padding:6px 14px;font-weight:600;display:flex;align-items:center;gap:6px;color:#15803d;" title="Documentos com modelo já configurado e ativos no G-Click, prontos para envio">
+                  🟢 Já no G-Click (<span id="countChipReady">0</span>)
+                </button>
+                <button type="button" id="chipValidaNeedsMap" class="btn btn-sm btn-ghost" data-chip="needs_map" style="border-radius:20px;padding:6px 14px;font-weight:600;display:flex;align-items:center;gap:6px;color:#c2410c;" title="Documentos sem modelo no G-Click ou com mapeamento de linhas pendente">
+                  🛠️ Enviar & Mapear (<span id="countChipNeedsMap">0</span>)
+                </button>
+                <button type="button" id="chipValidaNoClient" class="btn btn-sm btn-ghost" data-chip="no_client" style="border-radius:20px;padding:6px 14px;font-weight:600;display:flex;align-items:center;gap:6px;color:#991b1b;" title="Documentos cujo CNPJ/CPF não foi localizado no cadastro de clientes do G-Click">
+                  👤 Cliente ñ Existe (<span id="countChipNoClient">0</span>)
+                </button>
+                <button type="button" id="chipValidaDupes" class="btn btn-sm btn-ghost" data-chip="dupes" style="border-radius:20px;padding:6px 14px;font-weight:600;display:flex;align-items:center;gap:6px;color:#b45309;" title="Arquivos duplicados ou com divergência de valores na mesma competência">
+                  ⚠️ Duplicidades & Conflitos (<span id="countChipDupes">0</span>)
+                </button>
+                <button type="button" id="chipValidaModels" class="btn btn-sm btn-ghost" data-chip="models" style="border-radius:20px;padding:6px 14px;font-weight:600;display:flex;align-items:center;gap:6px;" title="Ver os 184 modelos de layout cadastrados no G-Click">
+                  📑 Modelos G-Click (<span id="countChipModels">184</span>)
+                </button>
               </div>
+
               <div style="display:flex;gap:8px;align-items:center;">
-                <button type="button" id="btnGoToMappingFromFiles" class="btn btn-primary btn-sm" style="display:none;align-items:center;gap:6px;" title="Levar arquivos validados para mapear no G-Click">
-                  <span>🛠️</span> Mapear no G-Click (<span id="validaCountForMapping">0</span>)
+                <span id="validaSelectedCountBadge" class="tag-pill" style="display:none;background:#ccfbf1;color:#0f766e;font-weight:700;font-size:12px;padding:5px 10px;border:1px solid #99f6e4;">0 selecionados</span>
+                <button type="button" id="btnBatchTestUploadGclick" class="btn btn-primary btn-sm" style="display:none;align-items:center;gap:6px;background:#0d9488;border-color:#0d9488;" title="Valida os arquivos diretamente na tela oficial /upload do G-Click, 1 por vez com F5 a cada envio">
+                  <span>⚡</span> Validar no Oráculo G-Click
                 </button>
                 <button type="button" id="btnGenerateDiagnosticReport" class="btn btn-secondary btn-sm" style="display:none;align-items:center;gap:6px;" title="Gerar documento analítico de diagnóstico com todas as falhas, identificação e caminhos no disco">
-                  <span>📋</span> Relatório de Diagnóstico
+                  <span>📋</span> Relatório Diagnóstico
                 </button>
-                <button type="button" id="btnClearValidaResults" class="btn btn-secondary btn-sm" style="display:none;">Limpar Lista</button>
+                <button type="button" id="btnClearValidaResults" class="btn btn-secondary btn-sm" style="display:none;">Limpar</button>
               </div>
             </div>
 
-            <div style="overflow-x:auto;">
-              <table id="validaResultsTable" class="app-table" style="width:100%;">
-                <thead>
-                  <tr>
-                    <th style="width:130px;">Status</th>
-                    <th>Arquivo</th>
-                    <th>Documento Identificado</th>
-                    <th>Cliente Identificado</th>
-                    <th style="width:110px;">Competência</th>
-                    <th style="text-align:right;width:210px;">Ações</th>
-                  </tr>
-                </thead>
-                <tbody id="validaResultsBody">
-                  <tr>
-                    <td colspan="6" style="text-align:center;padding:36px;color:#64748b;">
-                      Nenhum arquivo validado ainda. Selecione arquivos acima ou clique em <strong>Validar Pasta de Amostras</strong> para começar.
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+            <!-- VISÃO 1: TABELA DE RESULTADOS (TODOS / VÁLIDOS / PENDÊNCIAS) -->
+            <div id="wrapValidaResultsTable">
+              <!-- PROGRESSO DA JOB EM LOTE NO ORÁCULO G-CLICK -->
+              <div id="validaBatchJobProgressWrap" style="background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;padding:12px 16px;margin-bottom:14px;" hidden>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                  <div>
+                    <strong style="color:#0f766e;font-size:13.5px;" id="validaBatchJobTitle">⚡ Job: Validação em Lote no G-Click (/upload)</strong>
+                    <span style="font-size:12px;color:#0d9488;display:block;" id="validaBatchJobStatus">Iniciando fila sequencial…</span>
+                  </div>
+                  <button type="button" id="btnCancelBatchUploadJob" class="btn btn-danger btn-sm" style="padding:4px 10px;font-size:12px;">Interromper</button>
+                </div>
+                <div style="width:100%;height:8px;background:#ccfbf1;border-radius:4px;overflow:hidden;margin-bottom:6px;">
+                  <div id="validaBatchJobProgressBar" style="width:0%;height:100%;background:#0d9488;transition:width 0.3s;"></div>
+                </div>
+                <div style="display:flex;justify-content:space-between;font-size:11.5px;color:#64748b;">
+                  <span id="validaBatchJobCurrentFile">Arquivo: -</span>
+                  <span id="validaBatchJobCount">0 / 0</span>
+                </div>
+              </div>
+
+              <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:14px;">
+                <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:280px;">
+                  <input type="text" id="validaFilterSearch" placeholder="🔍 Filtrar resultados por nome, cliente, competência, guia..." style="padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;flex:1;">
+                  <div style="display:flex;align-items:center;gap:6px;">
+                    <label for="validaFilterGclick" style="font-size:12px;font-weight:600;color:#475569;white-space:nowrap;">Situação G-Click:</label>
+                    <select id="validaFilterGclick" style="padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;">
+                      <option value="all">Todas as Situações</option>
+                      <option value="ready">🟢 Já no G-Click (Prontos p/ Envio)</option>
+                      <option value="needs_map">🛠️ Enviar & Mapear (Falta Modelo)</option>
+                      <option value="no_client">👤 Cliente Fora da Base</option>
+                      <option value="dupes">⚠️ Duplicidades & Conflitos</option>
+                    </select>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:6px;">
+                    <label for="validaFilterValidacao" style="font-size:12px;font-weight:600;color:#475569;white-space:nowrap;">Validação / OCR:</label>
+                    <select id="validaFilterValidacao" style="padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;">
+                      <option value="">Todos os Status</option>
+                      <option value="valido">✔ 100% Válidos (Regras OK)</option>
+                      <option value="invalido">⚠️ Com Falhas / Pendências</option>
+                      <option value="erro_extracao">📷 Scanned / Sem OCR</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div style="overflow-x:auto;">
+                <table id="validaResultsTable" class="app-table" style="width:100%;">
+                  <thead>
+                    <tr>
+                      <th style="width:40px;text-align:center;">
+                        <input type="checkbox" id="chkValidaPdfSelectAll" title="Selecionar Todos" style="cursor:pointer;width:15px;height:15px;">
+                      </th>
+                      <th style="width:160px;">Situação G-Click</th>
+                      <th>Arquivo & Subpasta</th>
+                      <th>Documento & Modelo G-Click</th>
+                      <th>Cliente (CNPJ / CPF)</th>
+                      <th style="width:100px;">Competência</th>
+                      <th style="width:140px;">Guia / Valor / Venc.</th>
+                      <th style="text-align:right;width:170px;">Ação Recomendada</th>
+                    </tr>
+                  </thead>
+                  <tbody id="validaResultsBody">
+                    <tr>
+                      <td colspan="8" style="text-align:center;padding:36px;color:#64748b;">
+                        Nenhum arquivo validado ainda. Selecione arquivos acima ou clique em <strong>Analisar, Conciliar & Validar Pasta</strong> para começar.
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;font-size:12.5px;color:#64748b;">
+                <span id="validaResultsCount">Exibindo 0 registros</span>
+                <span id="validaResultsHint"></span>
+              </div>
             </div>
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;font-size:12.5px;color:#64748b;">
-              <span id="validaResultsCount">Exibindo 0 registros</span>
-              <span id="validaResultsHint"></span>
+
+            <!-- VISÃO 2: DUPLICIDADES & RETIFICAÇÕES AGRUPADAS -->
+            <div id="wrapValidaDuplicatesView" hidden>
+              <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px 16px;margin-bottom:16px;">
+                <strong style="color:#b45309;font-size:13.5px;display:block;margin-bottom:4px;">⚠️ Detecção Inteligente de Conteúdo (Duplicatas vs Retificações)</strong>
+                <p style="margin:0;font-size:12.5px;color:#78350f;line-height:1.5;">
+                  Estes arquivos possuem o mesmo cliente, competência e tipo de documento. O sistema comparou o hash do conteúdo, o número da guia e os valores monetários para apontar se são idênticos ou retificações de cálculo.
+                </p>
+              </div>
+              <div id="validaDuplicatesContainer" style="display:flex;flex-direction:column;gap:14px;">
+                <div style="text-align:center;padding:32px;color:#64748b;background:#f8fafc;border-radius:8px;">
+                  Nenhuma duplicidade ou retificação identificada até o momento.
+                </div>
+            </div>
+
+            <!-- VISÃO 3: MODELOS G-CLICK INTEGRADOS -->
+            <div id="wrapValidaModelsTable" hidden>
+              <!-- CARDS DE ESTATÍSTICAS DOS MODELOS -->
+              <div id="validaModelsKpiWrap" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(150px, 1fr));gap:10px;margin-bottom:16px;">
+                <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:10px 12px;text-align:center;">
+                  <span style="font-size:11px;color:#64748b;display:block;text-transform:uppercase;font-weight:600;">Total de Modelos</span>
+                  <strong id="statModelsTotal" style="font-size:20px;color:#1e293b;">185</strong>
+                </div>
+                <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:10px 12px;text-align:center;">
+                  <span style="font-size:11px;color:#166534;display:block;text-transform:uppercase;font-weight:600;">🟢 Ativos & Configurados</span>
+                  <strong id="statModelsConfigurados" style="font-size:20px;color:#15803d;">0</strong>
+                </div>
+                <div style="background:#fefce8;border:1px solid #fef08a;border-radius:6px;padding:10px 12px;text-align:center;">
+                  <span style="font-size:11px;color:#854d0e;display:block;text-transform:uppercase;font-weight:600;">🟡 Pendente Campos</span>
+                  <strong id="statModelsPendentes" style="font-size:20px;color:#ca8a04;">0</strong>
+                </div>
+                <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:10px 12px;text-align:center;">
+                  <span style="font-size:11px;color:#991b1b;display:block;text-transform:uppercase;font-weight:600;">🔴 Sem Arquivo Anexo</span>
+                  <strong id="statModelsSemArquivo" style="font-size:20px;color:#b91c1c;">0</strong>
+                </div>
+                <div style="background:#f0fdfa;border:1px solid #ccfbf1;border-radius:6px;padding:10px 12px;text-align:center;">
+                  <span style="font-size:11px;color:#0f766e;display:block;text-transform:uppercase;font-weight:600;">🔗 Com Obrigação</span>
+                  <strong id="statModelsComObrigacao" style="font-size:20px;color:#0f766e;">0</strong>
+                </div>
+              </div>
+
+              <!-- BARRA DE PESQUISA, FILTROS E SINCRONIZAÇÃO -->
+              <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:14px;">
+                <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:300px;flex-wrap:wrap;">
+                  <input type="text" id="validaModelSearch" placeholder="🔍 Buscar por nome, ID, palavra-chave, obrigação..." style="padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;flex:1;min-width:200px;">
+                  <select id="validaModelDeptoFilter" style="padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;">
+                    <option value="">Todos os Departamentos</option>
+                    <option value="Departamento Pessoal">Departamento Pessoal</option>
+                    <option value="Fiscal">Fiscal</option>
+                    <option value="Financeiro">Financeiro</option>
+                    <option value="Contabilidade">Contabilidade</option>
+                    <option value="Administrativo">Administrativo</option>
+                  </select>
+                  <select id="validaModelStatusFilter" style="padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;">
+                    <option value="">Todos os Status</option>
+                    <option value="configurado">🟢 Ativos & Configurados</option>
+                    <option value="pendente_campos">🟡 Pendente de Configuração</option>
+                    <option value="sem_arquivo">🔴 Sem Arquivo Anexo</option>
+                  </select>
+                </div>
+                <div>
+                  <button type="button" id="btnSyncValidaModels" class="btn btn-secondary btn-md" title="Sincronizar modelos e obrigações ao vivo no G-Click">
+                    🔄 Sincronizar com G-Click
+                  </button>
+                </div>
+              </div>
+
+              <div style="overflow-x:auto;">
+                <table id="validaModelsTable" class="app-table" style="width:100%;">
+                  <thead>
+                    <tr>
+                      <th style="width:70px;">ID</th>
+                      <th style="min-width:180px;">Nome do Modelo</th>
+                      <th style="width:150px;">Departamento</th>
+                      <th style="width:170px;">Status no G-Click</th>
+                      <th style="min-width:170px;">Palavra-Chave (Pilar 1)</th>
+                      <th style="width:110px;">Inscrição</th>
+                      <th style="width:105px;">Competência</th>
+                      <th style="min-width:170px;">Obrigação Vinculada</th>
+                      <th style="width:130px;text-align:center;">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody id="validaModelsBody">
+                    <tr>
+                      <td colspan="9" style="text-align:center;padding:24px;color:#64748b;">Carregando modelos do G-Click…</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-top:12px;font-size:12.5px;color:#64748b;">
+                <span id="validaModelsCount">Exibindo 0 modelos</span>
+                <span id="validaModelsHint" style="font-size:11.5px;color:#94a3b8;">* Clique em "Abrir ↗" para gerenciar o layout diretamente no G-Click.</span>
+              </div>
             </div>
           </section>
         </div>
 
-        <!-- ABA 2: NOVO MAPEAMENTO & IMPORTAÇÃO DE PDF -->
-        <div id="tabValidaMappingContent" hidden>
-          <section class="card" style="padding:22px;margin-bottom:18px;">
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;">
-              <div>
-                <h3 style="margin:0 0 4px 0;font-size:16px;color:#0f172a;">Mapeamento & Criação de Modelo de PDF</h3>
-                <p style="margin:0;color:#64748b;font-size:13px;">Selecione um PDF modelo, autodetecte os 3 pilares ou ajuste as linhas manualmente, e crie o modelo no G-Click.</p>
+        <!-- MODAL 1: NOVO MAPEAMENTO & IMPORTAÇÃO DE PDF (ACIONADO DIRETO NA LINHA DO ARQUIVO) -->
+        <div id="modalValidaMapping" class="modal-overlay" hidden style="position:fixed;inset:0;background:rgba(15,23,42,0.65);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto;">
+          <div class="modal-box" style="background:#ffffff;border-radius:12px;max-width:1100px;width:100%;max-height:92vh;display:flex;flex-direction:column;box-shadow:0 20px 25px -5px rgba(0,0,0,0.2),0 10px 10px -5px rgba(0,0,0,0.1);overflow:hidden;">
+            <div class="modal-header" style="padding:16px 20px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;background:#f8fafc;">
+              <div style="display:flex;align-items:center;gap:10px;">
+                <span style="font-size:22px;">🛠️</span>
+                <div>
+                  <h3 style="margin:0;font-size:16px;color:#0f172a;">Mapeamento & Criação de Modelo de Layout G-Click</h3>
+                  <p style="margin:2px 0 0;color:#64748b;font-size:12px;">Defina os 3 pilares obrigatórios (Obrigação, CNPJ/CPF e Competência) e sincronize com a conta G-Click.</p>
+                </div>
               </div>
-              <div style="display:flex;gap:8px;">
-                <button type="button" id="btnAutoDetectMapping" class="btn btn-secondary btn-md">
-                  🪄 Autodetectar Campos (IA/Motor)
+              <div style="display:flex;gap:8px;align-items:center;">
+                <button type="button" id="btnAutoDetectMapping" class="btn btn-secondary btn-sm">
+                  🪄 Autodetectar Campos
                 </button>
-                <button type="button" id="btnSubmitMappingToGclick" class="btn btn-primary btn-md">
+                <button type="button" id="btnSubmitMappingToGclick" class="btn btn-primary btn-sm">
                   🚀 Criar & Mapear no G-Click
                 </button>
+                <button type="button" id="btnCloseValidaMappingModal" class="btn-action-ghost" style="font-size:18px;line-height:1;padding:6px 10px;cursor:pointer;" title="Fechar modal">✕</button>
               </div>
             </div>
+
+            <div class="modal-body" style="padding:20px;overflow-y:auto;flex:1;">
+              <!-- COMPONENTE DE SELEÇÃO AVULSA OU ARQUIVO ATUAL -->
+              <div id="tabValidaMappingContent" style="display:block;">
 
             <!-- INTEGRAÇÃO COM ARQUIVOS VALIDADOS -->
             <div id="mapValidatedSourceBanner" style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px 16px;margin-bottom:18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
@@ -2115,10 +2144,13 @@ Atenciosamente,</textarea>
                     <strong style="font-size:13px;color:#0f766e;">1. Palavra-chave ou código (Obrigação)</strong>
                     <span id="mapPilar1Badge" class="fail-badge" style="background:#e0f2fe;color:#0369a1;border-color:#bae6fd;">Pendente</span>
                   </div>
-                  <p style="margin:0 0 8px 0;font-size:11.5px;color:#64748b;">Identifica o tipo de documento. Selecione a linha correspondente à esquerda.</p>
-                  <div style="display:flex;gap:8px;align-items:center;">
+                  <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;">
                     <input type="number" id="mapPilar1Linha" placeholder="Linha" style="width:70px;padding:6px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;">
-                    <input type="text" id="mapPilar1Texto" placeholder="Texto da obrigação..." style="flex:1;padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;">
+                    <input type="text" id="mapPilar1Texto" placeholder="Texto 1 (ex: RECIBO DE PAGAMENTO)..." style="flex:1;padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;">
+                  </div>
+                  <div style="display:flex;gap:8px;align-items:center;">
+                    <input type="number" id="mapPilar1Linha2" placeholder="Linha 2" style="width:70px;padding:6px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;" title="Segunda linha da Regra 1 (opcional, para 13º salário ou especificidades)">
+                    <input type="text" id="mapPilar1Texto2" placeholder="Texto 2 (opcional, ex: 13 SALARIO INTEGRAL)..." style="flex:1;padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;">
                   </div>
                 </div>
 
@@ -2183,58 +2215,36 @@ Atenciosamente,</textarea>
                 </button>
               </div>
               <div id="mapDebuggerLogs" style="font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:11.5px;line-height:1.5;max-height:220px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;">
-                <div style="color:#64748b;">Nenhuma execução de depuração iniciada. Ao clicar em "Criar & Mapear no G-Click", os eventos do navegador serão listados aqui em tempo real.</div>
               </div>
             </div>
-          </section>
+          </div>
         </div>
+        <div class="modal-footer" style="padding:12px 20px;border-top:1px solid #e2e8f0;background:#f8fafc;display:flex;justify-content:flex-end;gap:10px;">
+          <button type="button" id="btnCloseValidaMappingBtn" class="btn btn-secondary btn-md">Fechar Janela</button>
+        </div>
+      </div>
+    </div>
 
-        <!-- ABA 3: MODELOS G-CLICK -->
-        <div id="tabValidaModelsContent" hidden>
-          <section class="card" style="padding:20px;">
-            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:14px;">
-              <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:300px;">
-                <input type="text" id="validaModelSearch" placeholder="🔍 Buscar modelos por nome, palavra-chave, obrigação..." style="padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;flex:1;">
-                <select id="validaModelDeptoFilter" style="padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;">
-                  <option value="">Todos os Departamentos</option>
-                  <option value="Fiscal">Fiscal</option>
-                  <option value="Departamento Pessoal">Departamento Pessoal</option>
-                  <option value="Financeiro">Financeiro</option>
-                  <option value="Contabilidade">Contabilidade</option>
-                  <option value="Administrativo">Administrativo</option>
-                </select>
+        <!-- MODAL 2: COMPARAÇÃO LADO A LADO DE DUPLICIDADES / RETIFICAÇÕES -->
+        <div id="modalValidaDuplicateCompare" class="modal-overlay" hidden style="position:fixed;inset:0;background:rgba(15,23,42,0.65);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto;">
+          <div class="modal-box" style="background:#ffffff;border-radius:12px;max-width:980px;width:100%;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 20px 25px -5px rgba(0,0,0,0.2);overflow:hidden;">
+            <div class="modal-header" style="padding:16px 20px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;background:#fffbeb;">
+              <div style="display:flex;align-items:center;gap:10px;">
+                <span style="font-size:22px;">🔍</span>
+                <div>
+                  <h3 id="modalDupCompareTitle" style="margin:0;font-size:16px;color:#92400e;">Comparativo de Documentos em Conflito</h3>
+                  <p id="modalDupCompareSubtitle" style="margin:2px 0 0;color:#b45309;font-size:12px;">Análise comparativa campo a campo do conteúdo dos PDFs.</p>
+                </div>
               </div>
-              <div>
-                <button type="button" id="btnSyncValidaModels" class="btn btn-secondary btn-md" title="Sincronizar modelos ao vivo no G-Click">
-                  🔄 Sincronizar com G-Click
-                </button>
-              </div>
+              <button type="button" id="btnCloseValidaDuplicateCompare" class="btn-action-ghost" style="font-size:18px;line-height:1;padding:6px 10px;cursor:pointer;">✕</button>
             </div>
-
-            <div style="overflow-x:auto;">
-              <table id="validaModelsTable" class="app-table" style="width:100%;">
-                <thead>
-                  <tr>
-                    <th style="width:70px;">ID</th>
-                    <th>Nome do Modelo</th>
-                    <th style="width:160px;">Departamento</th>
-                    <th>Palavra-Chave / Identificador</th>
-                    <th style="width:120px;">Tipo Inscrição</th>
-                    <th style="width:110px;">Competência</th>
-                    <th>Obrigação Associada</th>
-                  </tr>
-                </thead>
-                <tbody id="validaModelsBody">
-                  <tr>
-                    <td colspan="7" style="text-align:center;padding:24px;color:#64748b;">Carregando modelos do G-Click…</td>
-                  </tr>
-                </tbody>
-              </table>
+            <div id="modalDupCompareBody" class="modal-body" style="padding:20px;overflow-y:auto;flex:1;">
+              <!-- CONTEÚDO COMPARATIVO INJETADO POR JS -->
             </div>
-            <div style="margin-top:12px;font-size:12.5px;color:#64748b;" id="validaModelsCount">
-              Exibindo 0 modelos
+            <div class="modal-footer" style="padding:12px 20px;border-top:1px solid #e2e8f0;background:#f8fafc;display:flex;justify-content:flex-end;">
+              <button type="button" id="btnCloseValidaDuplicateCompareFooter" class="btn btn-secondary btn-md">Fechar Comparador</button>
             </div>
-          </section>
+          </div>
         </div>
       </div>
 
@@ -2277,6 +2287,347 @@ Atenciosamente,</textarea>
             </table>
           </div>
         </section>
+      </div>
+
+      <!-- SEÇÃO 8: CENTRAL DE AJUDA & TUTORIAIS DO SISTEMA -->
+      <div id="section-help" class="app-section" hidden>
+        <div class="section-banner" style="background:linear-gradient(135deg, #042f2e 0%, #0f766e 100%);color:#fff;border-radius:12px;padding:24px;margin-bottom:20px;box-shadow:0 4px 12px rgba(15,118,110,0.15);">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px;">
+            <div>
+              <div style="display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,0.15);padding:4px 10px;border-radius:20px;font-size:12px;font-weight:600;margin-bottom:10px;backdrop-filter:blur(4px);">
+                <span>📚</span> Central de Ajuda & Tutoriais
+              </div>
+              <h2 style="margin:0 0 8px 0;font-size:24px;color:#fff;font-weight:800;">Manuais de Operação & Guias Práticos</h2>
+              <p style="margin:0;font-size:14px;color:#ccfbf1;max-width:720px;line-height:1.6;">
+                Aprenda a operar a esteira completa da automação G-Click. Tutoriais detalhados, regras negociais e fluxos passo a passo para cada um dos módulos do sistema.
+              </p>
+            </div>
+            <div style="display:flex;gap:10px;align-items:center;">
+              <input type="text" id="helpSearchInput" placeholder="🔍 Buscar no tutorial..." style="padding:10px 14px;border-radius:8px;border:none;font-size:13px;width:240px;background:#fff;color:#0f172a;box-shadow:0 2px 6px rgba(0,0,0,0.15);">
+            </div>
+          </div>
+        </div>
+
+        <!-- ABAS NAVEGÁVEIS DA CENTRAL DE AJUDA -->
+        <div style="display:flex;gap:8px;border-bottom:2px solid #e2e8f0;margin-bottom:20px;flex-wrap:wrap;">
+          <button type="button" class="btn btn-sm btn-chip-active btn-help-tab" data-help-tab="valida-pdf" style="border-radius:8px 8px 0 0;padding:8px 16px;font-weight:700;display:flex;align-items:center;gap:6px;">
+            <span>📄</span> Valida PDF (Layouts & Oráculo)
+          </button>
+          <button type="button" class="btn btn-sm btn-ghost btn-help-tab" data-help-tab="enquete" style="border-radius:8px 8px 0 0;padding:8px 16px;font-weight:700;display:flex;align-items:center;gap:6px;">
+            <span>📋</span> Enquete G-Click (Perfil & Particularidades)
+          </button>
+          <button type="button" class="btn btn-sm btn-ghost btn-help-tab" data-help-tab="obrigacoes" style="border-radius:8px 8px 0 0;padding:8px 16px;font-weight:700;display:flex;align-items:center;gap:6px;">
+            <span>🔄</span> Obrigações & Canais (Paridade 1:1)
+          </button>
+          <button type="button" class="btn btn-sm btn-ghost btn-help-tab" data-help-tab="carteira" style="border-radius:8px 8px 0 0;padding:8px 16px;font-weight:700;display:flex;align-items:center;gap:6px;">
+            <span>👤</span> Carteira de Clientes
+          </button>
+          <button type="button" class="btn btn-sm btn-ghost btn-help-tab" data-help-tab="faq" style="border-radius:8px 8px 0 0;padding:8px 16px;font-weight:700;display:flex;align-items:center;gap:6px;">
+            <span>❓</span> Perguntas Frequentes (FAQ)
+          </button>
+        </div>
+
+        <!-- CONTEÚDO 1: GUIA VALIDA PDF -->
+        <div id="helpTabContent-valida-pdf" class="help-tab-content">
+          <div style="display:grid;grid-template-columns:2fr 1fr;gap:20px;align-items:start;">
+            <div style="display:flex;flex-direction:column;gap:18px;">
+              
+              <!-- CARD: INTRODUÇÃO -->
+              <div class="card" style="padding:20px;border-left:5px solid #0d9488;">
+                <h3 style="margin:0 0 10px 0;color:#0f766e;display:flex;align-items:center;gap:8px;">
+                  <span>🎯</span> Como Funciona o Valida PDF & Mapeamento de Layouts
+                </h3>
+                <p style="margin:0 0 12px 0;line-height:1.6;color:#334155;font-size:13.5px;">
+                  O <strong>Valida PDF</strong> resolve o maior desafio operacional do escritório: garantir que as guias, relatórios e recibos gerados pela folha de pagamento ou fiscal sejam reconhecidos pelo motor oficial do G-Click e distribuídos aos clientes sem falhas.
+                </p>
+                <div style="background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;padding:12px 14px;font-size:13px;color:#0f766e;line-height:1.5;">
+                  <strong>💡 A Matriz dos 3 Pilares do G-Click:</strong> Todo modelo cadastrado no G-Click depende de 3 regras obrigatórias configuradas na 1ª página do arquivo:
+                  <ul style="margin:8px 0 0 0;padding-left:20px;">
+                    <li><strong>Pilar 1 (Obrigação):</strong> Termo fixo que identifica o tipo do documento (ex: <code>RECIBO DE PAGAMENTO</code>).</li>
+                    <li><strong>Pilar 2 (Inscrição do Cliente):</strong> Linha contendo o CNPJ (14 dígitos), CPF (11 dígitos) ou CNPJ Raiz (8 dígitos da GFD).</li>
+                    <li><strong>Pilar 3 (Competência):</strong> Linha contendo o período de apuração (Ano para obrigações anuais ou Mês/Ano para mensais).</li>
+                  </ul>
+                </div>
+              </div>
+
+              <!-- CARD: PASSO A PASSO -->
+              <div class="card" style="padding:20px;">
+                <h3 style="margin:0 0 14px 0;color:#1e293b;display:flex;align-items:center;gap:8px;">
+                  <span>📋</span> Fluxo Passo a Passo: Da Pasta ao G-Click
+                </h3>
+                <div style="display:flex;flex-direction:column;gap:16px;">
+                  
+                  <div style="display:flex;gap:14px;align-items:flex-start;">
+                    <div style="background:#0d9488;color:#fff;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0;">1</div>
+                    <div>
+                      <strong style="color:#0f172a;font-size:14px;">Varredura & Conciliação da Pasta</strong>
+                      <p style="margin:3px 0 0 0;color:#64748b;font-size:13px;line-height:1.5;">
+                        Informe o caminho da pasta onde estão os arquivos PDF (ex: a pasta do mês ou 13º salário) e clique em <strong>Analisar, Conciliar & Validar Pasta</strong>. O sistema lerá cada PDF recursivamente, extraindo texto, identificando clientes, competências e cruzando com os 185 modelos do G-Click.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div style="display:flex;gap:14px;align-items:flex-start;">
+                    <div style="background:#0d9488;color:#fff;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0;">2</div>
+                    <div>
+                      <strong style="color:#0f172a;font-size:14px;">Filtragem por Situação & Identificação de Pendências</strong>
+                      <p style="margin:3px 0 0 0;color:#64748b;font-size:13px;line-height:1.5;">
+                        Use os chips do topo para filtrar rapidamente o que precisa de ação:
+                      </p>
+                      <ul style="margin:6px 0 0 0;padding-left:18px;font-size:12.5px;color:#475569;line-height:1.6;">
+                        <li><strong style="color:#15803d;">🟢 Já no G-Click:</strong> Modelos ativos e configurados, 100% prontos para envio.</li>
+                        <li><strong style="color:#c2410c;">🛠️ Enviar & Mapear:</strong> Arquivos com texto válido que ainda não possuem modelo cadastrado no G-Click.</li>
+                        <li><strong style="color:#991b1b;">👤 Cliente ñ Existe:</strong> O CNPJ/CPF do documento não foi localizado no cadastro da empresa no G-Click.</li>
+                        <li><strong style="color:#b45309;">⚠️ Duplicidades & Conflitos:</strong> Arquivos idênticos (duplicatas 100%) ou retificações de guia com divergência de valores.</li>
+                        <li><strong style="color:#64748b;">📷 Sem OCR:</strong> Arquivos escaneados ou imagens sem camada de texto vetorial. Estes <em>não</em> devem ser mapeados via layout.</li>
+                      </ul>
+                    </div>
+                  </div>
+
+                  <div style="display:flex;gap:14px;align-items:flex-start;">
+                    <div style="background:#0d9488;color:#fff;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0;">3</div>
+                    <div>
+                      <strong style="color:#0f172a;font-size:14px;">Criar & Mapear Novo Modelo com 1 Clique</strong>
+                      <p style="margin:3px 0 0 0;color:#64748b;font-size:13px;line-height:1.5;">
+                        Nos itens marcados como <span class="tag-pill" style="background:#ffedd5;color:#c2410c;font-weight:700;">🛠️ Enviar & Mapear</span>, clique no botão da tabela. O sistema abrirá o modal de mapeamento, autodetectará os 3 pilares e enviará a configuração diretamente para a tela de PDF Layout do G-Click via automação de navegador.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div style="display:flex;gap:14px;align-items:flex-start;">
+                    <div style="background:#0d9488;color:#fff;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0;">4</div>
+                    <div>
+                      <strong style="color:#0f172a;font-size:14px;">Validação no Oráculo Oficial do G-Click (`/upload`)</strong>
+                      <p style="margin:3px 0 0 0;color:#64748b;font-size:13px;line-height:1.5;">
+                        Selecione os arquivos com checkbox ou clique em <strong>Validar no Oráculo G-Click</strong>. O robô testará o arquivo diretamente na tela oficial <code>/upload</code> do G-Click com fila sequencial e <strong>F5 preventivo a cada envio</strong>, confirmando se o modelo é aceito e promovendo o arquivo para Configurado.
+                      </p>
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+
+              <!-- CARD: REGRAS ESPECIAIS DE 13º E FOLHA -->
+              <div class="card" style="padding:20px;border-left:5px solid #f59e0b;">
+                <h3 style="margin:0 0 10px 0;color:#b45309;display:flex;align-items:center;gap:8px;">
+                  <span>⭐</span> Regras Críticas de Mapeamento (13º Salário & Folha)
+                </h3>
+                <ul style="margin:0;padding-left:20px;color:#334155;font-size:13px;line-height:1.7;">
+                  <li><strong>Nome do Arquivo vs Nome do Modelo:</strong> O nome do modelo deve expressar o que o documento realmente é (ex: <code>RECIBO DE PAGAMENTO</code>), e não nomes genéricos de pastas.</li>
+                  <li><strong>Regra Composta de 2 Textos (Regra 1):</strong> Para diferenciar 1ª Parcela de 2ª Parcela do 13º Salário, o sistema mapeia 2 termos na Regra 1 (ex: <code>RECIBO DE PAGAMENTO</code> + <code>13 SALARIO INTEGRAL</code> ou desconto de <code>ADIANTAMENTO 13 SALARIO</code>).</li>
+                  <li><strong>Competência Anual (Regra 3):</strong> Em obrigações de frequência anual (como 13º e DCTFWeb Anual), deve ser mapeado <strong>exclusivamente o Ano de 4 dígitos</strong> (ex: <code>2025</code>), e nunca formato Mês/Ano.</li>
+                  <li><strong>MultiLinhas Ativado:</strong> Para contracheques e holerites, a opção "Buscar informações em diferentes linhas" deve ficar sempre ativada.</li>
+                </ul>
+              </div>
+
+            </div>
+
+            <!-- COLUNA LATERAL DE APOIO RÁPIDO -->
+            <div style="display:flex;flex-direction:column;gap:16px;">
+              <div class="card" style="padding:16px;background:#f8fafc;">
+                <h4 style="margin:0 0 8px 0;font-size:13.5px;color:#1e293b;">⚡ Atalhos & Ações Rápidas</h4>
+                <div style="display:flex;flex-direction:column;gap:8px;">
+                  <button type="button" class="btn btn-secondary btn-sm" onclick="switchSection('valida-pdf')" style="justify-content:flex-start;">
+                    <span>📂</span> Abrir Validador de Arquivos
+                  </button>
+                  <button type="button" class="btn btn-secondary btn-sm" onclick="switchSection('valida-pdf'); switchValidaPdfTab('models');" style="justify-content:flex-start;">
+                    <span>📑</span> Catálogo de 185 Modelos
+                  </button>
+                  <a href="https://app.gclick.com.br/configuracaoListar.do?obj=pdflayoutopen" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" style="justify-content:flex-start;text-decoration:none;">
+                    <span>↗️</span> Modelos no G-Click
+                  </a>
+                  <a href="https://appp.gclick.com.br/upload" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" style="justify-content:flex-start;text-decoration:none;">
+                    <span>↗️</span> Tela de Upload G-Click
+                  </a>
+                </div>
+              </div>
+
+              <div class="card" style="padding:16px;background:#f0fdf4;border:1px solid #bbf7d0;">
+                <h4 style="margin:0 0 6px 0;font-size:13px;color:#166534;">✔ Arquivos Sem OCR</h4>
+                <p style="margin:0;font-size:12px;color:#14532d;line-height:1.5;">
+                  Arquivos digitalizados em scanner sem camada de texto não podem ser configurados via PDF Layout. Aplique OCR prévio no arquivo ou utilize a rotina de <em>Anexo por Nome</em>.
+                </p>
+              </div>
+
+              <div class="card" style="padding:16px;background:#fef2f2;border:1px solid #fecaca;">
+                <h4 style="margin:0 0 6px 0;font-size:13px;color:#991b1b;">⚠️ Sessão do G-Click</h4>
+                <p style="margin:0;font-size:12px;color:#7f1d1d;line-height:1.5;">
+                  Para criar modelos ou testar uploads no Oráculo, a conta correta do escritório deve estar conectada no módulo <strong>Conexão G-Click</strong>.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- CONTEÚDO 2: GUIA ENQUETE -->
+        <div id="helpTabContent-enquete" class="help-tab-content" hidden>
+          <div style="display:grid;grid-template-columns:2fr 1fr;gap:20px;align-items:start;">
+            <div style="display:flex;flex-direction:column;gap:18px;">
+              <div class="card" style="padding:20px;border-left:5px solid #0284c7;">
+                <h3 style="margin:0 0 10px 0;color:#0369a1;display:flex;align-items:center;gap:8px;">
+                  <span>📋</span> Como Funciona a Enquete (Perfil & Particularidades)
+                </h3>
+                <p style="margin:0 0 12px 0;line-height:1.6;color:#334155;font-size:13.5px;">
+                  No G-Click, a <strong>Enquete é o cérebro que determina quais obrigações pertencem a cada cliente</strong>. As respostas cadastradas no Perfil do Cliente ativam ou desativam tarefas fiscais, contábeis e de departamento pessoal no Mapa de Obrigações.
+                </p>
+                <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:12px 14px;font-size:13px;color:#0369a1;line-height:1.5;">
+                  <strong>Hierarquia da Enquete no G-Click:</strong>
+                  <ul style="margin:6px 0 0 0;padding-left:18px;">
+                    <li><strong>Categoria:</strong> Departamento responsável (ex: <code>Fiscal - Ramo</code>, <code>Dpto. Pessoal</code>, <code>Contábil</code>).</li>
+                    <li><strong>Pergunta (Tipo P):</strong> O questionamento mestre (ex: <code>01.01 - Qual o regime de tributação?</code>).</li>
+                    <li><strong>Resposta / Particularidade (Tipo R):</strong> As opções elegíveis (ex: <code>01.01.01 - Simples Nacional</code>).</li>
+                  </ul>
+                </div>
+              </div>
+
+              <div class="card" style="padding:20px;">
+                <h3 style="margin:0 0 14px 0;color:#1e293b;display:flex;align-items:center;gap:8px;">
+                  <span>⚙️</span> Recursos da Nossa Automação de Enquetes
+                </h3>
+                <div style="display:flex;flex-direction:column;gap:14px;font-size:13px;color:#334155;line-height:1.6;">
+                  <div>
+                    <strong style="color:#0f172a;">1. Catálogo Inteligente & Sincronização Local:</strong>
+                    <p style="margin:2px 0 0 0;color:#64748b;">Lê a árvore completa de perguntas e respostas do G-Click e armazena localmente em JSON para auditoria instantânea sem lentidão de rede.</p>
+                  </div>
+                  <div>
+                    <strong style="color:#0f172a;">2. Inteligência Semântica Antiduplicidade:</strong>
+                    <p style="margin:2px 0 0 0;color:#64748b;">Antes de cadastrar uma nova resposta, nosso algoritmo confronta a base com tolerância de 85% de similaridade (Jaccard/Levenshtein), impedindo poluição do banco de dados.</p>
+                  </div>
+                  <div>
+                    <strong style="color:#0f172a;">3. Resposta em Lote & Gravação Assistida:</strong>
+                    <p style="margin:2px 0 0 0;color:#64748b;">Permite cruzar planilhas externas (Google Sheets/Excel) e gravar as respostas de centenas de clientes de forma auditada no G-Click.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:16px;">
+              <div class="card" style="padding:16px;background:#f8fafc;">
+                <h4 style="margin:0 0 8px 0;font-size:13.5px;color:#1e293b;">⚡ Módulos de Enquete</h4>
+                <div style="display:flex;flex-direction:column;gap:8px;">
+                  <button type="button" class="btn btn-secondary btn-sm" onclick="switchSection('catalog')" style="justify-content:flex-start;">
+                    <span>📖</span> Catálogo de Perguntas
+                  </button>
+                  <button type="button" class="btn btn-secondary btn-sm" onclick="switchSection('enquete-cadastro')" style="justify-content:flex-start;">
+                    <span>✏️</span> Cadastro de Respostas
+                  </button>
+                  <button type="button" class="btn btn-secondary btn-sm" onclick="switchSection('audit')" style="justify-content:flex-start;">
+                    <span>🔍</span> Conferência ao Vivo
+                  </button>
+                  <button type="button" class="btn btn-secondary btn-sm" onclick="switchSection('apply')" style="justify-content:flex-start;">
+                    <span>🚀</span> Gravação no G-Click
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- CONTEÚDO 3: GUIA OBRIGAÇÕES -->
+        <div id="helpTabContent-obrigacoes" class="help-tab-content" hidden>
+          <div style="display:grid;grid-template-columns:2fr 1fr;gap:20px;align-items:start;">
+            <div style="display:flex;flex-direction:column;gap:18px;">
+              <div class="card" style="padding:20px;border-left:5px solid #16a34a;">
+                <h3 style="margin:0 0 10px 0;color:#15803d;display:flex;align-items:center;gap:8px;">
+                  <span>🔄</span> Obrigações & Paridade Omnichannel (E-mail + WhatsApp)
+                </h3>
+                <p style="margin:0 0 12px 0;line-height:1.6;color:#334155;font-size:13.5px;">
+                  O módulo de Obrigações controla as rotinas periódicas do escritório contábil. No G-Click, cada obrigação é composta por 6 abas (Info, Perfil, Datas, Atividades, Responsáveis e Gerar Tarefas).
+                </p>
+                <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px 14px;font-size:13px;color:#15803d;line-height:1.5;">
+                  <strong>Regra Negocial Inviolável de Paridade 1:1:</strong>
+                  <p style="margin:4px 0 0 0;">
+                    Para toda atividade de notificação por E-mail (<code>Tipo: E</code>), deve haver exatamente um passo de WhatsApp integrado via DIGISAC (<code>Tipo: 16</code>) posicionado imediatamente antes do e-mail. Se a obrigação já possui paridade, a criação de passos duplicados é bloqueada para não onerar o cliente.
+                  </p>
+                </div>
+              </div>
+
+              <div class="card" style="padding:20px;">
+                <h3 style="margin:0 0 14px 0;color:#1e293b;display:flex;align-items:center;gap:8px;">
+                  <span>📑</span> Classificação das Obrigações no Painel
+                </h3>
+                <div style="display:flex;flex-direction:column;gap:10px;font-size:13px;">
+                  <div style="display:flex;gap:10px;align-items:center;">
+                    <span class="tag-pill" style="background:#dcfce7;color:#15803d;font-weight:700;">🟢 Conforme</span>
+                    <span style="color:#475569;">Possui paridade 1:1 entre E-mail e WhatsApp, ou é obrigação de canal exclusivo de e-mail.</span>
+                  </div>
+                  <div style="display:flex;gap:10px;align-items:center;">
+                    <span class="tag-pill" style="background:#fef9c3;color:#854d0e;font-weight:700;">🟡 Falta WhatsApp</span>
+                    <span style="color:#475569;">Possui passo de e-mail, mas o cliente ainda não recebe a notificação no WhatsApp. Permite inclusão assistida.</span>
+                  </div>
+                  <div style="display:flex;gap:10px;align-items:center;">
+                    <span class="tag-pill" style="background:#fee2e2;color:#991b1b;font-weight:700;">🟠 Falta E-mail</span>
+                    <span style="color:#475569;">Possui WhatsApp mas carece de passo de e-mail registrado.</span>
+                  </div>
+                  <div style="display:flex;gap:10px;align-items:center;">
+                    <span class="tag-pill" style="background:#f1f5f9;color:#64748b;font-weight:600;">⚪ Sem Disparo</span>
+                    <span style="color:#475569;">Obrigação de controle estritamente interno do escritório (não envia guias para fora).</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:16px;">
+              <div class="card" style="padding:16px;background:#f8fafc;">
+                <h4 style="margin:0 0 8px 0;font-size:13.5px;color:#1e293b;">⚡ Ações de Obrigações</h4>
+                <div style="display:flex;flex-direction:column;gap:8px;">
+                  <button type="button" class="btn btn-secondary btn-sm" onclick="switchSection('obrigacoes')" style="justify-content:flex-start;">
+                    <span>📊</span> Painel de Paridade Omnichannel
+                  </button>
+                  <a href="https://app.gclick.com.br/configuracaoListar.do?obj=coobrigacaoopen" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" style="justify-content:flex-start;text-decoration:none;">
+                    <span>↗️</span> Obrigações no G-Click
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- CONTEÚDO 4: GUIA CARTEIRA -->
+        <div id="helpTabContent-carteira" class="help-tab-content" hidden>
+          <div class="card" style="padding:20px;border-left:5px solid #8b5cf6;">
+            <h3 style="margin:0 0 10px 0;color:#6d28d9;display:flex;align-items:center;gap:8px;">
+              <span>👤</span> Carteira de Clientes & Vínculo de Responsáveis
+            </h3>
+            <p style="margin:0 0 14px 0;line-height:1.6;color:#334155;font-size:13.5px;">
+              O módulo de Carteira gerencia a distribuição de empresas entre os operadores contábeis, fiscais e de RH do escritório no G-Click. Ele permite auditar se há clientes órfãos (sem responsável atribuído) e redistribuir carteiras em lote.
+            </p>
+            <button type="button" class="btn btn-primary btn-sm" onclick="switchSection('carteira')">
+              <span>👤</span> Acessar Carteira por Usuário
+            </button>
+          </div>
+        </div>
+
+        <!-- CONTEÚDO 5: FAQ & DÚVIDAS -->
+        <div id="helpTabContent-faq" class="help-tab-content" hidden>
+          <div style="display:flex;flex-direction:column;gap:14px;">
+            <div class="card" style="padding:16px;">
+              <strong style="color:#0f172a;font-size:14px;display:block;margin-bottom:4px;">1. O que fazer quando o G-Click reporta "Modelo não vinculado à uma obrigação"?</strong>
+              <p style="margin:0;color:#475569;font-size:13px;line-height:1.5;">
+                Isso significa que as linhas do PDF foram mapeadas no Passo 2 do G-Click, mas o modelo ainda não foi conectado à tarefa de obrigação correspondente no Passo 3. Abra o modelo no G-Click pelo link da tabela e conclua o vínculo na 3ª aba.
+              </p>
+            </div>
+            <div class="card" style="padding:16px;">
+              <strong style="color:#0f172a;font-size:14px;display:block;margin-bottom:4px;">2. Por que um arquivo com "Atividade(s) já realizada(s)" é marcado como Configurado?</strong>
+              <p style="margin:0;color:#475569;font-size:13px;line-height:1.5;">
+                Porque o G-Click reconheceu com sucesso o modelo, identificou o cliente e a competência. Como aquela obrigação já constava como entregue no painel do G-Click, o sistema não gera nova pendência e valida que o layout está 100% correto.
+              </p>
+            </div>
+            <div class="card" style="padding:16px;">
+              <strong style="color:#0f172a;font-size:14px;display:block;margin-bottom:4px;">3. Por que documentos digitalizados não aparecem em "Enviar & Mapear"?</strong>
+              <p style="margin:0;color:#475569;font-size:13px;line-height:1.5;">
+                O PDF Layout do G-Click precisa de texto vetorial selecionável para grifar posições de linhas. Arquivos escaneados ou imagens sem OCR são inválidos para configuração de modelo e constam exclusivamente sob o filtro <code>📷 Sem OCR</code>.
+              </p>
+            </div>
+            <div class="card" style="padding:16px;">
+              <strong style="color:#0f172a;font-size:14px;display:block;margin-bottom:4px;">4. Como o sistema previne criação de respostas repetidas na Enquete?</strong>
+              <p style="margin:0;color:#475569;font-size:13px;line-height:1.5;">
+                Nosso motor utiliza comparação por tokens com índice de 85% de similaridade semântica. Se já existir uma resposta equivalente no catálogo local ou no G-Click, o sistema reutiliza a opção existente.
+              </p>
+            </div>
+          </div>
+        </div>
+
       </div>
     </main>
   </div>
@@ -2488,11 +2839,90 @@ Atenciosamente,</textarea>
           <pre id="modalValidaPdfRawText" style="margin-top:10px;padding:12px;background:#0f172a;color:#e2e8f0;border-radius:6px;font-family:var(--font-mono);font-size:11.5px;max-height:280px;overflow:auto;white-space:pre-wrap;line-height:1.4;"></pre>
         </details>
       </div>
-      <div class="modal-footer" style="display:flex;justify-content:space-between;align-items:center;padding:12px 18px;border-top:1px solid #e2e8f0;">
-        <button type="button" id="btnValidateOnGclick" class="btn btn-primary btn-md" style="display:flex;align-items:center;gap:6px;">
-          <span>🌐</span> Testar Validação no G-Click
-        </button>
+      <div class="modal-footer" style="display:flex;justify-content:space-between;align-items:center;padding:12px 18px;border-top:1px solid #e2e8f0;flex-wrap:wrap;gap:8px;">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <button type="button" id="btnTestUploadOnGclick" class="btn btn-primary btn-md" style="display:flex;align-items:center;gap:6px;background:#0d9488;border-color:#0d9488;" title="Envia o PDF diretamente para a tela oficial https://appp.gclick.com.br/upload para descobrir qual validador do G-Click o captura">
+            <span>⚡</span> Testar no /upload do G-Click (Oráculo)
+          </button>
+          <button type="button" id="btnValidateOnGclick" class="btn btn-secondary btn-md" style="display:flex;align-items:center;gap:6px;" title="Testa a validação contra o modelo selecionado no dropdown">
+            <span>🌐</span> Testar Modelo Específico
+          </button>
+        </div>
         <button type="button" id="btnCloseValidaPdfModalBtn" class="btn btn-secondary btn-md">Fechar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL DE DETALHES DO MODELO G-CLICK -->
+  <div id="modalValidaModelDetail" class="modal-overlay" hidden>
+    <div class="modal-box" style="max-width:760px;width:95%;">
+      <div class="modal-header" style="display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:18px;">📑</span>
+            <h3 id="modalModelDetailTitle" style="margin:0;font-size:16px;">Detalhes do Modelo G-Click</h3>
+            <span id="modalModelDetailId" class="tag-pill" style="font-size:11.5px;font-family:var(--font-mono);background:#0f766e;color:#fff;"></span>
+          </div>
+          <span id="modalModelDetailSub" class="sub-hint" style="font-size:12px;">Configuração oficial dos 3 pilares e vinculações</span>
+        </div>
+        <button type="button" id="btnCloseValidaModelDetail" class="ghost" style="font-size:18px;cursor:pointer;">✕</button>
+      </div>
+      <div class="modal-body" style="padding:18px;max-height:75vh;overflow-y:auto;">
+        <!-- BANNER DE STATUS DO MODELO -->
+        <div id="modalModelDetailStatusBanner" style="padding:12px 16px;border-radius:8px;margin-bottom:16px;font-size:13px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;"></div>
+
+        <!-- INFORMAÇÕES GERAIS -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:12px;margin-bottom:16px;">
+          <div style="background:#f8fafc;padding:10px 12px;border-radius:6px;border:1px solid #e2e8f0;">
+            <span style="font-size:11px;color:#64748b;display:block;font-weight:600;text-transform:uppercase;">Departamento</span>
+            <strong id="modalModelDetailDepto" style="font-size:13.5px;color:#1e293b;">-</strong>
+          </div>
+          <div style="background:#f8fafc;padding:10px 12px;border-radius:6px;border:1px solid #e2e8f0;">
+            <span style="font-size:11px;color:#64748b;display:block;font-weight:600;text-transform:uppercase;">Obrigação Vinculada</span>
+            <strong id="modalModelDetailObrigacao" style="font-size:13.5px;color:#0f766e;">-</strong>
+          </div>
+          <div style="background:#f8fafc;padding:10px 12px;border-radius:6px;border:1px solid #e2e8f0;">
+            <span style="font-size:11px;color:#64748b;display:block;font-weight:600;text-transform:uppercase;">Multilinhas (Linhas Variáveis)</span>
+            <strong id="modalModelDetailMultilinhas" style="font-size:13.5px;color:#1e293b;">Sim (Ativado)</strong>
+          </div>
+        </div>
+
+        <!-- OS 3 PILARES DO G-CLICK -->
+        <h4 style="margin:0 0 10px 0;font-size:13.5px;color:#334155;">📐 Configuração dos 3 Pilares no G-Click</h4>
+        <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px;">
+          <!-- Pilar 1 -->
+          <div class="card" style="padding:12px 14px;border-left:4px solid #0f766e;margin:0;background:#f8fafc;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+              <strong style="font-size:12.5px;color:#0f766e;">Pilar 1: Palavra-chave ou código (Identificar Obrigação)</strong>
+              <span id="modalModelDetailPilar1Line" class="tag-pill" style="font-size:11px;">Linha -</span>
+            </div>
+            <div id="modalModelDetailPilar1Val" style="font-size:13px;color:#0f172a;font-weight:600;font-family:var(--font-mono);">-</div>
+          </div>
+
+          <!-- Pilar 2 -->
+          <div class="card" style="padding:12px 14px;border-left:4px solid #2563eb;margin:0;background:#f8fafc;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+              <strong style="font-size:12.5px;color:#2563eb;">Pilar 2: Inscrição do Cliente (CNPJ / CPF / Raiz)</strong>
+              <span id="modalModelDetailPilar2Line" class="tag-pill" style="font-size:11px;">Linha -</span>
+            </div>
+            <div id="modalModelDetailPilar2Val" style="font-size:13px;color:#0f172a;font-weight:600;font-family:var(--font-mono);">-</div>
+          </div>
+
+          <!-- Pilar 3 -->
+          <div class="card" style="padding:12px 14px;border-left:4px solid #d97706;margin:0;background:#f8fafc;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+              <strong style="font-size:12.5px;color:#d97706;">Pilar 3: Competência da Obrigação</strong>
+              <span id="modalModelDetailPilar3Line" class="tag-pill" style="font-size:11px;">Linha -</span>
+            </div>
+            <div id="modalModelDetailPilar3Val" style="font-size:13px;color:#0f172a;font-weight:600;font-family:var(--font-mono);">-</div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer" style="display:flex;justify-content:space-between;align-items:center;padding:12px 18px;border-top:1px solid #e2e8f0;">
+        <a id="btnModalOpenInGclick" href="#" target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-md" style="display:inline-flex;align-items:center;gap:6px;text-decoration:none;">
+          <span>↗️</span> Abrir Configuração no G-Click
+        </a>
+        <button type="button" id="btnCloseValidaModelDetailBtn" class="btn btn-secondary btn-md">Fechar</button>
       </div>
     </div>
   </div>
@@ -2536,6 +2966,9 @@ Atenciosamente,</textarea>
         <div id="loginError" class="alert bad" style="margin-bottom:14px;padding:8px 12px;font-size:13px;background:#fef2f2;border:1px solid #fecaca;color:#991b1b;border-radius:6px" hidden></div>
         <button type="submit" id="btnLoginSubmit" class="btn btn-primary btn-lg btn-block">Entrar no Sistema</button>
       </form>
+    </div>
+  </div>
+
   <!-- MODAL DE RELATÓRIO DE DIAGNÓSTICO -->
   <div id="modalDiagnosticReport" class="modal-overlay" hidden>
     <div class="modal-box" style="max-width:980px;width:95%;max-height:92vh;display:flex;flex-direction:column;">

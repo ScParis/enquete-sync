@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { gotoWithRetry } from './gclick.mjs';
-import { parseCsvTable, normalizeCnpj } from './data.mjs';
+import { parseCsvTable, normalizeCnpj, formatCnpj } from './data.mjs';
 
 /**
  * Aplica máscara de CNPJ "00.000.000/0000-00".
@@ -18,7 +18,7 @@ export function formatCnpjMask(cnpjRaw) {
   }
 
   const valid = digits.length === 14;
-  const formatted = digits.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
+  const formatted = formatCnpj(digits);
   return { formatted, digits, valid };
 }
 

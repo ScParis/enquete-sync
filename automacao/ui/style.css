@@ -416,8 +416,15 @@ button:disabled {
   background: var(--gclick-accent);
   border-radius: 0 3px 3px 0;
 }
-.nav-btn.nav-blocked { opacity: 0.45; cursor: not-allowed; }
-.nav-btn.nav-blocked:hover { background: transparent; color: #cbd5e1; }
+.nav-btn.nav-blocked {
+  opacity: 0.45;
+  cursor: not-allowed;
+  position: relative;
+}
+.nav-btn.nav-blocked:hover {
+  background: rgba(239, 68, 68, 0.05);
+  color: #94a3b8;
+}
 .pipeline-step.step-blocked { opacity: 0.5; cursor: not-allowed; }
 .nav-overview { margin-bottom: -4px; }
 
@@ -589,90 +596,65 @@ button:disabled {
   color: #991b1b;
 }
 
-/* WORKBENCH PIPELINE STEPPER INTERATIVO */
-.workbench-pipeline {
+/* WORKSPACE MODULE TABS (ABAS INTEGRADAS DENTRO DO MÓDULO) */
+.module-tabs {
   display: flex;
   align-items: center;
   gap: 8px;
   background: #ffffff;
   border: 1px solid var(--border-light);
   border-radius: var(--radius-md);
-  padding: 8px 14px;
+  padding: 6px;
   box-shadow: var(--shadow-sm);
+  margin-bottom: 20px;
   overflow-x: auto;
 }
 
-.pipeline-step {
+.module-tab-btn {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   background: none;
   border: 1px solid transparent;
-  padding: 6px 12px;
+  padding: 8px 16px;
   border-radius: var(--radius-sm);
   cursor: pointer;
-  text-align: left;
+  font-size: 13px;
+  font-weight: 600;
+  color: #64748b;
   transition: all 0.15s ease;
   white-space: nowrap;
 }
 
-.pipeline-step:hover {
+.module-tab-btn:hover {
   background: #f8fafc;
+  color: var(--text-main);
   border-color: #cbd5e1;
 }
 
-.pipeline-step.active {
+.module-tab-btn.active {
   background: #ecfdf5;
   border-color: #a7f3d0;
+  color: var(--gclick-primary);
 }
 
-.step-num {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
+.module-tab-btn .tab-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.module-tab-btn .tab-badge {
+  font-size: 11px;
   background: #f1f5f9;
   color: #475569;
-  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 12px;
   font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  border: 1px solid #e2e8f0;
 }
 
-.pipeline-step.active .step-num {
-  background: var(--gclick-primary);
-  border-color: var(--gclick-primary);
-  color: #ffffff;
-}
-
-.pipeline-step.completed .step-num {
-  background: var(--color-success);
-  border-color: var(--color-success);
-  color: #ffffff;
-}
-
-.step-meta {
-  display: flex;
-  flex-direction: column;
-}
-
-.step-meta strong {
-  font-size: 12px;
-  font-weight: 600;
-  color: #0f172a;
-}
-
-.step-meta span {
-  font-size: 11px;
-  color: #64748b;
-}
-
-.pipeline-arrow {
-  color: #cbd5e1;
-  font-size: 12px;
-  flex-shrink: 0;
+.module-tab-btn.active .tab-badge {
+  background: #a7f3d0;
+  color: #065f46;
 }
 
 /* FAIXA DE MÉTRICAS & TELEMETRIA EM TEMPO REAL */
@@ -2083,9 +2065,11 @@ code, .tabular-mono, .cnpj-cell, .id-cell {
   width: 100%;
   max-width: 580px;
   max-height: 90vh;
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
   box-shadow: var(--shadow-lg);
   animation: fadeIn 0.2s ease;
+  overflow: hidden;
 }
 
 .modal-header {
@@ -2094,12 +2078,31 @@ code, .tabular-mono, .cnpj-cell, .id-cell {
   justify-content: space-between;
   padding: 16px 20px;
   border-bottom: 1px solid var(--border-light);
+  background: #f8fafc;
+  flex-shrink: 0;
 }
 
 .modal-header h3 {
   margin: 0;
   font-size: 17px;
   color: var(--text-main);
+}
+
+.modal-body {
+  padding: 20px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.modal-footer {
+  padding: 14px 20px;
+  border-top: 1px solid var(--border-light);
+  background: #f8fafc;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-shrink: 0;
 }
 
 .override-btn-group {
@@ -2942,4 +2945,58 @@ button.ghost.btn-loading::after,
   color: var(--text-main);
   max-width: 160px;
 }
+
+/* UNIFIED VALIDA-PDF CHIPS & DUPLICATES STYLES */
+.btn-chip-active {
+  background: #0f172a !important;
+  color: #ffffff !important;
+  border-color: #0f172a !important;
+}
+
+.dupe-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  transition: border-color 0.15s ease;
+}
+
+.dupe-card:hover {
+  border-color: #cbd5e1;
+}
+
+.dupe-badge-identical {
+  background: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 12px;
+  text-transform: uppercase;
+}
+
+.dupe-badge-guide {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fde68a;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 12px;
+  text-transform: uppercase;
+}
+
+.dupe-badge-conflict {
+  background: #ffedd5;
+  color: #9a3412;
+  border: 1px solid #fed7aa;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 12px;
+  text-transform: uppercase;
+}
+
 

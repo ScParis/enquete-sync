@@ -7,6 +7,7 @@ import {
   createAndAttachResposta,
   executeBatchCadastro
 } from '../lib/enquete-cadastro.mjs';
+import { readPublicGoogleCsv } from '../lib/google-service.mjs';
 
 const DEFAULT_MODEL_SHEET = 'https://docs.google.com/spreadsheets/d/1fxVpJ6WMWFdsQmmquaJK-_7IFTeIBepVGoBPUSHED5g/edit?gid=278193778#gid=278193778';
 
@@ -19,7 +20,20 @@ let batchProgress = {
 };
 
 export async function handleEnqueteCadastroRoutes(req, res, ctx) {
-  const { url, currentUser, authService, send, loginContext, readStoredCatalog, readQuestionCatalog, loginReady, hasGclickActiveSession } = ctx;
+  const {
+    url,
+    currentUser,
+    authService,
+    send,
+    loginContext,
+    readStoredCatalog,
+    readQuestionCatalog,
+    loginReady,
+    hasGclickActiveSession,
+    exclusive,
+    jobManager
+  } = ctx;
+  const runExclusive = typeof exclusive === 'function' ? exclusive : (fn) => fn();
 
   // 1. GET /api/enquete/conferencia
   if (req.method === 'GET' && url.pathname === '/api/enquete/conferencia') {
@@ -33,16 +47,11 @@ export async function handleEnqueteCadastroRoutes(req, res, ctx) {
     try {
       // 1. Busca CSV da planilha
       let csvContent = '';
-      const u = new URL(sheetUrl);
-      const docId = u.pathname.split('/')[3];
-      const gid = u.searchParams.get('gid') ?? (new URLSearchParams(u.hash.slice(1)).get('gid') || '0');
-      const exportUrl = `https://docs.google.com/spreadsheets/d/${docId}/export?format=csv&gid=${gid}`;
-
-      const resp = await fetch(exportUrl);
-      if (!resp.ok) {
-        throw new Error(`Não foi possível baixar o CSV da planilha (HTTP ${resp.status}). Verifique o compartilhamento.`);
+      try {
+        csvContent = await readPublicGoogleCsv(sheetUrl);
+      } catch (err) {
+        throw new Error(`Não foi possível baixar o CSV da planilha. ${err.message}`);
       }
-      csvContent = await resp.text();
 
       // 2. Parse da planilha
       const groups = parseSpreadsheetEnquete(csvContent);
@@ -151,8 +160,8 @@ export async function handleEnqueteCadastroRoutes(req, res, ctx) {
       return send(res, 400, { error: 'Informe accountId e uma lista de items para cadastrar' });
     }
 
-    if (batchProgress.running) {
-      return send(res, 409, { error: 'Outro processo de cadastro na Enquete já está em andamento.' });
+    if (batchProgress.running || (jobManager && jobManager.isBusy())) {
+      return send(res, 409, { error: 'Outro processo de automação já está em andamento.' });
     }
 
     batchProgress = {
@@ -163,29 +172,53 @@ export async function handleEnqueteCadastroRoutes(req, res, ctx) {
       logs: []
     };
 
-    const activePages = loginContext.pages().filter(p => !p.isClosed());
-    const gclickPage = activePages.find(p => {
+    let job = null;
+    if (jobManager) {
       try {
-        const u = new URL(p.url());
-        return /(^|\.)gclick\.com\.br$/.test(u.hostname);
-      } catch { return false; }
-    });
-    const page = gclickPage || activePages[0] || await loginContext.newPage();
+        job = jobManager.startJob('enquete_cadastro', accountId, batchProgress);
+      } catch (err) {
+        return send(res, 409, { error: err.message });
+      }
+    }
 
-    // Executa em segundo plano para streaming ou aguarda
     try {
-      const results = await executeBatchCadastro(page, accountId, items, (prog) => {
-        batchProgress.current = prog.current;
-        batchProgress.total = prog.total;
-        batchProgress.message = prog.message;
-        if (prog.message) {
-          const formatted = `[${new Date().toLocaleTimeString('pt-BR')}] ${prog.message}`;
-          batchProgress.logs.push(formatted);
-          console.log(`[ENQUETE-CADASTRO] ${formatted}`);
-        }
+      const results = await runExclusive(async () => {
+        const activePages = loginContext.pages().filter(p => !p.isClosed());
+        const gclickPage = activePages.find(p => {
+          try {
+            const u = new URL(p.url());
+            return /(^|\.)gclick\.com\.br$/.test(u.hostname);
+          } catch { return false; }
+        });
+        const page = gclickPage || activePages[0] || await loginContext.newPage();
+
+        return executeBatchCadastro(
+          page,
+          accountId,
+          items,
+          (prog) => {
+            batchProgress.current = prog.current;
+            batchProgress.total = prog.total;
+            batchProgress.message = prog.message;
+            if (jobManager) {
+              jobManager.updateProgress({
+                done: prog.current,
+                total: prog.total,
+                message: prog.message
+              });
+            }
+            if (prog.message) {
+              const formatted = `[${new Date().toLocaleTimeString('pt-BR')}] ${prog.message}`;
+              batchProgress.logs.push(formatted);
+              console.log(`[ENQUETE-CADASTRO] ${formatted}`);
+            }
+          },
+          () => (job ? job.signal.aborted : false)
+        );
       });
 
       batchProgress.running = false;
+      if (job) job.finish({ running: false, stage: 'concluido' });
 
       // Atualiza catálogo em segundo plano
       if (readQuestionCatalog) {
@@ -202,6 +235,7 @@ export async function handleEnqueteCadastroRoutes(req, res, ctx) {
       batchProgress.running = false;
       batchProgress.message = `Erro: ${err.message}`;
       batchProgress.logs.push(`[${new Date().toLocaleTimeString('pt-BR')}] ERRO: ${err.message}`);
+      if (job) job.finish({ running: false, stage: 'erro', message: err.message });
       return send(res, 500, { error: err.message });
     }
   }

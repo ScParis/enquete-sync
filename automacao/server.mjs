@@ -38,6 +38,10 @@ import { handleSourceProfileRoutes } from './routes/source-profile.routes.mjs';
 import { handleCarteiraRoutes } from './routes/carteira.routes.mjs';
 import { handleEnqueteCadastroRoutes } from './routes/enquete-cadastro.routes.mjs';
 import { handleValidaPdfRoutes } from './routes/valida-pdf.routes.mjs';
+import { handleStaticRoutes } from './routes/static.routes.mjs';
+import { handleEnqueteRoutes } from './routes/enquete.routes.mjs';
+import { resolveNormalizedSource } from './lib/source-resolver.mjs';
+import { jobManager } from './lib/job-manager.mjs';
 import * as carteiraLib from './lib/carteira.mjs';
 import { fileURLToPath } from 'node:url';
 
@@ -514,13 +518,10 @@ export function findAutoMatch(task, taskRows, catalog) {
   return null;
 }
 async function route(req, res) {
+  const staticHandled = await handleStaticRoutes(req, res, { root, send });
+  if (staticHandled) return;
+
   const url = new URL(req.url, `http://${host}:${port}`);
-  if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/login')) return send(res, 200, await fs.readFile(path.join(root, 'ui/index.html'), 'utf8'), 'text/html; charset=utf-8');
-  if (req.method === 'GET' && url.pathname === '/ui/app.js') return send(res, 200, await fs.readFile(path.join(root, 'ui/app.js'), 'utf8'), 'text/javascript; charset=utf-8');
-  if (req.method === 'GET' && url.pathname === '/ui/toast.js') return send(res, 200, await fs.readFile(path.join(root, 'ui/toast.js'), 'utf8'), 'text/javascript; charset=utf-8');
-  if (req.method === 'GET' && url.pathname === '/ui/style.css') return send(res, 200, await fs.readFile(path.join(root, 'ui/style.css'), 'utf8'), 'text/css; charset=utf-8');
-  if (req.method === 'GET' && url.pathname === '/ui/jb-logo.svg') return send(res, 200, await fs.readFile(path.join(root, 'ui/jb-logo.svg'), 'utf8'), 'image/svg+xml; charset=utf-8');
-  if (req.method === 'GET' && (url.pathname === '/ui/jb-favicon.svg' || url.pathname === '/favicon.ico')) return send(res, 200, await fs.readFile(path.join(root, 'ui/jb-favicon.svg'), 'utf8'), 'image/svg+xml; charset=utf-8');
 
   // Rotas de Autenticação Públicas / Sessão
   const authHandled = await handleAuthRoutes(req, res, { url, currentUser: getAuthUser(req), authService, body, send, sendCookie, getCookie });
@@ -683,45 +684,36 @@ async function route(req, res) {
     });
   }
 
-  if (req.method === 'GET' && url.pathname === '/api/report.json') {
-    const accountId = url.searchParams.get('account') || lastReport?.accountId || '2420';
-    if (!currentUser || !authService.hasPermission(currentUser.id, 'enquete.visualizar', accountId)) {
-      return send(res, 403, { error: 'Acesso negado: sem permissão para esta conta' });
-    }
-    const rep = (await getLatestReport(accountId)) || lastReport;
-    return rep ? send(res, 200, rep) : send(res, 404, { error: 'Nenhum relatório gerado' });
-  }
-  if (req.method === 'GET' && (url.pathname === '/api/report.csv' || url.pathname === '/api/audit/log.csv')) {
-    const accountId = url.searchParams.get('account') || lastReport?.accountId || '2420';
-    if (!currentUser || !authService.hasPermission(currentUser.id, 'enquete.exportar', accountId)) {
-      return send(res, 403, { error: 'Acesso negado: sem permissão para esta conta' });
-    }
-    const rep = (await getLatestReport(accountId)) || lastReport;
-    if (!rep) return send(res, 404, { error: 'Nenhum relatório de auditoria gerado' });
-    const catalog = catalogState?.accountId === rep.accountId ? catalogState : (await readStoredCatalog(rep.accountId));
-    const ledger = await readLedger(rep.accountId);
-    const rows = buildAuditLogRows(rep, catalog, savedMappings, ledger);
-    return send(res, 200, auditLogCsv(rows), 'text/csv; charset=utf-8');
-  }
-  if (req.method === 'GET' && url.pathname === '/api/marcacoes.csv') {
-    const accountId = requireAccount(url.searchParams.get('account'));
-    if (!currentUser || !authService.hasPermission(currentUser.id, 'enquete.exportar', accountId)) {
-      return send(res, 403, { error: 'Acesso negado: sem permissão para esta conta' });
-    }
-    const type = url.searchParams.get('type');
-    if (type === 'ledger_only') {
-      return send(res, 200, ledgerCsv(await readLedger(accountId)), 'text/csv; charset=utf-8');
-    }
-    const rep = (await getLatestReport(accountId)) || lastReport;
-    if (!rep) {
-      if (type === 'ledger') return send(res, 200, ledgerCsv(await readLedger(accountId)), 'text/csv; charset=utf-8');
-      return send(res, 404, { error: 'Nenhum relatório de auditoria gerado' });
-    }
-    const catalog = catalogState?.accountId === accountId ? catalogState : (await readStoredCatalog(accountId));
-    const ledger = await readLedger(accountId);
-    const rows = buildAuditLogRows(rep, catalog, savedMappings, ledger);
-    return send(res, 200, auditLogCsv(rows), 'text/csv; charset=utf-8');
-  }
+  // Rotas GET do módulo Enquete (Relatórios, Auditoria, CSV)
+  const enqueteGetHandled = await handleEnqueteRoutes(req, res, {
+    url,
+    payload: null,
+    currentUser,
+    authService,
+    requireAccount,
+    loadSource,
+    savedProfiles,
+    savedMappingsRef: { get value() { return savedMappings; }, set value(v) { savedMappings = v; } },
+    saveMappings,
+    accountSettings,
+    saveAccountSettings,
+    listStoredAccounts,
+    validSheetUrl,
+    readLedger,
+    ledgerCsv,
+    catalogState,
+    readStoredCatalog,
+    loginReady,
+    lastReportRef: { get value() { return lastReport; }, set value(v) { lastReport = v; } },
+    getLatestReport,
+    auditProgressRef: { get value() { return auditProgress; }, set value(v) { auditProgress = v; } },
+    applyProgressRef: { get value() { return applyProgress; }, set value(v) { applyProgress = v; } },
+    downloadsDir,
+    previewStateRef: { get value() { return previewState; }, set value(v) { previewState = v; } },
+    send
+  });
+  if (enqueteGetHandled !== false) return enqueteGetHandled;
+
   // Rotas GET do módulo Enquete Cadastro (GET /api/enquete/conferencia, GET /api/enquete/categorias, GET /api/enquete/progresso)
   if (req.method === 'GET' && url.pathname.startsWith('/api/enquete/')) {
     const enqueteCadastroGetHandled = await handleEnqueteCadastroRoutes(req, res, {
@@ -735,6 +727,8 @@ async function route(req, res) {
       hasGclickActiveSession,
       readStoredCatalog,
       readQuestionCatalog,
+      exclusive,
+      jobManager,
       send
     });
     if (enqueteCadastroGetHandled !== false) return enqueteCadastroGetHandled;
@@ -751,6 +745,8 @@ async function route(req, res) {
       loginContext,
       hasGclickActiveSession,
       catalogsDir,
+      exclusive,
+      jobManager,
       send
     });
     if (validaPdfGetHandled !== false) return validaPdfGetHandled;
@@ -794,6 +790,9 @@ async function route(req, res) {
       activeAbortController.abort();
       cancelled = true;
     }
+    const jobCancel = jobManager.cancelActiveJob();
+    if (jobCancel.cancelled) cancelled = true;
+
     busy = false;
     applyProgress = { running: false, stage: 'cancelado', done: 0 };
     obrigacoesProgress = { ...obrigacoesProgress, running: false, stage: 'Operação cancelada pelo operador.' };
@@ -882,6 +881,8 @@ async function route(req, res) {
     hasGclickActiveSession,
     readStoredCatalog,
     readQuestionCatalog,
+    exclusive,
+    jobManager,
     send
   });
   if (enqueteCadastroPostHandled !== false) return enqueteCadastroPostHandled;
@@ -896,84 +897,41 @@ async function route(req, res) {
     loginContext,
     hasGclickActiveSession,
     catalogsDir,
+    exclusive,
+    jobManager,
     send
   });
   if (validaPdfPostHandled !== false) return validaPdfPostHandled;
 
-  if (url.pathname === '/api/accounts/save') {
-    const accountId = requireAccount(payload.accountId);
-    // Cada uso guarda o próprio link; só os campos enviados são alterados.
-    const changes = {};
-    if ('sheetUrl' in payload) changes.sheetUrl = validSheetUrl(payload.sheetUrl);
-    if ('carteiraSheetUrl' in payload) changes.carteiraSheetUrl = validSheetUrl(payload.carteiraSheetUrl);
-    accountSettings[accountId] = { ...accountSettings[accountId], ...changes, updatedAt: new Date().toISOString() };
-    await saveAccountSettings();
-    return send(res, 200, { accounts: await listStoredAccounts() });
-  }
-  if (url.pathname === '/api/mappings/save') {
-    const accountId = requireAccount(payload.accountId);
-    if (!authService.hasPermission(currentUser.id, 'mapeamentos.gerenciar', accountId)) {
-      return send(res, 403, { error: 'Acesso negado: permissão "mapeamentos.gerenciar" necessária' });
-    }
-    const task = String(payload.task ?? '').trim();
-    const answerRef = String(payload.answerRef ?? '');
-    const excluded = payload.excluded === true;
-    const availableCatalog = catalogState?.accountId === accountId && loginReady ? catalogState : null;
-    if (!task || task.length > 250) throw new Error('Tarefa inválida');
-    if (answerRef && excluded) throw new Error('Uma tarefa excluída não pode ter resposta associada');
-    let found = null;
-    if (answerRef) {
-      if (!availableCatalog) throw new Error('Conecte a Enquete desta conta: as perguntas e respostas são lidas dela antes de mapear.');
-      for (const question of availableCatalog.questions) { const answer = question.answers.find(a => a.ref === answerRef); if (answer) found = { question, answer }; }
-      if (!found) throw new Error('Resposta não encontrada no catálogo desta conta');
-    }
-    const current = savedMappings.find(x => x.accountId === accountId && x.task === task);
-    if (current && ((found && !current.excluded && current.answerRef === answerRef) || (excluded && current.excluded)))
-      return send(res, 200, { savedMappings, unchanged: true });
-    savedMappings = savedMappings.filter(x => !(x.accountId === accountId && x.task === task));
-    if (found) savedMappings.push({ accountId, task, answerRef, questionLabel: found.question.label, answerLabel: found.answer.label,
-      catalogSource: 'live', updatedAt: new Date().toISOString() });
-    else if (excluded) savedMappings.push({ accountId, task, excluded: true, updatedAt: new Date().toISOString() });
-    await saveMappings();
-    previewState = null;
-    return send(res, 200, { savedMappings });
-  }
-  if (url.pathname === '/api/mappings/save-batch') {
-    const accountId = requireAccount(payload.accountId);
-    if (!authService.hasPermission(currentUser.id, 'mapeamentos.gerenciar', accountId)) {
-      return send(res, 403, { error: 'Acesso negado: permissão "mapeamentos.gerenciar" necessária' });
-    }
-    const mappingsToSave = Array.isArray(payload.mappings) ? payload.mappings : [];
-    const availableCatalog = catalogState?.accountId === accountId && loginReady ? catalogState : null;
-    if (!availableCatalog) throw new Error('Conecte a Enquete desta conta antes de salvar lote de mapeamentos.');
-    let updatedCount = 0;
-    for (const item of mappingsToSave) {
-      const task = String(item.task ?? '').trim();
-      const answerRef = String(item.answerRef ?? '').trim();
-      if (!task || !answerRef) continue;
-      let found = null;
-      for (const question of availableCatalog.questions) {
-        const answer = question.answers.find(a => a.ref === answerRef);
-        if (answer) { found = { question, answer }; break; }
-      }
-      if (!found) continue;
-      savedMappings = savedMappings.filter(x => !(x.accountId === accountId && x.task === task));
-      savedMappings.push({
-        accountId, task, answerRef,
-        questionLabel: found.question.label,
-        answerLabel: found.answer.label,
-        catalogSource: 'live',
-        updatedAt: new Date().toISOString()
-      });
-      updatedCount++;
-    }
-    if (updatedCount > 0) {
-      await saveMappings();
-      previewState = null;
-    }
-    return send(res, 200, { savedMappings, updatedCount });
-  }
-  if (url.pathname === '/api/audit/progress') return send(res, 200, auditProgress);
+  // Rotas POST do módulo Enquete (Mapeamentos, Tarefas, Configurações de Contas)
+  const enquetePostHandled = await handleEnqueteRoutes(req, res, {
+    url,
+    payload,
+    currentUser,
+    authService,
+    requireAccount,
+    loadSource,
+    savedProfiles,
+    savedMappingsRef: { get value() { return savedMappings; }, set value(v) { savedMappings = v; } },
+    saveMappings,
+    accountSettings,
+    saveAccountSettings,
+    listStoredAccounts,
+    validSheetUrl,
+    readLedger,
+    ledgerCsv,
+    catalogState,
+    readStoredCatalog,
+    loginReady,
+    lastReportRef: { get value() { return lastReport; }, set value(v) { lastReport = v; } },
+    getLatestReport,
+    auditProgressRef: { get value() { return auditProgress; }, set value(v) { auditProgress = v; } },
+    applyProgressRef: { get value() { return applyProgress; }, set value(v) { applyProgress = v; } },
+    downloadsDir,
+    previewStateRef: { get value() { return previewState; }, set value(v) { previewState = v; } },
+    send
+  });
+  if (enquetePostHandled !== false) return enquetePostHandled;
   const sheetsHandled = await handleSheetsRoutes(req, res, {
     url,
     payload,
@@ -999,124 +957,6 @@ async function route(req, res) {
     send
   });
   if (sheetsHandled !== false) return sheetsHandled;
-  if (url.pathname === '/api/mappings/plan') {
-    const accountId = requireAccount(payload.accountId);
-    const task = String(payload.task ?? '').trim();
-    const saved = savedMappings.find(x => x.accountId === accountId && x.task === task);
-    if (!saved) throw new Error('Tarefa sem mapeamento salvo nesta conta');
-    const source = await loadSource(payload);
-    const sheetId = String(payload.sheetName ?? payload.sheetId ?? source.label);
-    const structure = parseHeaderAndSample(source.csv, { headerRow: payload.headerRow ?? 1 });
-    let profile = payload.profile ?? savedProfiles.find(p => p.accountId === accountId && profileFitsUse(p, 'enquete_automacao') && (p.sourceFingerprint === source.label || p.sheetIdentifier === sheetId));
-    if (profile) {
-      const val = validateProfileAgainstStructure(profile, structure);
-      if (!val.valid) {
-        const suggested = createSuggestedProfile(accountId, source.label, sheetId, structure, 'enquete_automacao');
-        const valSug = validateProfileAgainstStructure(suggested, structure);
-        if (valSug.valid) profile = suggested;
-      }
-    } else {
-      const suggested = createSuggestedProfile(accountId, source.label, sheetId, structure, 'enquete_automacao');
-      const valSug = validateProfileAgainstStructure(suggested, structure);
-      if (valSug.valid) profile = suggested;
-    }
-    let rows;
-    if (profile) {
-      const table = parseCsvTable(source.csv);
-      const normResult = normalizeTable(table, profile);
-      rows = normResult.normalizedRows;
-    } else {
-      rows = parseCsv(source.csv);
-    }
-    const derived = scopeFromEligible(rows, { allowedTasks: [task], excludedTasks: [] });
-    const plan = derived.scope.length ? makePlan(rows, derived.scope, { allowedTasks: [task], excludedTasks: [] }) : [];
-    const ledger = await readLedger(accountId);
-    return send(res, 200, { task, excluded: Boolean(saved.excluded), answerRef: saved.answerRef ?? null, invalid: derived.invalid,
-      rows: plan.map(item => {
-        const marked = ledger.filter(e => e.cnpj === item.cnpj && e.task === task).pop();
-        return { cnpj: item.cnpj, empId: item.empId, empresa: item.empresa, status: item.status, reason: item.reason, marcadoEm: marked?.at ?? null };
-      }) });
-  }
-  if (url.pathname === '/api/downloads') return send(res, 200, { files: await listCsvDownloads(downloadsDir) });
-  if (url.pathname === '/api/tasks') {
-    const source = await loadSource(payload);
-    const table = parseCsvTable(source.csv);
-    const accountId = payload.accountId ? String(payload.accountId).trim() : '';
-    const sheetId = String(payload.sheetName ?? payload.sheetId ?? source.label);
-    const structure = parseHeaderAndSample(source.csv, { headerRow: payload.headerRow ?? 1 });
-    let profile = payload.profile ?? savedProfiles.find(p => p.accountId === accountId && profileFitsUse(p, 'enquete_automacao') && (p.sourceFingerprint === source.label || p.sheetIdentifier === sheetId));
-    let normalized = null;
-    let audit = null;
-    let isEligible = true;
-    let missingForAutomation = [];
-
-    if (profile) {
-      const val = validateProfileAgainstStructure(profile, structure);
-      if (!val.valid) {
-        const suggested = createSuggestedProfile(accountId, source.label, sheetId, structure, 'enquete_automacao');
-        const valSug = validateProfileAgainstStructure(suggested, structure);
-        if (valSug.valid) profile = suggested;
-      }
-    } else {
-      const suggested = createSuggestedProfile(accountId, source.label, sheetId, structure, 'enquete_automacao');
-      const val = validateProfileAgainstStructure(suggested, structure);
-      if (val.valid) profile = suggested;
-    }
-
-    if (profile) {
-      const normResult = normalizeTable(table, profile);
-      normalized = normResult.normalizedRows;
-      audit = normResult.audit;
-      if (profile.targetModel !== 'enquete_automacao') {
-        isEligible = false;
-        missingForAutomation = ['Obrigações/Tarefas (perfil: ' + (TARGET_MODELS[profile.targetModel]?.label || profile.targetModel) + ')'];
-      } else {
-        const mappedFields = new Set(profile.columns?.filter(c => c.action === 'map').map(c => c.targetField));
-        const missing = [];
-        if (!mappedFields.has('tarefa')) missing.push('Obrigação / Tarefa');
-        if (!mappedFields.has('cnpj') && !mappedFields.has('empId') && !mappedFields.has('cod')) {
-          missing.push('Identificador do Cliente (CNPJ ou Cod./EmpID)');
-        }
-        missingForAutomation = missing;
-        if (missingForAutomation.length) isEligible = false;
-      }
-    } else {
-      const hasTask = ['Obrigação / Tarefa', 'Obrigação', 'Tarefa', 'tarefa'].some(col => table.columns.includes(col));
-      const hasId = ['CNPJ', 'EmpID', 'Cod.', 'Código', 'cnpj', 'empId', 'cod'].some(col => table.columns.includes(col));
-      const missing = [];
-      if (!hasTask) missing.push('Obrigação / Tarefa');
-      if (!hasId) missing.push('Identificador do Cliente (CNPJ ou Cod./EmpID)');
-      missingForAutomation = missing;
-      if (missingForAutomation.length) isEligible = false;
-    }
-
-    const columns = table.columns.map((name, index) => {
-      const values = table.rows.map(row => row[index].trim()).filter(Boolean);
-      return { name, index, filled: values.length, distinct: new Set(values).size };
-    });
-    const tableResult = { columns, rows: table.rows, profile: profile ?? null, audit };
-    if (!isEligible || missingForAutomation.length) return send(res, 200, { source: source.label, stale: source.stale,
-      rowCount: table.rows.length, kind: 'table', missingForAutomation, tasks: [], table: tableResult, profile: profile ?? null, audit });
-
-    const rows = normalized ?? parseCsv(source.csv);
-    const counts = new Map();
-    for (const row of rows) {
-      const name = String(row._norm?.tarefa ?? row['Obrigação / Tarefa'] ?? row['Obrigação'] ?? row['Tarefa'] ?? '').trim();
-      if (!name) continue;
-      const item = counts.get(name) ?? { name, count: 0, clients: new Set(), invalidCnpjs: 0 };
-      item.count++;
-      const cnpjVal = row._norm?.cnpj ?? row.CNPJ ?? row.cnpj;
-      const idVal = row._norm?.empId ?? row._norm?.cod ?? row.EmpID ?? row['Cod.'] ?? row.cod ?? row.empId;
-      if (validCnpj(cnpjVal)) item.clients.add(normalizeCnpj(cnpjVal));
-      else if (idVal && String(idVal).trim() && String(idVal).trim() !== '-') item.clients.add(`id:${String(idVal).trim()}`);
-      else item.invalidCnpjs++;
-      counts.set(name, item);
-    }
-    return send(res, 200, { source: source.label, stale: source.stale, rowCount: rows.length, kind: 'tasks', table: tableResult,
-      profile: profile ?? null, audit,
-      tasks: [...counts.values()].map(({ name, count, clients, invalidCnpjs }) => ({ name, count, clients: clients.size, invalidCnpjs }))
-        .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')) });
-  }
   if (url.pathname === '/api/catalog') {
     const accountId = requireAccount(payload.accountId);
     if (!authService.hasPermission(currentUser.id, 'enquete.visualizar', accountId)) {
@@ -1175,36 +1015,20 @@ async function route(req, res) {
     if (!loginContext || !loginReady || !catalogState) throw new Error('Abra a Enquete da conta para capturar o catálogo antes da prévia');
     if (accountId !== catalogState.accountId) throw new Error('A conta selecionada difere da Enquete conectada');
     previewState = null;
-    const source = await loadSource(payload);
-    const table = parseCsvTable(source.csv);
-    const sheetId = String(payload.sheetName ?? payload.sheetId ?? source.label);
-    const structure = parseHeaderAndSample(source.csv, { headerRow: payload.headerRow ?? 1 });
-    let profile = payload.profile ?? savedProfiles.find(p => p.accountId === accountId && profileFitsUse(p, 'enquete_automacao') && (p.sourceFingerprint === source.label || p.sheetIdentifier === sheetId));
-    if (profile) {
-      const val = validateProfileAgainstStructure(profile, structure);
-      if (!val.valid) {
-        const suggested = createSuggestedProfile(accountId, source.label, sheetId, structure, 'enquete_automacao');
-        const valSug = validateProfileAgainstStructure(suggested, structure);
-        if (valSug.valid) profile = suggested;
-      }
-    } else {
-      const suggested = createSuggestedProfile(accountId, source.label, sheetId, structure, 'enquete_automacao');
-      const val = validateProfileAgainstStructure(suggested, structure);
-      if (val.valid) profile = suggested;
-    }
-    let rows;
+    const { source, profile, rows } = await resolveNormalizedSource(payload, {
+      loadSource,
+      savedProfiles,
+      defaultModel: 'enquete_automacao'
+    });
     if (profile) {
       if (profile.targetModel !== 'enquete_automacao') {
         throw new Error(`O perfil "${TARGET_MODELS[profile.targetModel]?.label ?? profile.targetModel}" não permite conferência de Enquete.`);
       }
-      const normResult = normalizeTable(table, profile);
-      rows = normResult.normalizedRows;
       const hasTask = rows.some(r => Boolean(r._norm?.tarefa));
       if (!rows.length || !hasTask) throw new Error('Planilha sem coluna Obrigação / Tarefa mapeada');
       const hasId = rows.some(r => Boolean(r._norm?.empId || r._norm?.cod || r._norm?.cnpj));
       if (!hasId) throw new Error('Planilha sem colunas de identificação (CNPJ, EmpID ou Cod.) mapeadas');
     } else {
-      rows = parseCsv(source.csv);
       const hasTask = rows.length && ['Obrigação / Tarefa', 'Obrigação', 'Tarefa', 'tarefa'].some(col => col in rows[0]);
       if (!hasTask) throw new Error('Planilha sem coluna Obrigação / Tarefa');
       const hasId = rows.length && ['EmpID', 'Cod.', 'CNPJ', 'empId', 'cod', 'cnpj'].some(col => col in rows[0]);

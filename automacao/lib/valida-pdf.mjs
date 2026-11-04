@@ -3,8 +3,12 @@
 // detecção de competências, identificação de tipos de documentos e conciliação com modelos do G-Click.
 
 import { spawn } from 'node:child_process';
+import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { ensureEmpresaActive } from './gclick.mjs';
+import { normalizeCnpj, isValidCpf as isValidCpfCore, formatCpf as formatCpfCore } from './data.mjs';
+import { writeJsonAtomic, readJsonSafe } from './fs-utils.mjs';
 
 // Regexes para extração de identificadores cadastrais
 export const CNPJ_REGEX = /\b(\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2})\b/g;
@@ -114,39 +118,19 @@ export async function extractPdfText(pdfPath, options = {}) {
 }
 
 /**
- * Normaliza CNPJ removendo pontuação
+ * Normaliza CNPJ removendo pontuação (re-exportado de data.mjs)
  */
-export function cleanCnpj(cnpj) {
-  if (!cnpj) return '';
-  return String(cnpj).replace(/\D/g, '');
-}
+export const cleanCnpj = normalizeCnpj;
 
 /**
- * Valida dígito verificador de CPF (algoritmo Módulo 11)
+ * Valida dígito verificador de CPF (re-exportado de data.mjs)
  */
-export function isValidCpf(cpf) {
-  const c = String(cpf).replace(/\D/g, '');
-  if (c.length !== 11 || /^(\d)\1{10}$/.test(c)) return false;
-  let sum = 0, rest;
-  for (let i = 1; i <= 9; i++) sum += parseInt(c.substring(i - 1, i)) * (11 - i);
-  rest = (sum * 10) % 11;
-  if (rest === 10 || rest === 11) rest = 0;
-  if (rest !== parseInt(c.substring(9, 10))) return false;
-  sum = 0;
-  for (let i = 1; i <= 10; i++) sum += parseInt(c.substring(i - 1, i)) * (12 - i);
-  rest = (sum * 10) % 11;
-  if (rest === 10 || rest === 11) rest = 0;
-  return rest === parseInt(c.substring(10, 11));
-}
+export const isValidCpf = isValidCpfCore;
 
 /**
- * Formata CPF de 11 dígitos para o formato mascarado XXX.XXX.XXX-XX
+ * Formata CPF de 11 dígitos para o formato mascarado XXX.XXX.XXX-XX (re-exportado de data.mjs)
  */
-export function formatCpf(cpf) {
-  const c = String(cpf).replace(/\D/g, '');
-  if (c.length !== 11) return cpf;
-  return `${c.slice(0, 3)}.${c.slice(3, 6)}.${c.slice(6, 9)}-${c.slice(9)}`;
-}
+export const formatCpf = formatCpfCore;
 
 /**
  * Extrai dados do cliente (CNPJ completo, CNPJ Raiz, CPF, Razão Social)
@@ -399,6 +383,9 @@ export function extractDocumentName(rawText, lines, availableModels = []) {
           modelId: model.modelId || model.id || null,
           departamento: model.departamento || null,
           nome: nomeModelo,
+          status: model.status || null,
+          statusCode: model.statusCode || classifyModelStatus(model.status),
+          link: model.link || null,
           confianca: 'alta'
         });
       }
@@ -491,6 +478,71 @@ export function parseAnexoPorNome(fileName) {
 }
 
 /**
+ * Extrai detalhes aprofundados de conteúdo do PDF para conciliação e deduplicação
+ * (Número de Documento / Identificador de Guia, Valor Monetário, Vencimento e Hash SHA-256)
+ */
+export function extractPdfContentDetails(rawText = '', lines = []) {
+  if (!rawText || typeof rawText !== 'string') {
+    return {
+      numDoc: null,
+      valor: null,
+      valorNumerico: null,
+      vencimento: null,
+      contentHash: null
+    };
+  }
+
+  // 1. Número do Documento / Identificador de Guia / Código de Barras / Linha Digitável
+  let numDoc = null;
+  const numDocMatch = rawText.match(/(?:Número do Documento|Identificador da Guia|Identificador|Nº do Documento|Recibo nº|Nº Guia|Número)\s*[:.]?\s*([0-9\.\-\/]{4,})/i);
+  if (numDocMatch) {
+    numDoc = numDocMatch[1].trim();
+  } else {
+    // Tenta padrão DCTFWeb: 07.16.26271.1924923-6
+    const dctfMatch = rawText.match(/\b(\d{2}\.\d{2}\.\d{5}\.\d{7}-\d)\b/);
+    if (dctfMatch) {
+      numDoc = dctfMatch[1];
+    } else {
+      // Tenta padrão FGTS Digital: 0126092863207659-8
+      const fgtsMatch = rawText.match(/\b(\d{16}-\d)\b/);
+      if (fgtsMatch) {
+        numDoc = fgtsMatch[1];
+      }
+    }
+  }
+
+  // 2. Data de Vencimento
+  let vencimento = null;
+  const vencMatch = rawText.match(/(?:Data de Vencimento|Pagar este documento até|Vencimento)\s*[:.]?\s*(\d{2}\/\d{2}\/\d{4})/i);
+  if (vencMatch) {
+    vencimento = vencMatch[1];
+  }
+
+  // 3. Valor monetário (Total a Recolher / Valor Líquido / Total)
+  let valor = null;
+  let valorNumerico = null;
+  const valorMatch = rawText.match(/(?:Valor a recolher|Valor Total|Valor Líquido|Total a Pagar|TOTAL GERAL|VALOR DO DOCUMENTO|Valor a pagar|Líquido a Receber)\s*[:.]?\s*(?:R\$\s*)?([\d\.]+,\d{2})/i);
+  if (valorMatch) {
+    valor = valorMatch[1];
+    valorNumerico = parseFloat(valor.replace(/\./g, '').replace(',', '.'));
+  }
+
+  // 4. Hash SHA-256 do texto normalizado (ignora quebras múltiplas e espaços extras)
+  const textNorm = rawText.replace(/\s+/g, ' ').trim();
+  const contentHash = textNorm.length > 5
+    ? crypto.createHash('sha256').update(textNorm).digest('hex')
+    : null;
+
+  return {
+    numDoc,
+    valor,
+    valorNumerico,
+    vencimento,
+    contentHash
+  };
+}
+
+/**
  * Validação completa de um arquivo PDF aplicando as 4 regras do usuário
  * @param {string} filePath - Caminho do arquivo PDF
  * @param {object} options - Opções (ex: lista de modelos cadastrados, dados esperados do cliente/competência)
@@ -505,6 +557,7 @@ export async function validatePdfFile(filePath, options = {}) {
 
   try {
     const { rawText, lines, totalLines } = await extractPdfText(filePath);
+    const detalhesConteudo = extractPdfContentDetails(rawText, lines);
 
     // Regra 1: Extração de texto bem-sucedida
     const hasText = rawText.trim().length > 0;
@@ -516,6 +569,12 @@ export async function validatePdfFile(filePath, options = {}) {
         status: 'erro_extracao',
         mensagem: 'O arquivo PDF não contém camada de texto selecionável ou é uma imagem.',
         anexoPorNome,
+        detalhesConteudo,
+        numDoc: null,
+        valor: null,
+        valorNumerico: null,
+        vencimento: null,
+        contentHash: null,
         diagnosticoGclick: {
           tipoErro: 'erro_extracao_ocr',
           titulo: 'Documento Digitalizado / Imagem Sem OCR',
@@ -663,6 +722,12 @@ export async function validatePdfFile(filePath, options = {}) {
       totalLines,
       anexoPorNome,
       diagnosticoGclick,
+      detalhesConteudo,
+      numDoc: detalhesConteudo.numDoc,
+      valor: detalhesConteudo.valor,
+      valorNumerico: detalhesConteudo.valorNumerico,
+      vencimento: detalhesConteudo.vencimento,
+      contentHash: detalhesConteudo.contentHash,
       regras: {
         extracaoTexto: {
           ok: true,
@@ -703,6 +768,12 @@ export async function validatePdfFile(filePath, options = {}) {
       valido: false,
       status: 'erro_processamento',
       mensagem: `Falha ao processar arquivo: ${error.message}`,
+      detalhesConteudo: { numDoc: null, valor: null, valorNumerico: null, vencimento: null, contentHash: null },
+      numDoc: null,
+      valor: null,
+      valorNumerico: null,
+      vencimento: null,
+      contentHash: null,
       regras: {
         extracaoTexto: { ok: false, erro: error.message },
         identificacaoCliente: { ok: false },
@@ -719,6 +790,184 @@ export async function validatePdfFile(filePath, options = {}) {
  * @param {string|number} accountId - ID da empresa (ex: 6019)
  * @param {string} cacheDir - Diretório para salvar o cache JSON
  */
+/**
+ * Classifica o status textual do G-Click em categorias estruturadas
+ */
+export function classifyModelStatus(statusStr) {
+  if (!statusStr || typeof statusStr !== 'string') return 'desconhecido';
+  const s = statusStr.toLowerCase();
+  if (s.includes('já está configurado') || s.includes('sendo usado') || s.includes('validado')) return 'configurado';
+  if (s.includes('configure os campos') || s.includes('campos para validação')) return 'pendente_campos';
+  if (s.includes('anexe um arquivo') || s.includes('anexar arquivo')) return 'sem_arquivo';
+  return 'outro';
+}
+
+/**
+ * Parser de linhas de configuração dos 3 pilares do G-Click
+ * Ex: "Obrigatório - Texto - linha 16 posInicial[0]GFD - Guia do FGTS Digital"
+ */
+export function parseGclickPillarText(text) {
+  if (!text || typeof text !== 'string') return null;
+  const raw = text.trim();
+
+  // Extrai linha e posição inicial
+  const linePosMatch = raw.match(/linha\s+(\d+)\s+posInicial\[(\d+)\](.*)$/i);
+  let linha = null;
+  let posInicial = null;
+  let valor = raw;
+
+  if (linePosMatch) {
+    linha = parseInt(linePosMatch[1], 10);
+    posInicial = parseInt(linePosMatch[2], 10);
+    valor = linePosMatch[3].trim();
+  }
+
+  // Detecta tipo de inscrição (Pilar 2)
+  let tipoInscricao = null;
+  const inscMatch = raw.match(/Inscrição\s*-\s*([^-]+?)\s*-\s*linha/i);
+  if (inscMatch) tipoInscricao = inscMatch[1].trim();
+
+  // Detecta formato de competência (Pilar 3)
+  let formatoCompetencia = null;
+  const compMatch = raw.match(/Competência\s*-\s*([^-]+?)\s*-\s*linha/i);
+  if (compMatch) formatoCompetencia = compMatch[1].trim();
+
+  return {
+    raw,
+    linha,
+    posInicial,
+    valor,
+    tipoInscricao,
+    formatoCompetencia
+  };
+}
+
+/**
+ * Normaliza o formato de um modelo para garantir que todas as propriedades existam
+ */
+export function normalizeModelObject(m, defaultEmpId = '6019') {
+  if (!m) return null;
+  const modelId = String(m.modelId || m.id || m.num || '').trim();
+  const nome = (m.modelo || m.nome || '').trim();
+  const departamento = (m.departamento || 'Geral').trim();
+  const status = (m.status || '').trim();
+  const statusCode = m.statusCode || classifyModelStatus(status);
+  const link = m.link || (modelId ? `https://app.gclick.com.br/configuracaoAbrir.do?obj=pdflayoutopen&id=${encodeURIComponent(modelId)}&empId=${encodeURIComponent(defaultEmpId)}` : null);
+
+  return {
+    id: modelId,
+    modelId,
+    num: m.num || modelId,
+    nome,
+    modelo: nome,
+    departamento,
+    status,
+    statusCode,
+    link,
+    obrigacao: m.obrigacao || m.atividade || null,
+    atividade: m.atividade || null,
+    palavraChave: m.palavraChave || (statusCode === 'configurado' ? nome : null),
+    tipoInscricao: m.tipoInscricao || (statusCode === 'configurado' ? 'CNPJ / CPF' : null),
+    competencia: m.competencia || (statusCode === 'configurado' ? 'MM/AAAA' : null),
+    multilinhas: m.multilinhas !== undefined ? Boolean(m.multilinhas) : true,
+    regras: m.regras || null
+  };
+}
+
+/**
+ * Cruza a lista de modelos de PDF com o catálogo de obrigações da empresa
+ * para identificar quais obrigações utilizam cada modelo.
+ */
+export function correlateModelsWithObrigacoes(models = [], obrigacoes = []) {
+  if (!Array.isArray(models)) return [];
+  if (!Array.isArray(obrigacoes) || obrigacoes.length === 0) {
+    return models.map(m => normalizeModelObject(m));
+  }
+
+  const obrigMapExact = new Map();
+  const obrigList = [];
+
+  for (const ob of obrigacoes) {
+    const obNomeClean = (ob.nome || '').replace(/[*]/g, '').trim();
+    if (!obNomeClean) continue;
+    const lowerNome = obNomeClean.toLowerCase();
+
+    // Registra atividades da obrigação (ex.: atividades com $ ou tipo pdf)
+    let defaultPdfAtiv = null;
+    if (Array.isArray(ob.atividades)) {
+      for (const ativ of ob.atividades) {
+        const rawText = (ativ.texto || ativ.nome || '').trim();
+        const isPdfAtiv = (ativ.tipo && ativ.tipo.includes('pdf')) || rawText.startsWith('$');
+        if (isPdfAtiv && !defaultPdfAtiv) {
+          defaultPdfAtiv = rawText;
+        }
+        const ativText = rawText.replace(/^[\$\s]+/, '').trim();
+        if (ativText) {
+          obrigMapExact.set(ativText.toLowerCase(), {
+            obrigacao: ob.nome,
+            atividade: rawText,
+            depto: ob.departamento
+          });
+        }
+      }
+    }
+
+    obrigMapExact.set(lowerNome, { obrigacao: ob.nome, atividade: defaultPdfAtiv, depto: ob.departamento });
+
+    obrigList.push({
+      key: lowerNome,
+      obrigacao: ob.nome,
+      depto: ob.departamento
+    });
+  }
+
+  return models.map(m => {
+    const norm = normalizeModelObject(m);
+    if (norm.obrigacao) return norm;
+
+    const nomeM = (norm.nome || '').toLowerCase().trim();
+    if (!nomeM) return norm;
+
+    // 1. Busca exata por nome do modelo ou atividade
+    if (obrigMapExact.has(nomeM)) {
+      const match = obrigMapExact.get(nomeM);
+      norm.obrigacao = match.obrigacao;
+      if (match.atividade) norm.atividade = match.atividade;
+      return norm;
+    }
+
+    // 2. Busca parcial por palavras-chave com afinidade
+    let bestMatch = null;
+    let maxScore = 0;
+
+    for (const item of obrigList) {
+      if (item.key.length < 3) continue;
+      const sameDepto = norm.departamento && item.depto && norm.departamento.toLowerCase() === item.depto.toLowerCase();
+
+      if (nomeM.includes(item.key) || item.key.includes(nomeM)) {
+        const score = Math.min(item.key.length, nomeM.length) + (sameDepto ? 10 : 0);
+        if (score > maxScore) {
+          maxScore = score;
+          bestMatch = item.obrigacao;
+        }
+      }
+    }
+
+    if (bestMatch) {
+      norm.obrigacao = bestMatch;
+    }
+
+    return norm;
+  });
+}
+
+/**
+ * Sincroniza a lista de modelos de PDF Layout do G-Click da conta informada
+ * e correlaciona com as obrigações existentes.
+ * @param {object} loginContext - Playwright BrowserContext ativo
+ * @param {string|number} accountId - ID da empresa (ex: 6019)
+ * @param {string} cacheDir - Diretório para salvar o cache JSON
+ */
 export async function syncGclickPdfModels(loginContext, accountId, cacheDir = null) {
   if (!loginContext) {
     throw new Error('Sessão no G-Click não conectada. Conecte a sessão na seção Conexão G-Click.');
@@ -730,9 +979,9 @@ export async function syncGclickPdfModels(loginContext, accountId, cacheDir = nu
     await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.waitForTimeout(3000);
 
-    const models = await page.evaluate(() => {
+    const rawModels = await page.evaluate(async (empId) => {
       const rows = Array.from(document.querySelectorAll('table tbody tr'));
-      return rows.map(tr => {
+      const list = rows.map(tr => {
         const tds = Array.from(tr.querySelectorAll('td'));
         if (tds.length < 4) return null;
         const link = tr.querySelector('a[href*="id="]');
@@ -750,7 +999,55 @@ export async function syncGclickPdfModels(loginContext, accountId, cacheDir = nu
           link: link?.href || null
         };
       }).filter(Boolean);
-    });
+
+      // Tenta obter tabela de obrigações vinculadas diretamente do G-Click
+      try {
+        if (window.$) {
+          const comObrigHtml = await new Promise(res => {
+            window.$.get('configuracaoBuscar.do?obj=pdflcomobrig&departamentos=&empId=' + empId, data => res(data)).fail(() => res(null));
+          });
+          if (comObrigHtml) {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(comObrigHtml, 'text/html');
+            const obRows = Array.from(doc.querySelectorAll('table tbody tr'));
+            const obrigMap = {};
+            obRows.forEach(otr => {
+              const otds = Array.from(otr.querySelectorAll('td'));
+              if (otds.length >= 4) {
+                const modNome = otds[2]?.innerText.trim();
+                const obNome = otds[3]?.innerText.trim();
+                if (modNome && obNome) obrigMap[modNome] = obNome;
+              }
+            });
+            list.forEach(item => {
+              if (item.modelo && obrigMap[item.modelo]) {
+                item.obrigacao = obrigMap[item.modelo];
+              }
+            });
+          }
+        }
+      } catch (err) {
+        // silencioso se falhar
+      }
+
+      return list;
+    }, accountId);
+
+    // Carrega obrigações locais se disponíveis para enriquecer
+    let obrigacoes = [];
+    if (cacheDir) {
+      try {
+        const obFile = path.join(cacheDir, `obrigacoes-${accountId}.json`);
+        obrigacoes = JSON.parse(await fs.readFile(obFile, 'utf8'));
+      } catch {
+        try {
+          const obDefault = path.join(cacheDir, 'obrigacoes-6019.json');
+          obrigacoes = JSON.parse(await fs.readFile(obDefault, 'utf8'));
+        } catch {}
+      }
+    }
+
+    const models = correlateModelsWithObrigacoes(rawModels, obrigacoes);
 
     if (cacheDir && models.length > 0) {
       await fs.mkdir(cacheDir, { recursive: true });
@@ -759,6 +1056,77 @@ export async function syncGclickPdfModels(loginContext, accountId, cacheDir = nu
     }
 
     return models;
+  } finally {
+    await page.close().catch(() => {});
+  }
+}
+
+/**
+ * Inspeciona os detalhes e os 3 pilares de um modelo específico abrindo sua tela no G-Click
+ */
+export async function inspectGclickPdfModelDetails(loginContext, accountId, modelId) {
+  if (!loginContext) throw new Error('Sessão no G-Click não conectada.');
+  const page = await loginContext.newPage();
+  try {
+    const url = `https://app.gclick.com.br/configuracaoAbrir.do?obj=pdflayoutopen&id=${encodeURIComponent(modelId)}&empId=${encodeURIComponent(accountId)}`;
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.waitForTimeout(2000);
+
+    const details = await page.evaluate(() => {
+      const nomeInput = document.getElementById('nome');
+      const deptoSelect = document.getElementById('departamento');
+      const multilinhasCheck = document.getElementById('fdadofixolinha');
+      const modelonomeInput = document.getElementById('modelonome');
+
+      const tables = Array.from(document.querySelectorAll('table.table-bordered')).map(table => {
+        const rows = Array.from(table.querySelectorAll('tbody tr')).map(tr => {
+          const tds = Array.from(tr.querySelectorAll('td'));
+          return tds.map(td => td.innerText.trim()).filter(Boolean);
+        });
+        return rows;
+      });
+
+      return {
+        modelId: window.location.href.match(/id=(\d+)/)?.[1] || null,
+        nome: nomeInput ? nomeInput.value : '',
+        departamentoTexto: deptoSelect && deptoSelect.selectedIndex >= 0 ? deptoSelect.options[deptoSelect.selectedIndex].text : '',
+        departamentoId: deptoSelect ? deptoSelect.value : '',
+        multilinhas: multilinhasCheck ? multilinhasCheck.checked : false,
+        arquivoModeloNome: modelonomeInput ? modelonomeInput.value : '',
+        pilar1Texto: tables[0]?.[0]?.[0] || null,
+        pilar2Texto: tables[1]?.[0]?.[0] || null,
+        pilar3Texto: tables[2]?.[0]?.[0] || null
+      };
+    });
+
+    const pilar1 = parseGclickPillarText(details.pilar1Texto);
+    const pilar2 = parseGclickPillarText(details.pilar2Texto);
+    const pilar3 = parseGclickPillarText(details.pilar3Texto);
+
+    return {
+      modelId,
+      nome: details.nome,
+      departamento: details.departamentoTexto,
+      multilinhas: details.multilinhas,
+      arquivoModeloNome: details.arquivoModeloNome,
+      pilar1: {
+        raw: details.pilar1Texto,
+        linha: pilar1?.linha ?? null,
+        palavraChave: pilar1?.valor ?? details.nome
+      },
+      pilar2: {
+        raw: details.pilar2Texto,
+        linha: pilar2?.linha ?? null,
+        tipo: pilar2?.tipoInscricao ?? 'CNPJ',
+        valorExemplo: pilar2?.valor ?? null
+      },
+      pilar3: {
+        raw: details.pilar3Texto,
+        linha: pilar3?.linha ?? null,
+        formato: pilar3?.formatoCompetencia ?? 'Mês/Ano',
+        valorExemplo: pilar3?.valor ?? null
+      }
+    };
   } finally {
     await page.close().catch(() => {});
   }
@@ -966,6 +1334,276 @@ export async function validatePdfOnGclickScreen(loginContext, accountId, options
     };
   } finally {
     await page.close().catch(() => {});
+  }
+}
+
+/**
+ * Valida um arquivo PDF diretamente na tela oficial de Upload do G-Click (/upload)
+ * O G-Click analisa o arquivo em tempo real contra todos os modelos e informa:
+ * 1. Qual validador/modelo casou com o PDF (ex: "Validador: 672-FGTS - teste")
+ * 2. Se o modelo existe mas não está vinculado a uma obrigação
+ * 3. Se houve sucesso/tarefa gerada ou se nenhum validador reconheceu o arquivo.
+ */
+export async function validatePdfViaGclickUploadScreen(loginContext, accountId, options = {}) {
+  if (!loginContext) {
+    throw new Error('Sessão no G-Click não conectada. Conecte a sessão na seção "Conexão G-Click" antes de validar no sistema.');
+  }
+
+  const { filePath } = options;
+  if (!filePath) {
+    throw new Error('Caminho do arquivo (filePath) é obrigatório para validação na tela de upload do G-Click.');
+  }
+
+  const fileName = path.basename(filePath);
+
+  // 1. Reutiliza página ativa com sessão do operador ou abre nova aba
+  const existingPages = typeof loginContext.pages === 'function' ? loginContext.pages() : [];
+  const activeGclickPage = existingPages.find(p => {
+    try {
+      const u = p.url();
+      return u.includes('gclick.com.br') && !u.includes('/empresas');
+    } catch { return false; }
+  }) || existingPages[0];
+
+  const page = activeGclickPage || (await loginContext.newPage());
+  const shouldClosePage = !activeGclickPage;
+
+  try {
+    // 2. Garante que a empresa alvo (ex: Magnum 6019) esteja ativa
+    if (accountId && typeof ensureEmpresaActive === 'function') {
+      try {
+        await ensureEmpresaActive(page, accountId);
+      } catch {}
+    }
+
+    // 3. Navegação para tela de upload
+    // Tenta primeiro o menu lateral informado pelo operador
+    const sidebarUploadXpath = 'xpath=/html/body/app-root/mat-drawer-container/mat-drawer-content/mat-sidenav-container/mat-sidenav/div/app-sidebar/div/div/div[3]/div[2]/div';
+    let clickedMenu = false;
+    try {
+      const sidebarItem = await page.$(sidebarUploadXpath);
+      if (sidebarItem) {
+        await sidebarItem.click();
+        await page.waitForTimeout(1500);
+        clickedMenu = true;
+      }
+    } catch {}
+
+    // Se não estiver na tela /upload, navega diretamente
+    const uploadUrl = `https://appp.gclick.com.br/upload`;
+    if (!page.url().includes('/upload')) {
+      await page.goto(uploadUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await page.waitForTimeout(2000);
+    } else {
+      // Já está na tela /upload: dá um F5 (reload) preventivo para limpar arquivos residuais da dropzone
+      try {
+        await page.reload({ waitUntil: 'domcontentloaded', timeout: 20000 });
+        await page.waitForTimeout(1500);
+      } catch {}
+    }
+
+    // 4. Aguarda a inicialização dos componentes Angular do Upload
+    await page.waitForFunction(() => {
+      const text = document.body ? document.body.innerText : '';
+      return Boolean(
+        document.querySelector('input[type="file"]') ||
+        document.querySelector('.dropzone') ||
+        document.querySelector('ngx-dropzone') ||
+        document.querySelector('app-upload') ||
+        /upload|arraste os arquivos|clique no botão/i.test(text)
+      );
+    }, { timeout: 15000 }).catch(() => {});
+    await page.waitForTimeout(1000);
+
+    // 5. Injeta o arquivo PDF na tela
+    let fileUploaded = false;
+
+    // Tentativa A: Input nativo input[type="file"] presente no DOM
+    const fileInput = await page.$('input[type="file"], .dropzone input[type="file"], ngx-dropzone input[type="file"], .dz-hidden-input');
+    if (fileInput) {
+      try {
+        await fileInput.setInputFiles(filePath);
+        fileUploaded = true;
+      } catch {}
+    }
+
+    // Tentativa B: Filechooser via clique no botão "Upload" ou na dropzone
+    if (!fileUploaded) {
+      const uploadTrigger = await page.$(
+        'button:has-text("Upload"), div:has-text("Upload"), .dropzone, ngx-dropzone, [class*="upload-box"], [class*="dropzone"]'
+      );
+      if (uploadTrigger) {
+        try {
+          const [fileChooser] = await Promise.all([
+            page.waitForEvent('filechooser', { timeout: 8000 }),
+            uploadTrigger.click({ force: true })
+          ]);
+          if (fileChooser) {
+            await fileChooser.setFiles(filePath);
+            fileUploaded = true;
+          }
+        } catch {}
+      }
+    }
+
+    // Tentativa C: Verifica se o input apareceu após a interação
+    if (!fileUploaded) {
+      const fileInputAfter = await page.$('input[type="file"]');
+      if (fileInputAfter) {
+        try {
+          await fileInputAfter.setInputFiles(filePath);
+          fileUploaded = true;
+        } catch {}
+      }
+    }
+
+    if (!fileUploaded) {
+      const currentUrl = page.url();
+      const snippet = (await page.evaluate(() => document.body ? document.body.innerText.slice(0, 300) : '')).replace(/\s+/g, ' ');
+      throw new Error(`Elemento de upload não foi localizado na tela ${currentUrl}. Conteúdo visível: "${snippet}"`);
+    }
+
+    // 6. Aguarda o processamento do G-Click (máximo 60s)
+    // O G-Click baixa as tarefas e compara os modelos, mostrando "Estamos baixando as tarefas de obrigação..."
+    let cardData = null;
+    for (let i = 0; i < 60; i++) {
+      await page.waitForTimeout(1000);
+
+      // Garante que o card do arquivo esteja expandido para ler as mensagens internas
+      try {
+        const panels = await page.$$('.mat-expansion-panel');
+        for (const p of panels) {
+          const isCollapsed = await p.$('.mat-expansion-panel-header[aria-expanded="false"]');
+          if (isCollapsed) {
+            await isCollapsed.click().catch(() => {});
+            await page.waitForTimeout(300);
+          }
+        }
+      } catch {}
+
+      cardData = await page.evaluate((targetFileName) => {
+        const allText = document.body.innerText || '';
+
+        // Indicador de que o G-Click ainda está baixando/analisando tarefas
+        const isProcessing = /Estamos baixando as tarefas|Baixando tarefas|Aguarde.*?processando/i.test(allText);
+
+        // 1. Mensagem oficial: "Modelo não vinculado à uma obrigação! O modelo existe mais não teve sua configuração finalizada..."
+        const isNaoVinculado = /Modelo não vinculado [àa] uma obrigação|não teve sua configuração finalizada/i.test(allText);
+
+        // 2. Mensagem oficial quando não mapeado: "Modelo não encontrado! Configure um novo ou consulte o administrador da empresa."
+        const isNenhumModelo = /Modelo não encontrado|Configure um novo ou consulte o administrador|nenhum validador|não reconhecido/i.test(allText);
+
+        // 3. Validador identificado (ex: "Validador: 672-FGTS - teste")
+        let validadorMatch = allText.match(/Validador:\s*([0-9]+)\s*[-–]\s*([^\n\r]+)/i);
+        if (!validadorMatch) {
+          validadorMatch = allText.match(/Validador:\s*([^\n\r]+)/i);
+        }
+
+        const modelId = validadorMatch && validadorMatch[1] ? validadorMatch[1].trim() : null;
+        const modelNome = validadorMatch && validadorMatch[2] ? validadorMatch[2].trim() : (validadorMatch ? validadorMatch[1].trim() : null);
+
+        // 4. Sucesso / tarefa gerada / atividade já realizada
+        // Na tela do G-Click, quando o modelo existe e a obrigação foi localizada com cliente e competência,
+        // ele monta a barra com Nome da Obrigação (ex: "Adiantamento Salarial") e Departamento ("Departamento Pessoal"),
+        // e exibe "Atividade(s) já realizada(s)." ou gera a tarefa.
+        const normalizedText = allText.replace(/\s+/g, ' ');
+        const isAtividadeJaRealizada = /Atividade(?:\(s\))?\s+j[áa]\s+realizada(?:\(s\))?/i.test(normalizedText) || /j[áa]\s+realizada(?:\(s\))?/i.test(normalizedText);
+        const hasPainelObrigacao = Boolean(
+          isAtividadeJaRealizada ||
+          (normalizedText.includes('Departamento Pessoal') && (normalizedText.includes('Cliente') || normalizedText.includes('Meta') || normalizedText.includes('Vencimento'))) ||
+          /Adiantamento Salarial|Recibo Adiantamento/i.test(normalizedText)
+        );
+
+        const isSucesso = Boolean(
+          ((/enviado com sucesso|tarefa gerada|validado com sucesso|arquivo vinculado com sucesso/i.test(normalizedText)) ||
+           isAtividadeJaRealizada ||
+           hasPainelObrigacao) &&
+          !isNaoVinculado &&
+          !isNenhumModelo
+        );
+
+        // Se houver painel de obrigação identificado, extrai o nome da obrigação/modelo exibido no cabeçalho
+        let headerObrigacao = null;
+        if (hasPainelObrigacao) {
+          const headers = Array.from(document.querySelectorAll('div, span, b, strong')).map(e => e.innerText.trim()).filter(Boolean);
+          const idxDep = headers.findIndex(h => /Departamento/i.test(h));
+          if (idxDep > 0) {
+            headerObrigacao = headers[idxDep - 1];
+          }
+        }
+
+        const alertEls = Array.from(document.querySelectorAll('.alert, [class*="alert"], [class*="warning"], [class*="danger"], [class*="success"]'));
+        const alertTexts = alertEls.map(a => a.innerText.trim()).filter(Boolean);
+
+        return {
+          isProcessing,
+          isNaoVinculado,
+          isNenhumModelo,
+          isSucesso,
+          isAtividadeJaRealizada,
+          headerObrigacao,
+          validadorTexto: validadorMatch ? validadorMatch[0] : (headerObrigacao ? `Obrigação: ${headerObrigacao}` : null),
+          modelId,
+          modelNome: modelNome || headerObrigacao,
+          alertTexts,
+          fullSnippet: allText.slice(0, 1000)
+        };
+      }, fileName);
+
+      // Se terminou o processamento e temos um diagnóstico definitivo (modelo não vinculado, validador, modelo não encontrado ou painel de obrigação com sucesso/já realizada), encerra o loop
+      if (cardData && !cardData.isProcessing && (cardData.isNaoVinculado || cardData.validadorTexto || cardData.isNenhumModelo || cardData.isSucesso || cardData.isAtividadeJaRealizada)) {
+        break;
+      }
+    }
+
+    let situacao = 'desconhecido';
+    let mensagemOficial = '';
+
+    if (cardData?.isSucesso || cardData?.isAtividadeJaRealizada) {
+      situacao = 'sucesso_vinculado';
+      mensagemOficial = cardData?.isAtividadeJaRealizada
+        ? 'Obrigação e modelo identificados com sucesso no G-Click! (Atividade já realizada no período).'
+        : 'Arquivo 100% validado e vinculado à obrigação com sucesso no G-Click.';
+    } else if (cardData?.isNaoVinculado || cardData?.validadorTexto) {
+      situacao = 'modelo_desvinculado_ou_incompleto';
+      mensagemOficial = 'Modelo não vinculado à uma obrigação! O modelo existe mais não teve sua configuração finalizada, verifique se o cadastro foi feito corretamente ou consulte o administrador da empresa.';
+    } else if (cardData?.isNenhumModelo) {
+      situacao = 'sem_modelo';
+      mensagemOficial = 'Modelo não encontrado! Configure um novo ou consulte o administrador da empresa.';
+    } else if (cardData?.isProcessing) {
+      situacao = 'em_processamento';
+      mensagemOficial = 'O G-Click ainda está processando os anexos deste arquivo no servidor.';
+    }
+
+    const returnData = {
+      ok: true,
+      fileName,
+      filePath,
+      uploadUrl,
+      situacao,
+      mensagem: mensagemOficial,
+      validador: cardData?.validadorTexto || (situacao === 'modelo_desvinculado_ou_incompleto' && cardData?.modelId ? `Validador: ${cardData.modelId}-${cardData.modelNome || ''}` : null),
+      modeloId: cardData?.modelId || null,
+      modeloNome: cardData?.modelNome || null,
+      alertas: cardData?.alertTexts || [],
+      detalhes: cardData,
+      timestamp: new Date().toISOString()
+    };
+
+    // F5 após cada validação conforme solicitado pelo operador:
+    // Atualiza a tela (F5) para resetar a dropzone do G-Click e preparar para o próximo arquivo da fila
+    if (options.reloadAfter !== false) {
+      try {
+        await page.reload({ waitUntil: 'domcontentloaded', timeout: 20000 });
+        await page.waitForTimeout(1000);
+      } catch {}
+    }
+
+    return returnData;
+  } finally {
+    if (shouldClosePage && !options.keepPageOpen) {
+      await page.close().catch(() => {});
+    }
   }
 }
 
@@ -1466,38 +2104,94 @@ export async function autoDetectPdfMapping(pdfPath, options = {}) {
   const extraction = await extractPdfText(pdfPath, { mode: 'raw' });
   const lines = extraction.lines;
 
-  // 1. Detecção do Pilar 1: Palavra-chave da Obrigação
-  // Títulos estruturais fixos do documento têm prioridade sobre rubricas de eventos
+  // 1. Detecção do Pilar 1: Palavras-chave da Obrigação (Suporta até 2 textos para diferenciar layout de forma única)
   let pilar1 = null;
-  const obrigacaoCandidates = [
-    { regex: /RECIBO\s+DE\s+PAGAMENTO/i, nome: 'RECIBO DE PAGAMENTO' },
-    { regex: /RECIBO\s+DE\s+PR[ÓO]-LABORE/i, nome: 'RECIBO DE PRO-LABORE' },
-    { regex: /DOCUMENTO\s+DE\s+ARRECADA[ÇC][ÃA]O\s+DE\s+RECEITAS\s+FEDERAIS|DARF/i, nome: 'DARF DCTFWeb' },
-    { regex: /GUIA\s+DO\s+FGTS\s+DIGITAL|GFD/i, nome: 'GFD - Guia do FGTS Digital' },
-    { regex: /DOCUMENTO\s+DE\s+ARRECADA[ÇC][ÃA]O\s+DO\s+ESOCIAL|DAE\s+ESOCIAL/i, nome: 'DAE eSocial Doméstica' },
-    { regex: /eSocial|Demonstrativo\s+dos\s+Valores\s+Devidos/i, nome: 'eSocial' },
-    { regex: /RELA[ÇC][ÃA]O\s+GERAL\s+DOS\s+L[ÍI]QUIDOS|L[ÍI]QUIDOS/i, nome: 'Relação de Líquidos' },
-    { regex: /C[ÁA]LCULO\s+DE\s+M[ÉE]DIAS/i, nome: 'Cálculo de Médias' },
-    { regex: /13\s+SALARIO\s+ADIANTADO/i, nome: '13 SALARIO ADIANTADO' }
-  ];
+  const linesLower = lines.map(l => l.text.toLowerCase());
 
-  for (const cand of obrigacaoCandidates) {
-    const matchLine = lines.find(l => {
-      // Se for rubrica salarial e a linha estiver no miolo de tabela de rendimentos/descontos (com códigos ou valores), evitar para não colidir com 'dados fixos'
-      if (cand.nome === '13 SALARIO ADIANTADO' && lines.some(other => /RECIBO\s+DE\s+PAGAMENTO/i.test(other.text))) {
-        return false;
+  // Análise de contexto e especificidade
+  const is13SalarioFolder = /13|d[ée]cimo/i.test(pdfPath);
+  const lineRecibo = lines.find(l => /RECIBO\s+DE\s+PAGAMENTO/i.test(l.text));
+  const line13Integral = lines.find(l => /13\s+SALARIO\s+INTEGRAL/i.test(l.text));
+  const lineAdiantamento13 = lines.find(l => /ADIANTAMENTO\s+13\s+SALARIO/i.test(l.text));
+  const line13Adiantado = lines.find(l => /13\s+SALARIO\s+ADIANTADO/i.test(l.text));
+  const lineINSS13 = lines.find(l => /INSS\s+13/i.test(l.text));
+  const lineFolhaMensal = lines.find(l => /Folha\s+Mensal/i.test(l.text));
+
+  // A. Recibo de Pagamento - 13º Segunda Parcela (Tem "13 SALARIO INTEGRAL" ou desconto de "ADIANTAMENTO 13 SALARIO")
+  if (lineRecibo && (line13Integral || (lineAdiantamento13 && lineINSS13) || /2[ªa]\s*parcela/i.test(pdfPath))) {
+    const texto2Line = line13Integral || lineAdiantamento13 || lineINSS13;
+    const mRecibo = lineRecibo.text.match(/RECIBO\s+DE\s+PAGAMENTO/i);
+    const mTexto2 = texto2Line ? (texto2Line.text.match(/13\s+SALARIO\s+INTEGRAL|ADIANTAMENTO\s+13\s+SALARIO|INSS\s+13o\s+SALARIO/i) || [texto2Line.text]) : null;
+
+    pilar1 = {
+      linha: lineRecibo.lineNumber,
+      textoCompleto: lineRecibo.text,
+      termoMapeado: mRecibo ? mRecibo[0] : 'RECIBO DE PAGAMENTO',
+      linha2: texto2Line ? texto2Line.lineNumber : null,
+      texto2: mTexto2 ? mTexto2[0] : null,
+      nomeSugerido: 'RECIBO DE PAGAMENTO 13º Segunda parcela',
+      isAnual: true
+    };
+  }
+  // B. Recibo de Pagamento - 13º Primeira Parcela (Tem "13 SALARIO ADIANTADO")
+  else if (lineRecibo && (line13Adiantado || /1[ªa]\s*parcela/i.test(pdfPath))) {
+    const mRecibo = lineRecibo.text.match(/RECIBO\s+DE\s+PAGAMENTO/i);
+    const mTexto2 = line13Adiantado ? (line13Adiantado.text.match(/13\s+SALARIO\s+ADIANTADO/i) || [line13Adiantado.text]) : null;
+
+    pilar1 = {
+      linha: lineRecibo.lineNumber,
+      textoCompleto: lineRecibo.text,
+      termoMapeado: mRecibo ? mRecibo[0] : 'RECIBO DE PAGAMENTO',
+      linha2: line13Adiantado ? line13Adiantado.lineNumber : null,
+      texto2: mTexto2 ? mTexto2[0] : null,
+      nomeSugerido: 'RECIBO DE PAGAMENTO 13º Primeira parcela',
+      isAnual: true
+    };
+  }
+  // C. Recibo de Pagamento Mensal Padrão
+  else if (lineRecibo) {
+    const mRecibo = lineRecibo.text.match(/RECIBO\s+DE\s+PAGAMENTO/i);
+    pilar1 = {
+      linha: lineRecibo.lineNumber,
+      textoCompleto: lineRecibo.text,
+      termoMapeado: mRecibo ? mRecibo[0] : 'RECIBO DE PAGAMENTO',
+      nomeSugerido: 'Recibo de Pagamento',
+      isAnual: false
+    };
+  }
+  // D. Demais modelos estruturados
+  else {
+    const obrigacaoCandidates = [
+      { regex: /RECIBO\s+DE\s+PR[ÓO]-LABORE/i, nome: 'RECIBO DE PRO-LABORE', isAnual: false },
+      { regex: /DOCUMENTO\s+DE\s+ARRECADA[ÇC][ÃA]O\s+DE\s+RECEITAS\s+FEDERAIS|DARF/i, nome: 'DARF DCTFWeb', isAnual: is13SalarioFolder },
+      { regex: /GUIA\s+DO\s+FGTS\s+DIGITAL|GFD/i, nome: 'GFD - Guia do FGTS Digital', isAnual: false },
+      { regex: /DOCUMENTO\s+DE\s+ARRECADA[ÇC][ÃA]O\s+DO\s+ESOCIAL|DAE\s+ESOCIAL/i, nome: 'DAE eSocial Doméstica', isAnual: false },
+      { regex: /eSocial|Demonstrativo\s+dos\s+Valores\s+Devidos/i, nome: 'eSocial', isAnual: is13SalarioFolder },
+      { regex: /RELA[ÇC][ÃA]O\s+GERAL\s+DOS\s+L[ÍI]QUIDOS|L[ÍI]QUIDOS/i, nome: 'Relação de Líquidos', isAnual: false },
+      { regex: /C[ÁA]LCULO\s+DE\s+M[ÉE]DIAS|MEM[ÓO]RIA\s+DE\s+C[ÁA]LCULO\s+DE\s+M[ÉE]DIAS/i, nome: 'Cálculo de Médias', isAnual: is13SalarioFolder },
+      { regex: /Folha\s+Mensal/i, nome: 'Folha Mensal', isAnual: false }
+    ];
+
+    for (const cand of obrigacaoCandidates) {
+      const matchLine = lines.find(l => cand.regex.test(l.text));
+      if (matchLine) {
+        const m = matchLine.text.match(cand.regex);
+        let nomeSugerido = cand.nome;
+        if (is13SalarioFolder && /2[ªa]\s*parcela/i.test(pdfPath)) {
+          nomeSugerido += ' 13º Segunda parcela';
+        } else if (is13SalarioFolder && /1[ªa]\s*parcela/i.test(pdfPath)) {
+          nomeSugerido += ' 13º Primeira parcela';
+        }
+
+        pilar1 = {
+          linha: matchLine.lineNumber,
+          textoCompleto: matchLine.text,
+          termoMapeado: m ? m[0] : matchLine.text,
+          nomeSugerido,
+          isAnual: cand.isAnual
+        };
+        break;
       }
-      return cand.regex.test(l.text);
-    });
-    if (matchLine) {
-      const m = matchLine.text.match(cand.regex);
-      pilar1 = {
-        linha: matchLine.lineNumber,
-        textoCompleto: matchLine.text,
-        termoMapeado: m ? m[0] : matchLine.text,
-        nomeSugerido: cand.nome
-      };
-      break;
     }
   }
 
@@ -1509,7 +2203,8 @@ export async function autoDetectPdfMapping(pdfPath, options = {}) {
         linha: firstWordyLine.lineNumber,
         textoCompleto: firstWordyLine.text,
         termoMapeado: firstWordyLine.text,
-        nomeSugerido: 'Documento'
+        nomeSugerido: fileName.replace(/\.pdf$/i, '').replace(/[-_]/g, ' '),
+        isAnual: is13SalarioFolder
       };
     }
   }
@@ -1684,7 +2379,14 @@ export async function autoDetectPdfMapping(pdfPath, options = {}) {
       }
     }
 
-    if (trechoExato && /^\d{4}$/.test(trechoExato)) {
+    // Se for obrigação anual (ex: 13º salário, DCTFWeb 13º, etc.), o G-Click deve mapear apenas o ANO
+    if (pilar1?.isAnual || /13|d[ée]cimo/i.test(pdfPath) || /13\s*sal[áa]rio/i.test(compLine.text)) {
+      const anoMatch = compLine.text.match(/\b20\d\d\b/);
+      if (anoMatch) {
+        trechoExato = anoMatch[0];
+        formatoData = 'ano';
+      }
+    } else if (trechoExato && /^\d{4}$/.test(trechoExato)) {
       formatoData = 'ano';
     }
 
@@ -1701,13 +2403,26 @@ export async function autoDetectPdfMapping(pdfPath, options = {}) {
     const dateLine = lines.find(l => COMPETENCIA_DATE_REGEX.test(l.text) || COMPETENCIA_EXTENSO_REGEX.test(l.text));
     if (dateLine) {
       let trecho = null;
-      const extM = dateLine.text.match(COMPETENCIA_EXTENSO_REGEX);
-      if (extM) {
-        trecho = extM[0];
-      } else {
-        COMPETENCIA_DATE_REGEX.lastIndex = 0;
-        const numM = dateLine.text.match(COMPETENCIA_DATE_REGEX);
-        if (numM) trecho = numM[0];
+      let formato = 'mes_ano';
+      const isAnual = pilar1?.isAnual || /13|d[ée]cimo/i.test(pdfPath);
+
+      if (isAnual) {
+        const anoMatch = dateLine.text.match(/\b20\d\d\b/);
+        if (anoMatch) {
+          trecho = anoMatch[0];
+          formato = 'ano';
+        }
+      }
+
+      if (!trecho) {
+        const extM = dateLine.text.match(COMPETENCIA_EXTENSO_REGEX);
+        if (extM) {
+          trecho = extM[0];
+        } else {
+          COMPETENCIA_DATE_REGEX.lastIndex = 0;
+          const numM = dateLine.text.match(COMPETENCIA_DATE_REGEX);
+          if (numM) trecho = numM[0];
+        }
       }
 
       pilar3 = {
@@ -1716,8 +2431,8 @@ export async function autoDetectPdfMapping(pdfPath, options = {}) {
         trechoExato: trecho,
         competenciaDetectada: trecho,
         competenciaNormalizada: normalizeCompetencia(trecho),
-        formato: 'mes_ano',
-        formatoLabel: 'Mês e ano'
+        formato,
+        formatoLabel: formato === 'ano' ? 'Ano' : 'Mês e ano'
       };
     }
   }
@@ -2021,11 +2736,20 @@ export async function createAndMapPdfLayoutOnGclick(loginContext, accountId, par
       }, { num, nome, linha, texto, tipoFixo, formato, accountId });
     }
 
-    // Executa Pilar 1 (Obrigação)
+    // Executa Pilar 1 (Obrigação) - Suporta texto 1 e texto 2 (ex: RECIBO DE PAGAMENTO + 13 SALARIO INTEGRAL)
     if (p1Linha) {
       logStep(6, `Gravando Pilar 1 (Obrigação) na linha ${p1Linha}: "${p1Texto}"...`);
       await salvarPilarGclick(1, 'Obrigatório', p1Linha, p1Texto, 1);
-      await modelPage.waitForTimeout(2000);
+      await modelPage.waitForTimeout(1500);
+
+      // Texto 2 da Regra 1 se presente
+      const p1Linha2 = pilar1?.linha2;
+      const p1Texto2 = (pilar1?.texto2 || '').trim();
+      if (p1Linha2 && p1Texto2) {
+        logStep(6.1, `Gravando 2º texto do Pilar 1 (Obrigação) na linha ${p1Linha2}: "${p1Texto2}"...`);
+        await salvarPilarGclick(1, 'Obrigatório', p1Linha2, p1Texto2, 1);
+        await modelPage.waitForTimeout(1500);
+      }
     }
 
     // Executa Pilar 2 (Cliente / Inscrição)
@@ -2196,4 +2920,408 @@ export async function createAndMapPdfLayoutOnGclick(loginContext, accountId, par
     }
     await page.close().catch(() => {});
   }
+}
+
+/**
+ * Detecta duplicidades exatas e conflitos de versão / retificação
+ * comparando o conteúdo extraído dos arquivos PDF.
+ * @param {Array} validations - Lista de objetos retornados por validatePdfFile
+ * @returns {object} { totalGrupos, totalArquivosDuplicados, totalRetificacoes, grupos }
+ */
+export function detectPdfDuplicatesAndConflicts(validations = []) {
+  if (!Array.isArray(validations) || validations.length === 0) {
+    return {
+      totalGrupos: 0,
+      totalArquivosDuplicados: 0,
+      totalRetificacoes: 0,
+      grupos: []
+    };
+  }
+
+  const grupos = [];
+  let grupoCounter = 1;
+  const processedPairKeys = new Set();
+
+  function getClientKey(v) {
+    const c = v.regras?.identificacaoCliente;
+    if (!c) return null;
+    return c.cnpjs?.[0] || c.cpfs?.[0] || c.cnpjsBase?.[0] || null;
+  }
+
+  // 1. Agrupamento por Hash de Conteúdo (Duplicata 100% Idêntica)
+  const byHash = new Map();
+  for (const v of validations) {
+    const h = v.contentHash;
+    if (h && v.status !== 'erro_extracao') {
+      if (!byHash.has(h)) byHash.set(h, []);
+      byHash.get(h).push(v);
+    }
+  }
+
+  for (const [hash, items] of byHash.entries()) {
+    if (items.length > 1) {
+      const gId = `dup_hash_${grupoCounter++}`;
+      const first = items[0];
+      const grupo = {
+        id: gId,
+        tipo: 'duplicata_identica',
+        badge: 'Duplicata Idêntica',
+        cor: 'red',
+        titulo: `Duplicata Exata: ${first.regras?.nomeDocumento?.identificado || first.fileName}`,
+        descricao: `Identificados ${items.length} arquivos com texto 100% idêntico (mesmo conteúdo e dados).`,
+        camposComparados: {
+          cliente: getClientKey(first) || 'Não identificado',
+          competencia: first.regras?.competencia?.competenciaDetectada || 'Não identificada',
+          documento: first.regras?.nomeDocumento?.identificado || 'Não identificado',
+          numeroDoc: first.numDoc || '--',
+          valor: first.valor || '--',
+          vencimento: first.vencimento || '--',
+          hash: hash.slice(0, 16)
+        },
+        arquivos: items.map(it => ({
+          filePath: it.filePath,
+          fileName: it.fileName,
+          relPath: it.relPath || it.fileName,
+          subpasta: it.subpasta || '',
+          valor: it.valor,
+          vencimento: it.vencimento,
+          numDoc: it.numDoc
+        }))
+      };
+
+      grupos.push(grupo);
+
+      items.forEach((it, idx) => {
+        it.duplicidade = {
+          temDuplicidade: true,
+          tipo: 'duplicata_identica',
+          grupoId: gId,
+          isPrincipal: idx === 0,
+          rotulo: idx === 0 ? 'Original / Base' : 'Cópia Excedente',
+          outrosArquivos: items.filter((_, i) => i !== idx).map(x => x.relPath || x.fileName)
+        };
+      });
+
+      for (let i = 0; i < items.length; i++) {
+        for (let j = i + 1; j < items.length; j++) {
+          processedPairKeys.add(`${items[i].filePath}::${items[j].filePath}`);
+          processedPairKeys.add(`${items[j].filePath}::${items[i].filePath}`);
+        }
+      }
+    }
+  }
+
+  // 2. Agrupamento por Chave de Negócio (Cliente + Competência + Documento)
+  const byBusinessKey = new Map();
+  for (const v of validations) {
+    if (v.status === 'erro_extracao') continue;
+    const cli = getClientKey(v);
+    const comp = v.regras?.competencia?.competenciaDetectada;
+    const doc = v.regras?.nomeDocumento?.identificado;
+    if (cli && comp && doc) {
+      const bKey = `${doc} | ${cli} | ${comp}`;
+      if (!byBusinessKey.has(bKey)) byBusinessKey.set(bKey, []);
+      byBusinessKey.get(bKey).push(v);
+    }
+  }
+
+  for (const [bKey, items] of byBusinessKey.entries()) {
+    if (items.length > 1) {
+      const unlinked = items.filter(it => !it.duplicidade || it.duplicidade.tipo !== 'duplicata_identica');
+      if (unlinked.length > 1) {
+        const valores = Array.from(new Set(unlinked.map(x => x.valor).filter(Boolean)));
+        const numDocs = Array.from(new Set(unlinked.map(x => x.numDoc).filter(Boolean)));
+        const vencs = Array.from(new Set(unlinked.map(x => x.vencimento).filter(Boolean)));
+
+        const isRetificacao = valores.length > 1 || numDocs.length > 1;
+        const gId = isRetificacao ? `retif_${grupoCounter++}` : `dup_negocio_${grupoCounter++}`;
+
+        const grupo = {
+          id: gId,
+          tipo: isRetificacao ? 'retificacao_conflito' : 'duplicata_guia',
+          badge: isRetificacao ? 'Conflito de Versão / Retificação' : 'Mesma Guia / Reemissão',
+          cor: isRetificacao ? 'amber' : 'orange',
+          titulo: isRetificacao
+            ? `Possível Retificação: ${unlinked[0].regras?.nomeDocumento?.identificado}`
+            : `Guia Repetida: ${unlinked[0].regras?.nomeDocumento?.identificado}`,
+          descricao: isRetificacao
+            ? `Identificados ${unlinked.length} arquivos para o mesmo cliente e competência com valores ou identificadores distintos (${valores.join(' vs ')}). Verifique se uma é a guia retificadora.`
+            : `Identificados ${unlinked.length} arquivos emitidos para a mesma obrigação e competência com valores equivalentes.`,
+          camposComparados: {
+            cliente: getClientKey(unlinked[0]),
+            competencia: unlinked[0].regras?.competencia?.competenciaDetectada,
+            documento: unlinked[0].regras?.nomeDocumento?.identificado,
+            valores,
+            numerosDocs: numDocs,
+            vencimentos: vencs
+          },
+          arquivos: unlinked.map(it => ({
+            filePath: it.filePath,
+            fileName: it.fileName,
+            relPath: it.relPath || it.fileName,
+            subpasta: it.subpasta || '',
+            valor: it.valor,
+            vencimento: it.vencimento,
+            numDoc: it.numDoc
+          }))
+        };
+
+        grupos.push(grupo);
+
+        unlinked.forEach((it, idx) => {
+          if (!it.duplicidade) {
+            it.duplicidade = {
+              temDuplicidade: true,
+              tipo: grupo.tipo,
+              grupoId: gId,
+              isPrincipal: idx === 0,
+              rotulo: isRetificacao ? 'Versão em Conflito' : 'Possível Reemissão',
+              outrosArquivos: unlinked.filter((_, i) => i !== idx).map(x => x.relPath || x.fileName)
+            };
+          }
+        });
+      }
+    }
+  }
+
+  // Preenche default para arquivos sem duplicidade
+  for (const v of validations) {
+    if (!v.duplicidade) {
+      v.duplicidade = {
+        temDuplicidade: false,
+        tipo: 'unico',
+        grupoId: null,
+        isPrincipal: true,
+        rotulo: 'Único',
+        outrosArquivos: []
+      };
+    }
+  }
+
+  const totalArquivosDuplicados = validations.filter(v => v.duplicidade.temDuplicidade).length;
+  const totalRetificacoes = grupos.filter(g => g.tipo === 'retificacao_conflito').length;
+
+  return {
+    totalGrupos: grupos.length,
+    totalArquivosDuplicados,
+    totalRetificacoes,
+    grupos
+  };
+}
+
+/**
+ * Realiza a conciliação completa entre os arquivos da pasta e o G-Click
+ * (Verifica existência de Clientes, Modelos e Obrigações)
+ */
+export function reconcileFolderWithGclick(validations = [], { models = [], clientes = [], obrigacoes = [] } = {}) {
+  if (!Array.isArray(validations)) return { arquivos: [], resumo: {} };
+
+  // 1. Mapeia Clientes do G-Click
+  const clientCnpjMap = new Map();
+  const clientCpfMap = new Map();
+  const clientBaseMap = new Map();
+
+  for (const c of clientes) {
+    const rawCnpj = c.cnpj || c.cpfCnpj || '';
+    const cleanId = rawCnpj.replace(/\D/g, '');
+    const nome = c.nome || c.razaoSocial || c.nomeFantasia || 'Cliente G-Click';
+
+    if (cleanId.length === 14) {
+      clientCnpjMap.set(cleanId, { id: c.id, nome, codigo: c.codigo || c.id });
+      clientBaseMap.set(cleanId.slice(0, 8), { id: c.id, nome, codigo: c.codigo || c.id });
+    } else if (cleanId.length === 11) {
+      clientCpfMap.set(cleanId, { id: c.id, nome, codigo: c.codigo || c.id });
+    }
+  }
+
+  // 2. Mapeia Modelos do G-Click
+  const modelNameMap = new Map();
+  for (const m of models) {
+    const norm = normalizeModelObject(m);
+    const nomeM = (norm.modelo || norm.nome || '').toLowerCase().trim();
+    if (nomeM) {
+      modelNameMap.set(nomeM, norm);
+    }
+  }
+
+  // 3. Mapeia Obrigações do G-Click
+  const obrigMap = new Map();
+  for (const ob of obrigacoes) {
+    const obNome = (ob.nome || '').replace(/[*]/g, '').toLowerCase().trim();
+    if (obNome) {
+      obrigMap.set(obNome, ob);
+    }
+  }
+
+  // 4. Executa conciliação para cada validação
+  for (const v of validations) {
+    // 4.1 Conciliação Cliente
+    const cnpjs = v.regras?.identificacaoCliente?.cnpjs || [];
+    const cnpjsBase = v.regras?.identificacaoCliente?.cnpjsBase || [];
+    const cpfs = v.regras?.identificacaoCliente?.cpfs || [];
+
+    let clienteMatch = null;
+    for (const c of cnpjs) {
+      const clean = cleanCnpj(c);
+      if (clientCnpjMap.has(clean)) {
+        clienteMatch = clientCnpjMap.get(clean);
+        break;
+      }
+    }
+    if (!clienteMatch) {
+      for (const c of cpfs) {
+        const clean = String(c).replace(/\D/g, '');
+        if (clientCpfMap.has(clean)) {
+          clienteMatch = clientCpfMap.get(clean);
+          break;
+        }
+      }
+    }
+    if (!clienteMatch) {
+      for (const b of cnpjsBase) {
+        const clean = String(b).replace(/\D/g, '').slice(0, 8);
+        if (clientBaseMap.has(clean)) {
+          clienteMatch = clientBaseMap.get(clean);
+          break;
+        }
+      }
+    }
+
+    // 4.2 Conciliação Modelo
+    const docNome = (v.regras?.nomeDocumento?.identificado || '').toLowerCase().trim();
+    let modeloMatch = null;
+    if (docNome && modelNameMap.has(docNome)) {
+      modeloMatch = modelNameMap.get(docNome);
+    } else if (Array.isArray(v.regras?.nomeDocumento?.modelosCompativeis) && v.regras.nomeDocumento.modelosCompativeis.length > 0) {
+      for (const mc of v.regras.nomeDocumento.modelosCompativeis) {
+        const mcNome = (mc.nome || mc.modelo || '').toLowerCase().trim();
+        if (modelNameMap.has(mcNome)) {
+          modeloMatch = modelNameMap.get(mcNome);
+          break;
+        }
+      }
+      if (!modeloMatch) {
+        const firstCompat = v.regras.nomeDocumento.modelosCompativeis[0];
+        modeloMatch = normalizeModelObject(firstCompat);
+      }
+    }
+
+    // 4.3 Conciliação Obrigação
+    let obrigacaoMatch = null;
+    if (modeloMatch?.obrigacao) {
+      obrigacaoMatch = { nome: modeloMatch.obrigacao, atividade: modeloMatch.atividade || null };
+    } else if (docNome && obrigMap.has(docNome)) {
+      const ob = obrigMap.get(docNome);
+      obrigacaoMatch = { nome: ob.nome, atividade: null };
+    }
+
+    // 4.4 Classificação da Situação e Ação Recomendada
+    let situacaoGclick = 'inconsistente';
+    let situacaoLabel = 'Inconsistente';
+    let acaoRecomendada = 'revisar_dados';
+    let acaoLabel = '🔍 Inspecionar';
+    let statusBadgeClass = 'badge-warning';
+
+    const hasClienteId = cnpjs.length > 0 || cpfs.length > 0 || cnpjsBase.length > 0;
+    const isModelConfigured = Boolean(modeloMatch && (modeloMatch.statusCode === 'configurado' || (modeloMatch.status && /já está configurado|sendo usado/i.test(modeloMatch.status))));
+    const isModelPendingConfig = Boolean(modeloMatch && !isModelConfigured);
+
+    if (v.status === 'erro_extracao') {
+      situacaoGclick = 'sem_ocr';
+      situacaoLabel = 'Sem OCR / Imagem';
+      acaoRecomendada = 'necessario_ocr';
+      acaoLabel = '📷 Sem OCR';
+      statusBadgeClass = 'badge-neutral';
+    } else if (v.duplicidade?.temDuplicidade && v.duplicidade.tipo === 'duplicata_identica') {
+      situacaoGclick = 'duplicata_identica';
+      situacaoLabel = 'Duplicata Idêntica';
+      acaoRecomendada = 'ver_duplicidade';
+      acaoLabel = '⚠️ Ver Duplicata';
+      statusBadgeClass = 'badge-error';
+    } else if (v.duplicidade?.temDuplicidade && v.duplicidade.tipo === 'retificacao_conflito') {
+      situacaoGclick = 'conflito_retificacao';
+      situacaoLabel = 'Conflito / Retificação';
+      acaoRecomendada = 'ver_conflito';
+      acaoLabel = '⚠️ Ver Retificação';
+      statusBadgeClass = 'badge-warning';
+    } else if (!modeloMatch) {
+      situacaoGclick = 'sem_modelo';
+      situacaoLabel = 'Não Cadastrado no G-Click';
+      acaoRecomendada = 'enviar_mapear';
+      acaoLabel = '🛠️ Enviar & Mapear';
+      statusBadgeClass = 'badge-warning';
+    } else if (isModelPendingConfig) {
+      situacaoGclick = 'modelo_pendente';
+      situacaoLabel = 'No G-Click (Falta Configurar)';
+      acaoRecomendada = 'mapear_linhas';
+      acaoLabel = '⚙️ Mapear Linhas';
+      statusBadgeClass = 'badge-warning';
+    } else if (!clienteMatch && hasClienteId) {
+      situacaoGclick = 'cliente_nao_cadastrado';
+      situacaoLabel = 'Cliente Fora da Base';
+      acaoRecomendada = 'cadastrar_cliente';
+      acaoLabel = '👤 Cadastrar Cliente';
+      statusBadgeClass = 'badge-warning';
+    } else if (isModelConfigured && v.valido) {
+      situacaoGclick = 'ja_no_gclick';
+      situacaoLabel = 'Já no G-Click (Configurado)';
+      acaoRecomendada = 'pronto_envio';
+      acaoLabel = '🚀 Pronto p/ Enviar';
+      statusBadgeClass = 'badge-ready';
+    } else if (v.valido) {
+      situacaoGclick = 'ja_no_gclick';
+      situacaoLabel = 'Já no G-Click (Configurado)';
+      acaoRecomendada = 'pronto_envio';
+      acaoLabel = '🚀 Pronto p/ Enviar';
+      statusBadgeClass = 'badge-ready';
+    }
+
+    const legacyStatus = (situacaoGclick === 'ja_no_gclick')
+      ? 'pronto_para_envio'
+      : ((situacaoGclick === 'sem_modelo')
+        ? 'pendente_modelo'
+        : situacaoGclick);
+
+    v.conciliacao = {
+      status: legacyStatus,
+      situacaoGclick,
+      situacaoLabel,
+      acaoRecomendada,
+      acaoLabel,
+      statusLabel: situacaoLabel,
+      statusBadgeClass,
+      jaEstaNoGclick: isModelConfigured,
+      precisaMapear: Boolean(v.status !== 'erro_extracao' && situacaoGclick !== 'sem_ocr' && (!modeloMatch || isModelPendingConfig)),
+      cliente: clienteMatch ? { encontrado: true, ...clienteMatch } : { encontrado: false },
+      modelo: modeloMatch ? {
+        encontrado: true,
+        id: modeloMatch.id || modeloMatch.modelId,
+        nome: modeloMatch.nome || modeloMatch.modelo,
+        link: modeloMatch.link,
+        statusCode: modeloMatch.statusCode,
+        statusText: modeloMatch.status,
+        isConfigurado: isModelConfigured
+      } : { encontrado: false, isConfigurado: false },
+      obrigacao: obrigacaoMatch ? { encontrado: true, ...obrigacaoMatch } : { encontrado: false }
+    };
+  }
+
+  const resumo = {
+    totalArquivos: validations.length,
+    jaNoGclick: validations.filter(v => v.conciliacao?.situacaoGclick === 'ja_no_gclick').length,
+    prontosParaEnvio: validations.filter(v => v.conciliacao?.situacaoGclick === 'ja_no_gclick').length,
+    faltaMapear: validations.filter(v => v.conciliacao?.situacaoGclick === 'sem_modelo' || v.conciliacao?.situacaoGclick === 'modelo_pendente').length,
+    pendentesModelo: validations.filter(v => v.conciliacao?.situacaoGclick === 'sem_modelo').length,
+    modelosPendentesConfiguracao: validations.filter(v => v.conciliacao?.situacaoGclick === 'modelo_pendente').length,
+    clientesNaoCadastrados: validations.filter(v => v.conciliacao?.situacaoGclick === 'cliente_nao_cadastrado').length,
+    duplicatasIdenticas: validations.filter(v => v.conciliacao?.situacaoGclick === 'duplicata_identica').length,
+    conflitosRetificacao: validations.filter(v => v.conciliacao?.situacaoGclick === 'conflito_retificacao').length,
+    semOcr: validations.filter(v => v.conciliacao?.situacaoGclick === 'sem_ocr').length,
+    inconsistentes: validations.filter(v => v.conciliacao?.situacaoGclick === 'inconsistente').length
+  };
+
+  return {
+    arquivos: validations,
+    resumo
+  };
 }

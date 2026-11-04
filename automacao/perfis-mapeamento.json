@@ -1,1 +1,51 @@
-[]
+[
+  {
+    "id": "prof-4966-mw0t7r0d",
+    "accountId": "4966",
+    "sourceFingerprint": "https://docs.google.com/spreadsheets/d/1fxVpJ6WMWFdsQmmquaJK-_7IFTeIBepVGoBPUSHED5g/edit?gid=1472433772#gid=1472433772",
+    "sheetIdentifier": "https://docs.google.com/spreadsheets/d/1fxVpJ6WMWFdsQmmquaJK-_7IFTeIBepVGoBPUSHED5g/edit?gid=1472433772#gid=1472433772",
+    "headerRow": 1,
+    "targetModel": "carteira_responsaveis",
+    "version": 2,
+    "createdAt": "2026-11-03T14:55:15.325Z",
+    "updatedAt": "2026-11-03T14:55:26.004Z",
+    "columns": [
+      {
+        "sourceIndex": 0,
+        "position": 1,
+        "sourceName": "Pessoa responsável",
+        "action": "map",
+        "targetField": "responsavel",
+        "transform": "trim_texto",
+        "userConfirmed": true
+      },
+      {
+        "sourceIndex": 1,
+        "position": 2,
+        "sourceName": "Empresa",
+        "action": "map",
+        "targetField": "empresa",
+        "transform": "trim_texto",
+        "userConfirmed": true
+      },
+      {
+        "sourceIndex": 2,
+        "position": 3,
+        "sourceName": "CNPJ",
+        "action": "map",
+        "targetField": "cnpj",
+        "transform": "limpar_cnpj",
+        "userConfirmed": true
+      },
+      {
+        "sourceIndex": 3,
+        "position": 4,
+        "sourceName": "CNPJ",
+        "action": "map",
+        "targetField": "cnpj",
+        "transform": "limpar_cnpj",
+        "userConfirmed": false
+      }
+    ]
+  }
+]

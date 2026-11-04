@@ -447,11 +447,19 @@ let gclickSessionState = {
 function isConnectionResolved() {
   const acc = currentAccount();
   if (!/^\d+$/.test(acc)) return false;
-  return Boolean(
-    gclickSessionState.connected &&
-    gclickSessionState.accountMatches &&
-    String(gclickSessionState.activeAccountId) === String(acc)
-  );
+  if (gclickSessionState.connected) {
+    return Boolean(
+      gclickSessionState.accountMatches &&
+      String(gclickSessionState.activeAccountId) === String(acc)
+    );
+  }
+  if (config.loginReady || config.catalogLive) {
+    if (gclickSessionState.currentEmpresaId && String(gclickSessionState.currentEmpresaId) !== String(acc)) {
+      return false;
+    }
+    return true;
+  }
+  return false;
 }
 
 function applySessionResult(result, targetAcc = null) {
@@ -1571,6 +1579,16 @@ $('accountId').addEventListener('change', () => {
 });
 $('accountId').addEventListener('input', () => {
   const acc = $('accountId').value.trim();
+  if (/^\d+$/.test(acc) && (config.loginReady || config.catalogLive) && !gclickSessionState.connected) {
+    gclickSessionState = {
+      ...gclickSessionState,
+      connected: true,
+      accountMatches: true,
+      isReadyForModules: true,
+      activeAccountId: acc,
+      currentEmpresaId: acc
+    };
+  }
   updateTopAccountDisplay(acc);
   renderEmpresasGrid();
   if (/^\d+$/.test(acc)) {
@@ -2091,6 +2109,9 @@ async function initApp() {
   renderAccountList();
   if (config.catalogLive && config.catalog?.accountId) {
     $('accountId').value = config.catalog.accountId;
+  } else if ((config.catalogLive || config.loginReady) && Array.isArray(config.accounts) && config.accounts.length === 1) {
+    const single = typeof config.accounts[0] === 'object' ? config.accounts[0].accountId : config.accounts[0];
+    if (single) $('accountId').value = String(single);
   } else {
     try {
       const last = localStorage.getItem(ACCOUNT_KEY);
@@ -2098,16 +2119,20 @@ async function initApp() {
     } catch { /* sem preferência local */ }
   }
   updateTopAccountDisplay(currentAccount());
-  if (config.catalog && config.catalogLive) {
-    useCatalog(config.catalog, true);
+  if ((config.catalog && config.catalogLive) || (config.loginReady && currentAccount())) {
+    const acc = currentAccount() || config.catalog?.accountId;
+    if (config.catalog && config.catalogLive) {
+      useCatalog(config.catalog, true);
+    }
     gclickSessionState = {
       connected: true,
       accountMatches: true,
       isReadyForModules: true,
-      activeAccountId: config.catalog.accountId,
+      activeAccountId: acc,
       activeEmpresaNome: config.empresaNome || null,
-      currentEmpresaId: config.catalog.accountId,
-      currentEmpresaNome: config.empresaNome || null
+      currentEmpresaId: acc,
+      currentEmpresaNome: config.empresaNome || null,
+      availableEmpresas: []
     };
   } else if (currentAccount()) {
     await loadAccountCatalog();
@@ -2141,21 +2166,102 @@ async function initApp() {
 checkAuthAndInit();
 
 const SECTION_STORAGE_KEY = 'enqueteSync_activeSection';
+const ENQUETE_TAB_STORAGE_KEY = 'enqueteSync_activeEnqueteTab';
+
+const ENQUETE_SUBTABS = {
+  'dados-mapeamento': { paneId: 'enqueteTabPaneDados', btnId: 'tabEnqueteDados' },
+  'conferencia-gravacao': { paneId: 'enqueteTabPaneDados', btnId: 'tabEnqueteDados' },
+  'cadastro-respostas': { paneId: 'enqueteTabPaneCadastro', btnId: 'tabEnqueteCadastro' },
+  'sincronizacao-sheets': { paneId: 'enqueteTabPaneSheets', btnId: 'tabEnqueteSheets' }
+};
+
+function switchEnqueteTab(tabKey) {
+  const targetTab = ENQUETE_SUBTABS[tabKey] ? tabKey : 'dados-mapeamento';
+
+  const activePaneId = ENQUETE_SUBTABS[targetTab]?.paneId;
+  const activeBtnId = ENQUETE_SUBTABS[targetTab]?.btnId;
+
+  // Atualiza visibilidade dos painéis únicos
+  const uniquePanes = new Set(Object.values(ENQUETE_SUBTABS).map(t => t.paneId));
+  uniquePanes.forEach(paneId => {
+    const pane = $(paneId);
+    if (pane) pane.hidden = (paneId !== activePaneId);
+  });
+
+  // Atualiza estados dos botões de aba
+  const uniqueBtns = new Set(Object.values(ENQUETE_SUBTABS).map(t => t.btnId));
+  uniqueBtns.forEach(btnId => {
+    const btn = $(btnId);
+    if (btn) {
+      const isBtnActive = (btnId === activeBtnId);
+      btn.classList.toggle('active', isBtnActive);
+      btn.setAttribute('aria-selected', String(isBtnActive));
+    }
+  });
+
+  if (targetTab === 'conferencia-gravacao') {
+    const applySec = $('section-apply') || $('section-audit');
+    if (applySec) applySec.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  if (targetTab === 'cadastro-respostas') {
+    loadEnqueteCadastroSection();
+  }
+
+  try {
+    localStorage.setItem(ENQUETE_TAB_STORAGE_KEY, targetTab);
+  } catch { /* sem local storage */ }
+}
 
 function switchSection(sectionId) {
-  const target = sectionId || 'all';
+  let target = sectionId || 'all';
+
+  if (target === 'all') {
+    const navBtns = document.querySelectorAll('#sidebarNav .nav-btn');
+    const sections = document.querySelectorAll('.app-section');
+    navBtns.forEach(btn => btn.classList.remove('active'));
+    sections.forEach(sec => {
+      sec.hidden = false;
+      sec.classList.remove('active');
+    });
+    $('sidebar')?.classList.remove('open');
+    updateSidebarBadges();
+    return;
+  }
+
+  let subTabToActivate = null;
+  if (['source', 'catalog', 'mapping'].includes(target)) {
+    subTabToActivate = 'dados-mapeamento';
+    target = 'enquete';
+  } else if (['audit', 'apply'].includes(target)) {
+    subTabToActivate = 'conferencia-gravacao';
+    target = 'enquete';
+  } else if (target === 'enquete-cadastro') {
+    subTabToActivate = 'cadastro-respostas';
+    target = 'enquete';
+  } else if (target === 'writer') {
+    subTabToActivate = 'sincronizacao-sheets';
+    target = 'enquete';
+  }
 
   // Proteção de Pré-condição e Isolamento de Conta (AGENTS.md)
-  // Se o G-Click estiver com mismatch ativo (ex: logado na conta 2420 enquanto outra conta está selecionada),
-  // bloqueia estritamente o acesso aos módulos operacionais para impedir ações no escritório errado.
-  const operationalModules = ['catalog', 'mapping', 'audit', 'apply', 'obrigacoes', 'carteira', 'enquete-cadastro'];
-  if (operationalModules.includes(target) && gclickSessionState.connected && !gclickSessionState.accountMatches) {
+  // Bloqueia estritamente o acesso aos módulos operacionais/dependentes se não houver conta cliente conectada ou em caso de divergência.
+  const operationalModules = ['enquete', 'catalog', 'mapping', 'audit', 'apply', 'obrigacoes', 'carteira', 'enquete-cadastro', 'valida-pdf', 'users'];
+  if (operationalModules.includes(target)) {
     const acc = currentAccount();
-    const reason = `O G-Click está conectado na empresa ${gclickSessionState.currentEmpresaNome || gclickSessionState.currentEmpresaId}, diferente da conta ${acc} selecionada. Alterne a empresa no módulo Conexão G-Click.`;
-    toast.warning(reason, 'Empresa Divergente');
-    status(reason, 'warn');
-    switchSection('connection');
-    return;
+    const isResolved = isConnectionResolved();
+    if (!isResolved) {
+      let reason = 'Conecte a conta do escritório no módulo Conexão G-Click para liberar o acesso aos recursos.';
+      if (gclickSessionState.connected && !gclickSessionState.accountMatches) {
+        reason = `O G-Click está conectado na empresa ${gclickSessionState.currentEmpresaNome || gclickSessionState.currentEmpresaId}, diferente da conta ${acc || 'selecionada'}. Alterne a empresa no módulo Conexão G-Click.`;
+      } else if (!acc) {
+        reason = 'Informe o código da conta do escritório e conecte a sessão no módulo Conexão G-Click para continuar.';
+      }
+      toast.warning(reason, 'Acesso Bloqueado');
+      status(reason, 'warn');
+      switchSection('connection');
+      return;
+    }
   }
 
   const navBtns = document.querySelectorAll('#sidebarNav .nav-btn');
@@ -2165,53 +2271,36 @@ function switchSection(sectionId) {
     btn.classList.toggle('active', btn.dataset.section === target);
   });
 
-  if (target === 'all') {
-    sections.forEach(sec => {
-      sec.hidden = false;
-      sec.classList.remove('active');
-    });
-  } else {
-    sections.forEach(sec => {
-      const match = sec.id === `section-${target}`;
-      sec.hidden = !match;
-      sec.classList.toggle('active', match);
-    });
-  }
+  sections.forEach(sec => {
+    const match = sec.id === `section-${target}`;
+    sec.hidden = !match;
+    sec.classList.toggle('active', match);
+  });
 
-  if (target === 'users') {
+  if (target === 'enquete') {
+    if (subTabToActivate) {
+      switchEnqueteTab(subTabToActivate);
+    } else {
+      let savedTab = 'dados-mapeamento';
+      try {
+        savedTab = localStorage.getItem(ENQUETE_TAB_STORAGE_KEY) || 'dados-mapeamento';
+      } catch { /* sem localStorage */ }
+      switchEnqueteTab(savedTab);
+    }
+  } else if (target === 'users') {
     loadUsersTable();
-  }
-  if (target === 'obrigacoes') {
+  } else if (target === 'obrigacoes') {
     loadObrigacoesSection();
-  }
-  if (target === 'carteira') {
+  } else if (target === 'carteira') {
     loadCarteiraSection();
-  }
-  if (target === 'enquete-cadastro') {
-    loadEnqueteCadastroSection();
-  }
-  if (target === 'valida-pdf') {
+  } else if (target === 'valida-pdf') {
     loadValidaPdfSection();
+  } else if (target === 'help') {
+    initHelpSection();
   }
-
-  // O fluxo de etapas descreve só a Enquete; nos demais módulos seriam ruído.
-  const isEnqueteFlow = ENQUETE_FLOW_SECTIONS.includes(target);
-  if ($('enquetePipeline')) $('enquetePipeline').hidden = !isEnqueteFlow;
 
   $('sidebar')?.classList.remove('open');
   updateSidebarBadges();
-
-  // Sincroniza estado visual do pipeline stepper
-  document.querySelectorAll('.pipeline-step').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.step === target);
-  });
-
-  // Auto-expande sub-módulo se a ação ativa estiver dentro dele
-  if (['catalog', 'mapping', 'audit', 'apply', 'writer'].includes(target)) {
-    $('submoduleEnquete')?.classList.remove('collapsed');
-  } else if (['obrigacoes'].includes(target)) {
-    $('submoduleObrigacoes')?.classList.remove('collapsed');
-  }
 
   try {
     localStorage.setItem(SECTION_STORAGE_KEY, target);
@@ -2224,7 +2313,7 @@ function connectionView() {
   const s = gclickSessionState;
   const empresa = s.currentEmpresaNome
     ? `${s.currentEmpresaNome}${s.currentEmpresaId ? ` (${s.currentEmpresaId})` : ''}`
-    : (s.currentEmpresaId ? `conta ${s.currentEmpresaId}` : 'outra empresa');
+    : (s.currentEmpresaId ? `conta ${s.currentEmpresaId}` : (acc ? `conta ${acc}` : 'outra empresa'));
   if (isConnectionResolved()) {
     return { state: 'ok', short: 'Conectado', title: `Conectado em ${empresa}`, detail: 'Módulos de automação liberados.' };
   }
@@ -2301,16 +2390,11 @@ function updateSidebarBadges() {
     if (!btnSwitch.disabled) btnSwitch.textContent = acc ? `Alternar para a conta ${acc}` : 'Alternar conta';
   }
 
-  // Atualiza classes de bloqueio visual em itens do menu lateral e pipeline stepper
-  const dependentModules = ['source', 'catalog', 'mapping', 'audit', 'apply', 'obrigacoes', 'carteira', 'users'];
+  // Atualiza classes de bloqueio visual em itens do menu lateral
+  const dependentModules = ['enquete', 'source', 'catalog', 'mapping', 'audit', 'apply', 'obrigacoes', 'carteira', 'users', 'valida-pdf'];
   document.querySelectorAll('#sidebarNav .nav-btn').forEach(btn => {
     if (dependentModules.includes(btn.dataset.section)) {
       btn.classList.toggle('nav-blocked', !isResolved);
-    }
-  });
-  document.querySelectorAll('.pipeline-step').forEach(btn => {
-    if (dependentModules.includes(btn.dataset.step)) {
-      btn.classList.toggle('step-blocked', !isResolved);
     }
   });
 
@@ -2412,6 +2496,26 @@ function updateSidebarBadges() {
     } else {
       badgeObrigacoes.textContent = 'Obrigações';
       badgeObrigacoes.className = 'nav-badge badge-neutral';
+    }
+  }
+
+  const badgeEnquete = $('navBadgeEnquete');
+  if (badgeEnquete) {
+    if (pendingMarks > 0) {
+      badgeEnquete.textContent = `${pendingMarks} a marcar`;
+      badgeEnquete.className = 'nav-badge badge-warn';
+    } else if (lastReport?.mode === 'mapping_apply') {
+      badgeEnquete.textContent = 'Gravado';
+      badgeEnquete.className = 'nav-badge badge-ok';
+    } else if (taskCatalog?.length) {
+      badgeEnquete.textContent = `${taskCatalog.length} tarefas`;
+      badgeEnquete.className = 'nav-badge badge-ok';
+    } else if (importedTable?.rows?.length) {
+      badgeEnquete.textContent = `${importedTable.rows.length} linhas`;
+      badgeEnquete.className = 'nav-badge badge-ok';
+    } else {
+      badgeEnquete.textContent = '';
+      badgeEnquete.className = 'nav-badge';
     }
   }
 
@@ -4044,9 +4148,13 @@ function setupSidebarCollapse() {
 }
 setupSidebarCollapse();
 
-for (const stepBtn of document.querySelectorAll('.pipeline-step')) {
-  stepBtn.addEventListener('click', () => switchSection(stepBtn.dataset.step));
-}
+// Listener das abas internas do Workspace Enquete
+document.querySelectorAll('#enqueteTabs .module-tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const tabKey = btn.dataset.enqueteTab;
+    if (tabKey) switchEnqueteTab(tabKey);
+  });
+});
 $('sidebarToggle')?.addEventListener('click', () => {
   $('sidebar')?.classList.toggle('open');
 });
@@ -4090,18 +4198,18 @@ $('btnConfirmAbort')?.addEventListener('click', executeCancelOperation);
 // COMMAND PALETTE ENTERPRISE (⌘K / Ctrl+K)
 // ==========================================================================
 const COMMANDS_REGISTRY = [
-  { id: 'nav-conn', title: 'Conexão G-Click', desc: 'Gerenciar sessão e código empId do escritório', icon: '🔑', badge: 'Preparação', action: () => switchSection('connection') },
-  { id: 'nav-source', title: 'Planilhas', desc: 'Ler a planilha da Enquete ou da Carteira com DE/PARA de colunas', icon: '📥', badge: 'Preparação', action: () => switchSection('source') },
-  { id: 'nav-writer', title: 'Sincronização com Sheets', desc: 'Configurar script Apps Script e registrar logs', icon: '🔄', badge: 'Enquete', action: () => switchSection('writer') },
-  { id: 'nav-catalog', title: 'Catálogo de Perguntas', desc: 'Visualizar perguntas lidas na Enquete', icon: '📑', badge: 'Enquete', action: () => switchSection('catalog') },
-  { id: 'nav-mapping', title: 'Mapeamento de Tarefas', desc: 'Configurar associação de tarefas às respostas', icon: '🔀', badge: 'Enquete', action: () => switchSection('mapping') },
-  { id: 'nav-audit', title: 'Conferência', desc: 'Auditar divergências e validar marcações', icon: '🔍', badge: 'Enquete', action: () => switchSection('audit') },
-  { id: 'nav-apply', title: 'Gravação no G-Click', desc: 'Executar robô para gravação com confirmação', icon: '⚡', badge: 'Enquete', action: () => switchSection('apply') },
-  { id: 'nav-obrig', title: 'Obrigações', desc: 'Gerenciar catálogo de obrigações, WhatsApp e E-mail', icon: '📁', badge: 'Obrigações', action: () => switchSection('obrigacoes') },
-  { id: 'nav-carteira', title: 'Carteira por Usuário', desc: 'Conferir e vincular clientes a usuários no G-Click', icon: '🗂️', badge: 'Carteira', action: () => switchSection('carteira') },
+  { id: 'nav-conn', title: 'Conexão G-Click', desc: 'Gerenciar sessão e código empId do escritório', icon: '🔑', badge: 'Configuração', action: () => switchSection('connection') },
+  { id: 'nav-enquete', title: 'Enquete G-Click', desc: 'Workspace integrado de importação, regras, conferência e gravação', icon: '📝', badge: 'Módulo', action: () => switchSection('enquete') },
+  { id: 'nav-source', title: 'Enquete: Planilha & Mapeamento', desc: 'Importar dados e configurar DE/PARA de colunas e regras', icon: '📊', badge: 'Enquete', action: () => { switchSection('enquete'); switchEnqueteTab('dados-mapeamento'); } },
+  { id: 'nav-audit', title: 'Enquete: Conferência & Gravação', desc: 'Auditar divergências e gravar marcações no G-Click', icon: '🔍', badge: 'Enquete', action: () => { switchSection('enquete'); switchEnqueteTab('conferencia-gravacao'); } },
+  { id: 'nav-enquete-cad', title: 'Enquete: Cadastro de Respostas', desc: 'Criar particularidades faltantes pelo catálogo modelo', icon: '✍️', badge: 'Enquete', action: () => { switchSection('enquete'); switchEnqueteTab('cadastro-respostas'); } },
+  { id: 'nav-writer', title: 'Enquete: Sincronização Sheets', desc: 'Configurar script Apps Script e sincronizar status', icon: '🔄', badge: 'Enquete', action: () => { switchSection('enquete'); switchEnqueteTab('sincronizacao-sheets'); } },
+  { id: 'nav-obrig', title: 'Obrigações & Canais', desc: 'Gerenciar catálogo de obrigações, WhatsApp e E-mail', icon: '📁', badge: 'Módulo', action: () => switchSection('obrigacoes') },
+  { id: 'nav-carteira', title: 'Carteira de Clientes', desc: 'Conferir e vincular clientes a usuários no G-Click', icon: '🗂️', badge: 'Módulo', action: () => switchSection('carteira') },
+  { id: 'nav-valida-pdf', title: 'Validador de PDF', desc: 'Conferência, validação de layouts e oráculo de upload', icon: '📄', badge: 'Módulo', action: () => switchSection('valida-pdf') },
+  { id: 'nav-help', title: 'Central de Ajuda & Tutoriais', desc: 'Guias práticos, regras negociais e FAQ dos módulos', icon: '📚', badge: 'Suporte', action: () => switchSection('help') },
   { id: 'nav-users', title: 'Usuários & Permissões', desc: 'Administrar acessos e exceções de usuários', icon: '👥', badge: 'Governança', action: () => switchSection('users') },
-  { id: 'act-refresh-catalog', title: 'Buscar Catálogo Sob Demanda', desc: 'Ler perguntas e respostas ativas da Enquete no G-Click', icon: '🔄', badge: 'Ação', action: () => $('refreshCatalogManual')?.click() },
-  { id: 'act-view-all', title: 'Visão Geral (Todas as Seções)', desc: 'Exibir painel integrado completo', icon: '📊', badge: 'Navegação', action: () => switchSection('all') }
+  { id: 'act-refresh-catalog', title: 'Buscar Catálogo Sob Demanda', desc: 'Ler perguntas e respostas ativas da Enquete no G-Click', icon: '🔄', badge: 'Ação', action: () => $('refreshCatalogManual')?.click() }
 ];
 
 let selectedCommandIndex = 0;
@@ -4230,10 +4338,25 @@ window.addEventListener('keydown', (e) => {
     const cancelModal = $('modalConfirmCancel');
     if (cancelModal && !cancelModal.hidden) {
       e.preventDefault();
-      executeCancelOperation();
+      cancelModal.hidden = true;
       return;
     }
-      if (working) {
+
+    // Fechamento universal de qualquer modal aberto
+    const openModals = Array.from(document.querySelectorAll('.modal-overlay:not([hidden]), #modalObrigTemplates, #modalFixEmail')).filter(el => {
+      const style = window.getComputedStyle(el);
+      return !el.hidden && style.display !== 'none';
+    });
+
+    if (openModals.length > 0) {
+      e.preventDefault();
+      const topModal = openModals[openModals.length - 1];
+      topModal.hidden = true;
+      topModal.style.display = 'none';
+      return;
+    }
+
+    if (working) {
       e.preventDefault();
       requestCancelOperation();
     }
@@ -4837,9 +4960,6 @@ $('btnExportCarteiraCsv')?.addEventListener('click', async () => {
   }
 });
 
-const savedSection = localStorage.getItem(SECTION_STORAGE_KEY) || 'all';
-switchSection(savedSection);
-updateSidebarBadges();
 
 
 // ==============================================================================
@@ -5186,6 +5306,7 @@ $('btnCadastrarRespostasSelecionadas')?.addEventListener('click', async () => {
 });
 
 $('topAccountPill')?.addEventListener('click', () => switchSection('connection'));
+$('btnTopHelp')?.addEventListener('click', () => switchSection('help'));
 if ($('sidebarLocal')) {
   $('sidebarLocal').textContent = location.port
     ? `Servidor local · porta ${location.port}`
@@ -5197,50 +5318,70 @@ if ($('sidebarLocal')) {
 // ============================================================================
 let validaPdfModels = [];
 let validaPdfResults = [];
+let validaPdfDuplicates = null;
+let currentValidaChip = 'all';
 let currentInspectedResult = null;
 let validaPdfInitialized = false;
 let currentMapPdfBase64 = null;
 let currentMapPdfPath = null;
 let currentMapPdfLines = [];
+let selectedValidaPdfPaths = new Set();
+let isBatchUploadJobRunning = false;
+let shouldCancelBatchUploadJob = false;
 
-function switchValidaPdfTab(tab) {
-  const btnFiles = $('tabBtnValidaFiles');
-  const btnMapping = $('tabBtnValidaMapping');
-  const btnModels = $('tabBtnValidaModels');
-  const contentFiles = $('tabValidaFilesContent');
-  const contentMapping = $('tabValidaMappingContent');
-  const contentModels = $('tabValidaModelsContent');
+function switchValidaChip(chip, syncSelect = true) {
+  currentValidaChip = chip || 'all';
 
-  if (!btnFiles || !btnModels || !contentFiles || !contentModels) return;
+  const chips = [
+    { id: 'chipValidaAll', key: 'all' },
+    { id: 'chipValidaReady', key: 'ready' },
+    { id: 'chipValidaNeedsMap', key: 'needs_map' },
+    { id: 'chipValidaNoClient', key: 'no_client' },
+    { id: 'chipValidaValid', key: 'valid' },
+    { id: 'chipValidaPending', key: 'pending' },
+    { id: 'chipValidaDupes', key: 'dupes' },
+    { id: 'chipValidaModels', key: 'models' }
+  ];
 
-  const allBtns = [btnFiles, btnMapping, btnModels].filter(Boolean);
-  const allContents = [contentFiles, contentMapping, contentModels].filter(Boolean);
-
-  allBtns.forEach(b => {
-    b.classList.remove('active');
-    b.style.color = '#64748b';
-    b.style.borderBottom = 'none';
-  });
-  allContents.forEach(c => { c.hidden = true; });
-
-  if (tab === 'models') {
-    btnModels.classList.add('active');
-    btnModels.style.color = 'var(--gclick-primary)';
-    btnModels.style.borderBottom = '2px solid var(--gclick-primary)';
-    contentModels.hidden = false;
-    renderValidaPdfModelsTable();
-  } else if (tab === 'mapping') {
-    if (btnMapping && contentMapping) {
-      btnMapping.classList.add('active');
-      btnMapping.style.color = 'var(--gclick-primary)';
-      btnMapping.style.borderBottom = '2px solid var(--gclick-primary)';
-      contentMapping.hidden = false;
+  chips.forEach(c => {
+    const el = $(c.id);
+    if (!el) return;
+    if (c.key === currentValidaChip) {
+      el.classList.add('btn-chip-active');
+      el.classList.remove('btn-ghost');
+    } else {
+      el.classList.remove('btn-chip-active');
+      el.classList.add('btn-ghost');
     }
+  });
+
+  if (syncSelect && $('validaFilterGclick')) {
+    const validSelectKeys = ['all', 'ready', 'needs_map', 'no_client', 'dupes'];
+    if (validSelectKeys.includes(currentValidaChip)) {
+      $('validaFilterGclick').value = currentValidaChip;
+    } else {
+      $('validaFilterGclick').value = 'all';
+    }
+  }
+
+  const wrapResults = $('wrapValidaResultsTable');
+  const wrapDupes = $('wrapValidaDuplicatesView');
+  const wrapModels = $('wrapValidaModelsTable');
+
+  if (currentValidaChip === 'dupes') {
+    if (wrapResults) wrapResults.hidden = true;
+    if (wrapDupes) wrapDupes.hidden = false;
+    if (wrapModels) wrapModels.hidden = true;
+    renderValidaPdfDuplicatesView();
+  } else if (currentValidaChip === 'models') {
+    if (wrapResults) wrapResults.hidden = true;
+    if (wrapDupes) wrapDupes.hidden = true;
+    if (wrapModels) wrapModels.hidden = false;
+    renderValidaPdfModelsTable();
   } else {
-    btnFiles.classList.add('active');
-    btnFiles.style.color = 'var(--gclick-primary)';
-    btnFiles.style.borderBottom = '2px solid var(--gclick-primary)';
-    contentFiles.hidden = false;
+    if (wrapResults) wrapResults.hidden = false;
+    if (wrapDupes) wrapDupes.hidden = true;
+    if (wrapModels) wrapModels.hidden = true;
     renderValidaPdfResultsTable();
   }
 }
@@ -5270,21 +5411,67 @@ async function loadValidaPdfSection() {
   renderValidaPdfResultsTable();
 }
 
+function getModelStatusBadge(statusCode, statusText) {
+  if (statusCode === 'configurado' || (statusText && /já está configurado|sendo usado/i.test(statusText))) {
+    return `<span class="tag-pill" style="font-size:11px;font-weight:600;background:#dcfce7;color:#15803d;border:1px solid #bbf7d0;" title="${escapeHtml(statusText || 'Configurado')}">🟢 Ativo / Pronto</span>`;
+  }
+  if (statusCode === 'pendente_campos' || (statusText && /configure os campos/i.test(statusText))) {
+    return `<span class="tag-pill" style="font-size:11px;font-weight:600;background:#fef9c3;color:#854d0e;border:1px solid #fef08a;" title="${escapeHtml(statusText || 'Pendente de campos')}">🟡 Falta Configurar</span>`;
+  }
+  if (statusCode === 'sem_arquivo' || (statusText && /anexe um arquivo/i.test(statusText))) {
+    return `<span class="tag-pill" style="font-size:11px;font-weight:600;background:#fee2e2;color:#991b1b;border:1px solid #fecaca;" title="${escapeHtml(statusText || 'Sem arquivo')}">🔴 Sem Arquivo</span>`;
+  }
+  return `<span class="tag-pill" style="font-size:11px;background:#f1f5f9;color:#64748b;">${escapeHtml(statusText || 'Pendente')}</span>`;
+}
+
+function getDeptoBadge(depto) {
+  const d = (depto || '').toLowerCase();
+  let bg = '#f1f5f9', color = '#334155', border = '#e2e8f0';
+  if (d.includes('pessoal') || d.includes('dp')) { bg = '#eff6ff'; color = '#1d4ed8'; border = '#bfdbfe'; }
+  else if (d.includes('fiscal')) { bg = '#f5f3ff'; color = '#6d28d9'; border = '#ddd6fe'; }
+  else if (d.includes('contab')) { bg = '#f0fdf4'; color = '#15803d'; border = '#bbf7d0'; }
+  else if (d.includes('financ')) { bg = '#fffbeb'; color = '#b45309'; border = '#fde68a'; }
+  else if (d.includes('admin')) { bg = '#f8fafc'; color = '#475569'; border = '#cbd5e1'; }
+  return `<span class="tag-pill" style="font-size:11px;font-weight:600;background:${bg};color:${color};border:1px solid ${border};">${escapeHtml(depto || 'Geral')}</span>`;
+}
+
 function renderValidaPdfModelsTable() {
   const tbody = $('validaModelsBody');
   if (!tbody) return;
 
   const searchTerm = ($('validaModelSearch')?.value || '').toLowerCase().trim();
   const deptoFilter = $('validaModelDeptoFilter')?.value || '';
+  const statusFilter = $('validaModelStatusFilter')?.value || '';
+
+  // Atualiza contadores KPI da aba Modelos
+  const total = validaPdfModels.length;
+  const configurados = validaPdfModels.filter(m => m.statusCode === 'configurado' || /já está configurado|sendo usado/i.test(m.status || '')).length;
+  const pendentes = validaPdfModels.filter(m => m.statusCode === 'pendente_campos' || /configure os campos/i.test(m.status || '')).length;
+  const semArquivo = validaPdfModels.filter(m => m.statusCode === 'sem_arquivo' || /anexe um arquivo/i.test(m.status || '')).length;
+  const comObrig = validaPdfModels.filter(m => Boolean(m.obrigacao)).length;
+
+  if ($('statModelsTotal')) $('statModelsTotal').textContent = total;
+  if ($('statModelsConfigurados')) $('statModelsConfigurados').textContent = configurados;
+  if ($('statModelsPendentes')) $('statModelsPendentes').textContent = pendentes;
+  if ($('statModelsSemArquivo')) $('statModelsSemArquivo').textContent = semArquivo;
+  if ($('statModelsComObrigacao')) $('statModelsComObrigacao').textContent = comObrig;
 
   const filtered = validaPdfModels.filter(m => {
+    const sCode = m.statusCode || (
+      /já está configurado|sendo usado/i.test(m.status || '') ? 'configurado' :
+      /configure os campos/i.test(m.status || '') ? 'pendente_campos' :
+      /anexe um arquivo/i.test(m.status || '') ? 'sem_arquivo' : 'outro'
+    );
+    if (statusFilter && sCode !== statusFilter) return false;
     if (deptoFilter && m.departamento !== deptoFilter) return false;
     if (searchTerm) {
-      const matchNome = (m.nome || '').toLowerCase().includes(searchTerm);
+      const matchId = String(m.id || m.modelId || '').toLowerCase().includes(searchTerm);
+      const matchNome = (m.nome || m.modelo || '').toLowerCase().includes(searchTerm);
       const matchKw = (m.palavraChave || '').toLowerCase().includes(searchTerm);
-      const matchAtiv = (m.atividade || '').toLowerCase().includes(searchTerm);
+      const matchObrig = (m.obrigacao || m.atividade || '').toLowerCase().includes(searchTerm);
       const matchDepto = (m.departamento || '').toLowerCase().includes(searchTerm);
-      if (!matchNome && !matchKw && !matchAtiv && !matchDepto) return false;
+      const matchStatus = (m.status || '').toLowerCase().includes(searchTerm);
+      if (!matchId && !matchNome && !matchKw && !matchObrig && !matchDepto && !matchStatus) return false;
     }
     return true;
   });
@@ -5292,7 +5479,7 @@ function renderValidaPdfModelsTable() {
   if (!filtered.length) {
     tbody.innerHTML = `
       <tr>
-        <td colspan="7" style="text-align:center;padding:28px;color:#64748b;">
+        <td colspan="9" style="text-align:center;padding:28px;color:#64748b;">
           Nenhum modelo encontrado para os filtros aplicados.
         </td>
       </tr>
@@ -5301,21 +5488,132 @@ function renderValidaPdfModelsTable() {
     return;
   }
 
-  tbody.innerHTML = filtered.map(m => `
-    <tr>
-      <td style="font-family:var(--font-mono);font-size:12px;color:#64748b;">${m.id || '-'}</td>
-      <td><strong>${escapeHtml(m.nome || '-')}</strong></td>
-      <td><span class="tag-pill" style="font-size:11px;background:#f1f5f9;color:#334155;">${escapeHtml(m.departamento || 'Geral')}</span></td>
-      <td style="font-family:var(--font-mono);font-size:11.5px;color:#0f766e;">${escapeHtml(m.palavraChave || 'Auto')}</td>
-      <td><span class="nav-badge badge-neutral" style="font-size:11px;">${escapeHtml(m.tipoInscricao || 'CNPJ / CPF')}</span></td>
-      <td><span class="tag-pill" style="font-size:11px;">${escapeHtml(m.competencia || 'MM/AAAA')}</span></td>
-      <td style="font-size:12px;color:#475569;">${escapeHtml(m.atividade || '-')}</td>
-    </tr>
-  `).join('');
+  const accountId = currentAccount() || '6019';
+
+  tbody.innerHTML = filtered.map(m => {
+    const idVal = m.id || m.modelId || m.num || '-';
+    const nomeVal = m.nome || m.modelo || '-';
+    const linkVal = m.link || (idVal !== '-' ? `https://app.gclick.com.br/configuracaoAbrir.do?obj=pdflayoutopen&id=${encodeURIComponent(idVal)}&empId=${encodeURIComponent(accountId)}` : '#');
+    const isReady = m.statusCode === 'configurado' || /já está configurado|sendo usado/i.test(m.status || '');
+
+    // Palavra-chave (Pilar 1)
+    let pilar1Html = '<span style="color:#94a3b8;font-size:11.5px;">Aguardando config</span>';
+    if (m.palavraChave) {
+      pilar1Html = `<strong style="font-family:var(--font-mono);font-size:11.5px;color:#0f766e;">${escapeHtml(m.palavraChave)}</strong>`;
+    } else if (isReady) {
+      pilar1Html = `<span style="font-family:var(--font-mono);font-size:11.5px;color:#0f766e;">${escapeHtml(nomeVal)}</span>`;
+    }
+
+    // Inscrição (Pilar 2)
+    let pilar2Html = '<span style="color:#94a3b8;font-size:11px;">-</span>';
+    if (m.tipoInscricao) {
+      pilar2Html = `<span class="nav-badge badge-neutral" style="font-size:10.5px;">${escapeHtml(m.tipoInscricao)}</span>`;
+    } else if (isReady) {
+      pilar2Html = `<span class="nav-badge badge-neutral" style="font-size:10.5px;">CNPJ / CPF</span>`;
+    }
+
+    // Competência (Pilar 3)
+    let pilar3Html = '<span style="color:#94a3b8;font-size:11px;">-</span>';
+    if (m.competencia) {
+      pilar3Html = `<span class="tag-pill" style="font-size:10.5px;">${escapeHtml(m.competencia)}</span>`;
+    } else if (isReady) {
+      pilar3Html = `<span class="tag-pill" style="font-size:10.5px;">MM/AAAA</span>`;
+    }
+
+    // Obrigação vinculada
+    let obrigHtml = '<span style="color:#94a3b8;font-size:11.5px;font-style:italic;">Não vinculada</span>';
+    if (m.obrigacao) {
+      obrigHtml = `
+        <div style="font-size:12px;color:#1e293b;font-weight:500;">${escapeHtml(m.obrigacao)}</div>
+        ${m.atividade ? `<div style="font-size:11px;color:#64748b;margin-top:2px;">${escapeHtml(m.atividade)}</div>` : ''}
+      `;
+    }
+
+    return `
+      <tr>
+        <td style="font-family:var(--font-mono);font-size:12px;color:#0f766e;font-weight:600;">#${escapeHtml(idVal)}</td>
+        <td>
+          <strong style="color:#0f172a;font-size:13px;">${escapeHtml(nomeVal)}</strong>
+          ${m.multilinhas ? '<span title="Configurado com busca em multilinhas variáveis" style="margin-left:4px;font-size:10px;background:#e2e8f0;color:#475569;padding:1px 4px;border-radius:3px;">linhas+</span>' : ''}
+        </td>
+        <td>${getDeptoBadge(m.departamento)}</td>
+        <td>${getModelStatusBadge(m.statusCode, m.status)}</td>
+        <td>${pilar1Html}</td>
+        <td>${pilar2Html}</td>
+        <td>${pilar3Html}</td>
+        <td>${obrigHtml}</td>
+        <td style="text-align:center;">
+          <div style="display:inline-flex;gap:4px;align-items:center;">
+            <a href="${escapeHtml(linkVal)}" target="_blank" rel="noopener noreferrer" class="btn btn-xs btn-secondary" style="padding:4px 8px;font-size:11px;text-decoration:none;display:inline-flex;align-items:center;gap:3px;" title="Abrir configuração do layout no G-Click">
+              <span>↗</span> Abrir
+            </a>
+            <button type="button" class="btn btn-xs btn-ghost btn-view-model-detail" data-model-id="${escapeHtml(idVal)}" style="padding:4px 6px;font-size:11px;cursor:pointer;" title="Ver detalhes e regras dos 3 pilares">
+              <span>ℹ️</span>
+            </button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  // Atribui evento aos botões de detalhes
+  tbody.querySelectorAll('.btn-view-model-detail').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const mId = btn.getAttribute('data-model-id');
+      if (mId) openValidaModelDetailModal(mId);
+    });
+  });
 
   if ($('validaModelsCount')) {
     $('validaModelsCount').textContent = `Exibindo ${filtered.length} de ${validaPdfModels.length} modelos cadastrados no G-Click`;
   }
+}
+
+async function openValidaModelDetailModal(modelId) {
+  const modal = $('modalValidaModelDetail');
+  if (!modal) return;
+
+  const accountId = currentAccount() || '6019';
+  const model = validaPdfModels.find(m => String(m.id || m.modelId || m.num) === String(modelId));
+  const modelName = model?.nome || model?.modelo || `Modelo #${modelId}`;
+
+  if ($('modalModelDetailTitle')) $('modalModelDetailTitle').textContent = modelName;
+  if ($('modalModelDetailId')) $('modalModelDetailId').textContent = `#${modelId}`;
+  if ($('modalModelDetailDepto')) $('modalModelDetailDepto').textContent = model?.departamento || 'Geral';
+  if ($('modalModelDetailObrigacao')) $('modalModelDetailObrigacao').textContent = model?.obrigacao || 'Não vinculada';
+  if ($('modalModelDetailMultilinhas')) $('modalModelDetailMultilinhas').textContent = model?.multilinhas ? 'Sim (Ativado)' : 'Não';
+
+  const link = model?.link || `https://app.gclick.com.br/configuracaoAbrir.do?obj=pdflayoutopen&id=${encodeURIComponent(modelId)}&empId=${encodeURIComponent(accountId)}`;
+  if ($('btnModalOpenInGclick')) $('btnModalOpenInGclick').href = link;
+
+  // Banner de status
+  const banner = $('modalModelDetailStatusBanner');
+  if (banner) {
+    const isConfig = model?.statusCode === 'configurado' || /já está configurado|sendo usado/i.test(model?.status || '');
+    if (isConfig) {
+      banner.style.background = '#dcfce7';
+      banner.style.border = '1px solid #bbf7d0';
+      banner.style.color = '#15803d';
+      banner.innerHTML = `<strong>🟢 Modelo Configurado & Pronto:</strong> ${escapeHtml(model?.status || 'Este modelo já está configurado e sendo usado para validação no G-Click.')}`;
+    } else {
+      banner.style.background = '#fef9c3';
+      banner.style.border = '1px solid #fef08a';
+      banner.style.color = '#854d0e';
+      banner.innerHTML = `<strong>⚠️ Status:</strong> ${escapeHtml(model?.status || 'Pendente de configuração dos campos ou anexo de arquivo no G-Click.')}`;
+    }
+  }
+
+  // Preenche pilares (valores padrão ou inspecionados)
+  if ($('modalModelDetailPilar1Val')) $('modalModelDetailPilar1Val').textContent = model?.palavraChave || modelName;
+  if ($('modalModelDetailPilar1Line')) $('modalModelDetailPilar1Line').textContent = model?.pilar1?.linha ? `Linha ${model.pilar1.linha}` : 'Linha variável';
+
+  if ($('modalModelDetailPilar2Val')) $('modalModelDetailPilar2Val').textContent = model?.tipoInscricao || 'CNPJ / CPF';
+  if ($('modalModelDetailPilar2Line')) $('modalModelDetailPilar2Line').textContent = model?.pilar2?.linha ? `Linha ${model.pilar2.linha}` : 'Linha variável';
+
+  if ($('modalModelDetailPilar3Val')) $('modalModelDetailPilar3Val').textContent = model?.competencia || 'Mês/Ano (MM/AAAA)';
+  if ($('modalModelDetailPilar3Line')) $('modalModelDetailPilar3Line').textContent = model?.pilar3?.linha ? `Linha ${model.pilar3.linha}` : 'Linha variável';
+
+  modal.hidden = false;
 }
 
 function renderValidaPdfResultsTable() {
@@ -5323,49 +5621,108 @@ function renderValidaPdfResultsTable() {
   if (!tbody) return;
 
   const searchTerm = ($('validaFilterSearch')?.value || '').toLowerCase().trim();
-  const statusFilter = $('validaFilterStatus')?.value || '';
+  const gclickFilter = $('validaFilterGclick')?.value || currentValidaChip || 'all';
+  const validacaoFilter = $('validaFilterValidacao')?.value || '';
+
+  const getIsReady = (r) => {
+    const sit = r.conciliacao?.situacaoGclick;
+    const mod = r.conciliacao?.modelo;
+    return sit === 'ja_no_gclick' || Boolean(r.valido && mod?.encontrado && mod?.isConfigurado && !r.conciliacao?.precisaMapear);
+  };
+
+  const getNeedsMap = (r) => {
+    if (getIsReady(r)) return false;
+    const sit = r.conciliacao?.situacaoGclick;
+    const mod = r.conciliacao?.modelo;
+
+    // Arquivos digitalizados/imagem sem OCR ou não passíveis de mapeamento são inválidos e NÃO devem aparecer em "Enviar & Mapear"
+    if (sit === 'sem_ocr' || r.status === 'erro_extracao' || !r.regras?.extracaoTexto?.ok) {
+      return false;
+    }
+
+    return sit === 'sem_modelo' || sit === 'modelo_pendente' || Boolean(r.conciliacao?.precisaMapear) || !mod?.encontrado || !mod?.isConfigurado;
+  };
+
+  const getNoClient = (r) => {
+    const sit = r.conciliacao?.situacaoGclick;
+    const cli = r.conciliacao?.cliente;
+    return sit === 'cliente_nao_cadastrado' || Boolean(cli && !cli.encontrado && (r.regras?.identificacaoCliente?.cnpjs?.length || r.regras?.identificacaoCliente?.cpfs?.length));
+  };
 
   const filtered = validaPdfResults.filter(r => {
-    if (statusFilter === 'valido' && !r.valido) return false;
-    if (statusFilter === 'invalido' && r.valido) return false;
-    if (statusFilter === 'erro_extracao' && r.status !== 'erro_extracao') return false;
+    const mod = r.conciliacao?.modelo;
+    const cli = r.conciliacao?.cliente;
 
+    const isReady = getIsReady(r);
+    const needsMap = getNeedsMap(r);
+    const noClient = getNoClient(r);
+
+    // 1. Filtro de Situação no G-Click (Chips do Topo ou Dropdown de Situação)
+    if (gclickFilter === 'ready' && !isReady) return false;
+    if (gclickFilter === 'needs_map' && !needsMap) return false;
+    if (gclickFilter === 'no_client' && !noClient) return false;
+    if (gclickFilter === 'dupes' && !r.duplicidade?.temDuplicidade) return false;
+
+    // 2. Filtro Técnico de Validação do Documento / OCR
+    if (validacaoFilter === 'valido' && !r.valido) return false;
+    if (validacaoFilter === 'invalido' && r.valido) return false;
+    if (validacaoFilter === 'erro_extracao' && r.status !== 'erro_extracao') return false;
+
+    // 3. Filtro de Busca Textual
     if (searchTerm) {
       const matchFile = (r.fileName || '').toLowerCase().includes(searchTerm);
       const matchSub = (r.subpasta || r.relPath || '').toLowerCase().includes(searchTerm);
-      const matchDoc = (r.regras?.nomeDocumento?.identificado || '').toLowerCase().includes(searchTerm);
+      const matchDoc = (r.regras?.nomeDocumento?.identificado || '').toLowerCase().includes(searchTerm) ||
+                        (mod?.nome || '').toLowerCase().includes(searchTerm);
       const matchClient = (r.regras?.identificacaoCliente?.cnpjs || []).join(' ').toLowerCase().includes(searchTerm) ||
                           (r.regras?.identificacaoCliente?.cpfs || []).join(' ').toLowerCase().includes(searchTerm) ||
-                          (r.regras?.identificacaoCliente?.razaoSocial || '').toLowerCase().includes(searchTerm);
+                          (cli?.nome || r.regras?.identificacaoCliente?.razaoSocial || '').toLowerCase().includes(searchTerm);
       const matchComp = (r.regras?.competencia?.competenciaDetectada || '').toLowerCase().includes(searchTerm);
-      if (!matchFile && !matchSub && !matchDoc && !matchClient && !matchComp) return false;
+      const matchGuia = (r.numDoc || '').toLowerCase().includes(searchTerm) ||
+                        (r.valor || '').toLowerCase().includes(searchTerm);
+      if (!matchFile && !matchSub && !matchDoc && !matchClient && !matchComp && !matchGuia) return false;
     }
     return true;
   });
 
-  // Atualiza métricas
+  // Atualiza métricas e contadores de chips com rigor e exclusão mútua
   const total = validaPdfResults.length;
+  const readyCount = validaPdfResults.filter(r => getIsReady(r)).length;
+  const needsMapCount = validaPdfResults.filter(r => getNeedsMap(r)).length;
+  const noClientCount = validaPdfResults.filter(r => getNoClient(r)).length;
   const validos = validaPdfResults.filter(r => r.valido).length;
   const invalidos = total - validos;
+  const dupesCount = validaPdfDuplicates?.totalConflitos || 0;
+  const modelsCount = validaPdfModels?.length || 184;
 
   if ($('validaPdfMetricTotal')) $('validaPdfMetricTotal').textContent = total;
   if ($('validaPdfMetricValid')) $('validaPdfMetricValid').textContent = validos;
   if ($('validaPdfMetricInvalid')) $('validaPdfMetricInvalid').textContent = invalidos;
+  if ($('validaPdfMetricDupes')) $('validaPdfMetricDupes').textContent = dupesCount;
+  if ($('validaPdfMetricModels')) $('validaPdfMetricModels').textContent = modelsCount;
+
+  if ($('countChipAll')) $('countChipAll').textContent = total;
+  if ($('countChipReady')) $('countChipReady').textContent = readyCount;
+  if ($('countChipNeedsMap')) $('countChipNeedsMap').textContent = needsMapCount;
+  if ($('countChipNoClient')) $('countChipNoClient').textContent = noClientCount;
+  if ($('countChipValid')) $('countChipValid').textContent = validos;
+  if ($('countChipPending')) $('countChipPending').textContent = invalidos;
+  if ($('countChipDupes')) $('countChipDupes').textContent = dupesCount;
+  if ($('countChipModels')) $('countChipModels').textContent = modelsCount;
+
   if ($('btnClearValidaResults')) $('btnClearValidaResults').style.display = total > 0 ? 'inline-block' : 'none';
   if ($('btnGenerateDiagnosticReport')) $('btnGenerateDiagnosticReport').style.display = total > 0 ? 'inline-flex' : 'none';
-  if ($('btnGoToMappingFromFiles')) {
-    $('btnGoToMappingFromFiles').style.display = total > 0 ? 'inline-flex' : 'none';
-    if ($('validaCountForMapping')) $('validaCountForMapping').textContent = total;
-  }
+  if ($('btnBatchTestUploadGclick')) $('btnBatchTestUploadGclick').style.display = total > 0 ? 'inline-flex' : 'none';
 
   updateMappingValidatedFilesDropdown();
+  updateValidaSelectionUI(filtered);
 
   if (!filtered.length) {
     tbody.innerHTML = `
       <tr>
-        <td colspan="6" style="text-align:center;padding:36px;color:#64748b;">
+        <td colspan="8" style="text-align:center;padding:36px;color:#64748b;">
           ${total === 0
-            ? 'Nenhum arquivo validado ainda. Informe uma pasta acima e clique em <strong>Varrer e Validar Pasta</strong> ou arraste arquivos para começar.'
+            ? 'Nenhum arquivo validado ainda. Informe uma pasta acima e clique em <strong>Analisar, Conciliar & Validar Pasta</strong> para começar.'
             : 'Nenhum arquivo corresponde aos filtros aplicados.'}
         </td>
       </tr>
@@ -5375,30 +5732,106 @@ function renderValidaPdfResultsTable() {
   }
 
   tbody.innerHTML = filtered.map((r, idx) => {
-    let statusBadge = '';
-    if (r.valido) {
-      statusBadge = '<span class="nav-badge badge-ok" style="font-weight:600;">✔ 100% Válido</span>';
-    } else if (r.status === 'erro_extracao') {
-      statusBadge = '<span class="nav-badge badge-neutral" style="background:#fee2e2;color:#991b1b;font-weight:600;">📷 Sem OCR / Imagem</span>';
-    } else if (r.status === 'cliente_invalido') {
-      statusBadge = '<span class="nav-badge badge-warn" style="font-weight:600;">⚠️ Cliente Incompatível</span>';
-    } else if (r.status === 'competencia_invalida') {
-      statusBadge = '<span class="nav-badge badge-warn" style="font-weight:600;">⚠️ Comp Incompatível</span>';
-    } else if (r.status === 'documento_desconhecido') {
-      statusBadge = '<span class="nav-badge badge-warn" style="font-weight:600;">⚠️ Doc Desconhecido</span>';
+    const sit = r.conciliacao?.situacaoGclick;
+    const mod = r.conciliacao?.modelo;
+    const cli = r.conciliacao?.cliente;
+
+    const isRowReady = getIsReady(r);
+    const isRowNeedsMap = getNeedsMap(r);
+
+    // Situação no G-Click Badge
+    let sitBadge = '';
+    if (isRowReady) {
+      sitBadge = `
+        <div style="display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:12px;background:#dcfce7;color:#15803d;font-weight:700;font-size:11.5px;border:1px solid #86efac;">
+          <span>🟢</span> Já no G-Click
+        </div>
+        <div style="font-size:10.5px;color:#166534;font-weight:600;margin-top:2px;">
+          🚀 Pronto p/ Envio
+        </div>
+      `;
+    } else if (sit === 'sem_modelo' || !mod?.encontrado) {
+      sitBadge = `
+        <div style="display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:12px;background:#ffedd5;color:#c2410c;font-weight:700;font-size:11.5px;border:1px solid #fed7aa;">
+          <span>🛠️</span> Falta Mapear
+        </div>
+        <div style="font-size:10.5px;color:#9a3412;margin-top:2px;font-weight:600;">
+          Não está no G-Click
+        </div>
+      `;
+    } else if (sit === 'modelo_pendente' || (mod?.encontrado && !mod?.isConfigurado)) {
+      sitBadge = `
+        <div style="display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:12px;background:#fef9c3;color:#854d0e;font-weight:700;font-size:11.5px;border:1px solid #fef08a;">
+          <span>⚙️</span> Modelo Pendente
+        </div>
+        <div style="font-size:10.5px;color:#a16207;margin-top:2px;font-weight:600;">
+          Falta mapear linhas
+        </div>
+      `;
+    } else if (sit === 'cliente_nao_cadastrado') {
+      sitBadge = `
+        <div style="display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:12px;background:#fee2e2;color:#991b1b;font-weight:700;font-size:11.5px;border:1px solid #fecaca;">
+          <span>👤</span> Cliente não existe
+        </div>
+        <div style="font-size:10.5px;color:#b91c1c;margin-top:2px;">
+          Cadastrar no G-Click
+        </div>
+      `;
+    } else if (sit === 'sem_ocr' || r.status === 'erro_extracao') {
+      sitBadge = `
+        <div style="display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:12px;background:#f1f5f9;color:#475569;font-weight:600;font-size:11.5px;border:1px solid #cbd5e1;">
+          <span>📷</span> Sem OCR
+        </div>
+        <div style="font-size:10.5px;color:#64748b;margin-top:2px;">
+          Sem texto selecionável
+        </div>
+      `;
+    } else if (sit === 'duplicata_identica') {
+      sitBadge = `
+        <div style="display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:12px;background:#fee2e2;color:#991b1b;font-weight:700;font-size:11.5px;border:1px solid #fecaca;">
+          <span>⚠️</span> Duplicata 100%
+        </div>
+      `;
+    } else if (sit === 'conflito_retificacao') {
+      sitBadge = `
+        <div style="display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:12px;background:#fffbeb;color:#b45309;font-weight:700;font-size:11.5px;border:1px solid #fde68a;">
+          <span>⚠️</span> Retificação
+        </div>
+      `;
     } else {
-      statusBadge = `<span class="nav-badge badge-warn" style="font-weight:600;">⚠️ ${escapeHtml(r.status || 'Pendente')}</span>`;
+      sitBadge = `
+        <div style="display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:12px;background:#f8fafc;color:#475569;font-weight:600;font-size:11.5px;border:1px solid #e2e8f0;">
+          <span>⚠️</span> ${escapeHtml(r.status || 'Pendente')}
+        </div>
+      `;
     }
 
+    // Documento & Modelo G-Click
     const docIdentificado = r.regras?.nomeDocumento?.identificado || '<span style="color:#94a3b8;">Não identificado</span>';
-    const comp = r.regras?.competencia?.competenciaDetectada || '<span style="color:#94a3b8;">--</span>';
+    let modelDetailsHtml = '';
+    if (mod?.encontrado) {
+      const isOk = mod.isConfigurado;
+      modelDetailsHtml = `
+        <div style="font-size:11px;margin-top:3px;color:${isOk ? '#15803d' : '#854d0e'};display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
+          <span>${isOk ? '✔' : '⚠️'} Modelo:</span>
+          <strong>${escapeHtml(mod.nome || '')}</strong>
+          ${mod.id ? `<span style="color:#64748b;">(#${mod.id})</span>` : ''}
+        </div>
+      `;
+    } else {
+      modelDetailsHtml = `
+        <div style="font-size:11px;margin-top:3px;color:#c2410c;display:flex;align-items:center;gap:4px;">
+          <span>❌</span> <em>Nenhum modelo cadastrado no G-Click</em>
+        </div>
+      `;
+    }
 
     // Cliente (CNPJ / CPF)
     let clienteHtml = '';
     const cnpjs = r.regras?.identificacaoCliente?.cnpjs || [];
     const cnpjsBase = r.regras?.identificacaoCliente?.cnpjsBase || [];
     const cpfs = r.regras?.identificacaoCliente?.cpfs || [];
-    const razao = r.regras?.identificacaoCliente?.razaoSocial;
+    const razao = cli?.nome || r.regras?.identificacaoCliente?.razaoSocial;
 
     if (cnpjs.length) {
       clienteHtml = `<span class="tag-pill" style="font-size:11px;background:#e0f2fe;color:#0369a1;">CNPJ ${escapeHtml(cnpjs[0])}</span>`;
@@ -5406,34 +5839,76 @@ function renderValidaPdfResultsTable() {
       clienteHtml = `<span class="tag-pill" style="font-size:11px;background:#f0fdf4;color:#15803d;">CNPJ Base ${escapeHtml(cnpjsBase[0])}</span>`;
     } else if (cpfs.length) {
       clienteHtml = `<span class="tag-pill" style="font-size:11px;background:#fef3c7;color:#b45309;">CPF ${escapeHtml(cpfs[0])}</span>`;
-    } else if (razao) {
-      clienteHtml = `<span style="font-size:11.5px;color:#475569;">${escapeHtml(razao)}</span>`;
     } else {
       clienteHtml = '<span style="color:#94a3b8;">Não localizado</span>';
+    }
+
+    if (razao) {
+      clienteHtml += `<div style="font-size:11px;color:#475569;margin-top:2px;max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${escapeHtml(razao)}">${escapeHtml(razao)}</div>`;
+    }
+
+    const comp = r.regras?.competencia?.competenciaDetectada || '<span style="color:#94a3b8;">--</span>';
+
+    // Guia / Valor / Vencimento
+    let guiaHtml = '';
+    if (r.valor) {
+      guiaHtml += `<div style="font-weight:700;color:#0f766e;font-size:12px;">R$ ${escapeHtml(r.valor)}</div>`;
+    }
+    if (r.vencimento) {
+      guiaHtml += `<div style="font-size:11px;color:#64748b;">Venc: ${escapeHtml(r.vencimento)}</div>`;
+    }
+    if (r.numDoc) {
+      guiaHtml += `<div style="font-size:10.5px;color:#94a3b8;max-width:140px;overflow:hidden;text-overflow:ellipsis;" title="Doc/Guia: ${escapeHtml(r.numDoc)}">Nº: ${escapeHtml(r.numDoc)}</div>`;
+    }
+    if (!guiaHtml) {
+      guiaHtml = '<span style="color:#94a3b8;font-size:11.5px;">--</span>';
     }
 
     const subpastaTag = r.subpasta
       ? `<div style="margin-top:3px;"><span class="tag-pill" style="font-size:10.5px;background:#f0fdfa;color:#0f766e;border:1px solid #ccfbf1;">📁 ${escapeHtml(r.subpasta)}</span></div>`
       : (r.relPath && r.relPath !== r.fileName ? `<div style="font-size:11px;color:#64748b;">${escapeHtml(r.relPath)}</div>` : '');
 
+    // Ações
+    let actionBtnHtml = '';
+    if (sit === 'sem_ocr' || r.status === 'erro_extracao') {
+      actionBtnHtml = `<button type="button" class="btn btn-secondary btn-sm" disabled title="Documentos escaneados sem OCR não possuem texto selecionável" style="font-size:11.5px;padding:4px 8px;margin-right:4px;opacity:0.6;cursor:not-allowed;">📷 Sem OCR</button>`;
+    } else if (isRowReady) {
+      actionBtnHtml = `
+        <span class="tag-pill" style="font-size:11px;background:#dcfce7;color:#15803d;padding:4px 8px;font-weight:700;margin-right:4px;border:1px solid #bbf7d0;" title="Modelo ativo e configurado no G-Click">✔ Configurado</span>
+        ${mod?.link ? `<a href="${escapeHtml(mod.link)}" target="_blank" class="btn btn-secondary btn-sm" style="font-size:11px;padding:4px 6px;margin-right:4px;" title="Ver modelo no G-Click">G-Click ↗</a>` : ''}
+      `;
+    } else if (sit === 'sem_modelo' || !mod?.encontrado) {
+      actionBtnHtml = `<button type="button" class="btn btn-warning btn-sm btn-map-pdf" data-idx="${idx}" title="Enviar este PDF e mapear os 3 pilares no G-Click" style="font-size:11.5px;padding:5px 10px;margin-right:4px;font-weight:700;background:#ea580c;color:#fff;border-color:#ea580c;box-shadow:0 1px 2px rgba(234,88,12,0.3);">🛠️ Enviar & Mapear</button>`;
+    } else if (sit === 'modelo_pendente' || (mod?.encontrado && !mod?.isConfigurado)) {
+      actionBtnHtml = `
+        <button type="button" class="btn btn-warning btn-sm btn-map-pdf" data-idx="${idx}" title="Mapear linhas deste modelo no G-Click" style="font-size:11.5px;padding:5px 10px;margin-right:4px;font-weight:600;background:#d97706;color:#fff;border-color:#d97706;">⚙️ Mapear Linhas</button>
+        ${mod?.link ? `<a href="${escapeHtml(mod.link)}" target="_blank" class="btn btn-secondary btn-sm" style="font-size:11px;padding:4px 6px;margin-right:4px;" title="Abrir no G-Click">G-Click ↗</a>` : ''}
+      `;
+    } else if (sit === 'cliente_nao_cadastrado') {
+      actionBtnHtml = `<button type="button" class="btn btn-secondary btn-sm" style="font-size:11.5px;padding:4px 8px;margin-right:4px;color:#b91c1c;border-color:#fca5a5;" title="Cadastre este CNPJ no G-Click antes de enviar">👤 Falta Cliente</button>`;
+    } else {
+      actionBtnHtml = `<button type="button" class="btn btn-primary btn-sm btn-map-pdf" data-idx="${idx}" title="Mapear arquivo" style="font-size:11.5px;padding:4px 8px;margin-right:4px;">🛠️ Mapear</button>`;
+    }
+
     return `
       <tr>
-        <td>${statusBadge}</td>
+        <td style="text-align:center;vertical-align:middle;">
+          <input type="checkbox" class="chk-valida-pdf-row" data-path="${escapeHtml(r.filePath || '')}" ${selectedValidaPdfPaths.has(r.filePath) ? 'checked' : ''} style="cursor:pointer;width:15px;height:15px;" ${r.status === 'erro_extracao' ? 'disabled' : ''}>
+        </td>
+        <td>${sitBadge}</td>
         <td>
           <div style="font-weight:600;font-size:13px;color:#1e293b;">${escapeHtml(r.fileName || 'arquivo.pdf')}</div>
           ${subpastaTag}
         </td>
         <td>
           <div style="font-size:12.5px;font-weight:500;">${docIdentificado}</div>
-          ${r.regras?.nomeDocumento?.modelosCompativeis?.length ? `<div style="font-size:11px;color:#0f766e;">Modelo: ${escapeHtml(r.regras.nomeDocumento.modelosCompativeis[0].nome)}</div>` : ''}
+          ${modelDetailsHtml}
         </td>
         <td>${clienteHtml}</td>
         <td><strong style="font-size:12.5px;color:#1e293b;">${comp}</strong></td>
+        <td>${guiaHtml}</td>
         <td style="text-align:right;white-space:nowrap;">
-          ${r.status === 'erro_extracao'
-            ? `<button type="button" class="btn btn-secondary btn-sm" disabled title="Documentos escaneados sem OCR não podem ser mapeados no G-Click" style="font-size:11.5px;padding:4px 8px;margin-right:4px;opacity:0.6;cursor:not-allowed;">📷 Sem OCR</button>`
-            : `<button type="button" class="btn btn-primary btn-sm btn-map-pdf" data-idx="${idx}" title="Mapear este arquivo no G-Click" style="font-size:11.5px;padding:4px 8px;margin-right:4px;">🛠️ Mapear</button>`
-          }
+          ${actionBtnHtml}
           <button type="button" class="btn btn-secondary btn-sm btn-inspect-pdf" data-idx="${idx}" style="font-size:11.5px;padding:4px 8px;">
             🔍 Inspecionar
           </button>
@@ -5442,8 +5917,54 @@ function renderValidaPdfResultsTable() {
     `;
   }).join('');
 
+  // Bind nos checkboxes individuais de cada linha
+  tbody.querySelectorAll('.chk-valida-pdf-row').forEach(chk => {
+    chk.addEventListener('change', (e) => {
+      const p = e.target.getAttribute('data-path');
+      if (p) {
+        if (e.target.checked) selectedValidaPdfPaths.add(p);
+        else selectedValidaPdfPaths.delete(p);
+      }
+      updateValidaSelectionUI(filtered);
+    });
+  });
+
   if ($('validaResultsCount')) {
     $('validaResultsCount').textContent = `Exibindo ${filtered.length} de ${total} registros`;
+  }
+}
+
+function updateValidaSelectionUI(filtered = null) {
+  const badge = $('validaSelectedCountBadge');
+  const btnBatch = $('btnBatchTestUploadGclick');
+  const chkAll = $('chkValidaPdfSelectAll');
+
+  const count = selectedValidaPdfPaths.size;
+  if (badge) {
+    if (count > 0) {
+      badge.style.display = 'inline-block';
+      badge.textContent = `${count} selecionado${count > 1 ? 's' : ''}`;
+    } else {
+      badge.style.display = 'none';
+    }
+  }
+
+  if (btnBatch && !isBatchUploadJobRunning) {
+    if (count > 0) {
+      btnBatch.innerHTML = `<span>⚡</span> Validar Selecionados (${count}) no Oráculo`;
+      btnBatch.title = `Valida apenas os ${count} arquivos selecionados na tela /upload do G-Click`;
+    } else {
+      btnBatch.innerHTML = `<span>⚡</span> Validar no Oráculo G-Click`;
+      btnBatch.title = `Valida os arquivos legíveis na tela oficial /upload do G-Click, 1 por vez com F5 a cada envio`;
+    }
+  }
+
+  if (chkAll) {
+    const list = filtered || validaPdfResults;
+    const validCount = list.filter(r => r.filePath && r.status !== 'erro_extracao').length;
+    const selectedVisible = list.filter(r => selectedValidaPdfPaths.has(r.filePath)).length;
+    chkAll.checked = validCount > 0 && selectedVisible === validCount;
+    chkAll.indeterminate = selectedVisible > 0 && selectedVisible < validCount;
   }
 }
 
@@ -5536,8 +6057,10 @@ async function loadValidatedFileIntoMapping(item, itemIdx = null) {
     $('mapValidatedFilesSelect').value = String(itemIdx);
   }
 
-  // Alterna para a aba de mapeamento
-  switchValidaPdfTab('mapping');
+  // Abre o modal direto de mapeamento
+  if ($('modalValidaMapping')) {
+    $('modalValidaMapping').hidden = false;
+  }
 
   // Se o arquivo for imagem sem OCR, alerta de imediato
   if (item.status === 'erro_extracao') {
@@ -5599,10 +6122,19 @@ async function runAutoDetectMapping() {
     // Preenche os 3 Pilares com sugestões
     let detectadosCount = 0;
     if (data.pilares?.pilar1_obrigacao) {
-      if ($('mapPilar1Linha')) $('mapPilar1Linha').value = data.pilares.pilar1_obrigacao.linha;
-      if ($('mapPilar1Texto')) $('mapPilar1Texto').value = data.pilares.pilar1_obrigacao.termoMapeado;
+      const p1 = data.pilares.pilar1_obrigacao;
+      if ($('mapPilar1Linha')) $('mapPilar1Linha').value = p1.linha || '';
+      if ($('mapPilar1Texto')) $('mapPilar1Texto').value = p1.termoMapeado || '';
+      if ($('mapPilar1Linha2')) $('mapPilar1Linha2').value = p1.linha2 || '';
+      if ($('mapPilar1Texto2')) $('mapPilar1Texto2').value = p1.texto2 || '';
+
+      if (p1.nomeSugerido && $('mapModelName')) {
+        $('mapModelName').value = p1.nomeSugerido;
+      }
+
       if ($('mapPilar1Badge')) {
-        $('mapPilar1Badge').textContent = `Linha ${data.pilares.pilar1_obrigacao.linha} (OK)`;
+        const desc = p1.linha2 ? `Linhas ${p1.linha} & ${p1.linha2} (2 Textos OK)` : `Linha ${p1.linha} (OK)`;
+        $('mapPilar1Badge').textContent = desc;
         $('mapPilar1Badge').style.background = '#dcfce7';
         $('mapPilar1Badge').style.color = '#15803d';
       }
@@ -5610,6 +6142,8 @@ async function runAutoDetectMapping() {
     } else {
       if ($('mapPilar1Linha')) $('mapPilar1Linha').value = '';
       if ($('mapPilar1Texto')) $('mapPilar1Texto').value = '';
+      if ($('mapPilar1Linha2')) $('mapPilar1Linha2').value = '';
+      if ($('mapPilar1Texto2')) $('mapPilar1Texto2').value = '';
       if ($('mapPilar1Badge')) {
         $('mapPilar1Badge').textContent = 'Pendente';
         $('mapPilar1Badge').style.background = '#f1f5f9';
@@ -6097,14 +6631,332 @@ function setupValidaPdfListeners() {
 
   $('validaModelSearch')?.addEventListener('input', () => renderValidaPdfModelsTable());
   $('validaModelDeptoFilter')?.addEventListener('change', () => renderValidaPdfModelsTable());
+  $('validaModelStatusFilter')?.addEventListener('change', () => renderValidaPdfModelsTable());
 
   $('validaFilterSearch')?.addEventListener('input', () => renderValidaPdfResultsTable());
-  $('validaFilterStatus')?.addEventListener('change', () => renderValidaPdfResultsTable());
+  $('validaFilterGclick')?.addEventListener('change', (e) => {
+    const val = e.target.value || 'all';
+    switchValidaChip(val, false);
+    renderValidaPdfResultsTable();
+  });
+  $('validaFilterValidacao')?.addEventListener('change', () => renderValidaPdfResultsTable());
 
   $('btnClearValidaResults')?.addEventListener('click', () => {
     validaPdfResults = [];
+    selectedValidaPdfPaths.clear();
     renderValidaPdfResultsTable();
     toast.info('Lista de resultados limpa.', 'Valida PDF');
+  });
+
+  $('chkValidaPdfSelectAll')?.addEventListener('change', (e) => {
+    const isChecked = e.target.checked;
+    validaPdfResults.forEach(r => {
+      if (r.filePath && r.status !== 'erro_extracao') {
+        if (isChecked) selectedValidaPdfPaths.add(r.filePath);
+        else selectedValidaPdfPaths.delete(r.filePath);
+      }
+    });
+    renderValidaPdfResultsTable();
+  });
+
+  // Teste Oficial do Oráculo na tela /upload do G-Click
+  $('btnTestUploadOnGclick')?.addEventListener('click', async () => {
+    if (!currentInspectedResult) return;
+    const btn = $('btnTestUploadOnGclick');
+    const origHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span>⏳</span> Testando no /upload...';
+
+    try {
+      const accountId = $('accountId')?.value?.trim() || '6019';
+
+      const res = await fetch('/api/valida-pdf/test-upload-gclick', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accountId,
+          filePath: currentInspectedResult.filePath,
+          fileBase64: currentInspectedResult.fileBase64,
+          fileName: currentInspectedResult.fileName
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        toast.error(data.error || 'Falha ao testar no /upload do G-Click.', 'Oráculo /upload');
+        return;
+      }
+
+      const wrap = $('modalValidaPdfGclickWrap');
+      const msg = $('gclickValidaMessage');
+      const badge = $('gclickValidaBadge');
+      const itemsEl = $('gclickValidaItems');
+      const dicaEl = $('gclickValidaDica');
+
+      if (wrap) {
+        wrap.hidden = false;
+
+        let badgeClass = 'badge-warn';
+        let badgeText = 'G-Click: Identificado';
+        if (data.situacao === 'sucesso_vinculado') {
+          badgeClass = 'badge-ready';
+          badgeText = 'G-Click: 100% OK (Vinculado)';
+        } else if (data.situacao === 'modelo_desvinculado_ou_incompleto') {
+          badgeClass = 'badge-warn';
+          badgeText = 'G-Click: Modelo Existe (Pendente de Vínculo)';
+        } else if (data.situacao === 'sem_modelo') {
+          badgeClass = 'badge-error';
+          badgeText = 'G-Click: Modelo Não Encontrado';
+        } else if (data.situacao === 'em_processamento') {
+          badgeClass = 'badge-warn';
+          badgeText = 'G-Click: Processando Tarefas...';
+        }
+
+        if (badge) {
+          badge.className = 'nav-badge ' + badgeClass;
+          badge.textContent = badgeText;
+        }
+
+        if (itemsEl) {
+          itemsEl.innerHTML = '';
+
+          let validadorHtml = '';
+          if (data.situacao === 'modelo_desvinculado_ou_incompleto') {
+            validadorHtml = `
+              <div style="background:#fffbeb;border:1px solid #fde68a;border-left:4px solid #f59e0b;padding:10px 12px;border-radius:6px;margin-bottom:8px;">
+                <div style="font-size:12.5px;color:#92400e;font-weight:600;margin-bottom:6px;">
+                  ⚠️ Modelo não vinculado à uma obrigação! O modelo existe mais não teve sua configuração finalizada, verifique se o cadastro foi feito corretamente ou consulte o administrador da empresa.
+                </div>
+                <div style="font-size:13.5px;font-weight:700;color:#0f766e;">
+                  🎯 ${escapeHtml(data.validador || (data.modeloId ? `Validador: ${data.modeloId}-${data.modeloNome || ''}` : 'Validador existente'))}
+                </div>
+              </div>
+            `;
+          } else if (data.situacao === 'sem_modelo') {
+            validadorHtml = `
+              <div style="font-size:12.5px;color:#991b1b;padding:8px 12px;background:#fee2e2;border:1px solid #fca5a5;border-radius:6px;margin-bottom:8px;">
+                ❌ <strong>Modelo não encontrado!</strong> Configure um novo ou consulte o administrador da empresa.
+              </div>
+            `;
+          } else if (data.situacao === 'sucesso_vinculado') {
+            validadorHtml = `
+              <div style="font-size:13.5px;font-weight:700;color:#15803d;padding:8px 12px;background:#dcfce7;border:1px solid #86efac;border-radius:6px;margin-bottom:8px;">
+                ✅ Arquivo 100% vinculado e tarefa gerada no G-Click! (${escapeHtml(data.validador || '')})
+              </div>
+            `;
+          } else if (data.validador) {
+            validadorHtml = `<div style="font-size:13.5px;font-weight:700;color:#0f766e;padding:6px 10px;background:#ccfbf1;border-radius:6px;margin-bottom:8px;">🎯 ${escapeHtml(data.validador)}</div>`;
+          } else {
+            validadorHtml = `<div style="font-size:12.5px;color:#991b1b;padding:6px 10px;background:#fee2e2;border-radius:6px;margin-bottom:8px;">❌ Nenhum Validador/Modelo do G-Click reconheceu este arquivo.</div>`;
+          }
+
+          let alertCards = '';
+          if (data.alertas && data.alertas.length > 0) {
+            alertCards = data.alertas.map(a => `<div style="padding:6px 10px;background:#fffbeb;border-left:3px solid #f59e0b;font-size:12px;color:#92400e;margin-bottom:4px;">${escapeHtml(a)}</div>`).join('');
+          }
+
+          let conflitoBanner = '';
+          const docEsperado = (currentInspectedResult.regras?.nomeDocumento?.identificado || currentInspectedResult.fileName || '').toLowerCase();
+          const modeloEncontrado = (data.modeloNome || '').toLowerCase();
+          if (data.modeloId && modeloEncontrado && !docEsperado.includes(modeloEncontrado) && !modeloEncontrado.includes(docEsperado)) {
+            conflitoBanner = `
+              <div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:6px;padding:8px 12px;margin-bottom:8px;font-size:12px;color:#991b1b;">
+                <strong>⚠️ Conflito / Duplicidade de Regra no G-Click:</strong><br>
+                Este arquivo é um <em>"${escapeHtml(currentInspectedResult.regras?.nomeDocumento?.identificado || currentInspectedResult.fileName)}"</em>, porém o motor do G-Click capturou o <strong>Validador #${data.modeloId} (${escapeHtml(data.modeloNome)})</strong>.<br>
+                Isso indica que o modelo #${data.modeloId} foi configurado com palavras-chave que colidem com este documento e devem ser corrigidas ou excluídas no G-Click.
+              </div>
+            `;
+          }
+
+          itemsEl.innerHTML = `
+            ${validadorHtml}
+            ${conflitoBanner}
+            ${alertCards}
+          `;
+        }
+
+        if (dicaEl) {
+          dicaEl.hidden = false;
+          if (data.situacao === 'modelo_desvinculado_ou_incompleto') {
+            dicaEl.innerHTML = `💡 <strong>Não crie um modelo novo!</strong> O modelo <strong>#${data.modeloId || ''} (${escapeHtml(data.modeloNome || '')})</strong> já existe no G-Click. Basta ir em Configurações > ValidaPDF, abrir esse modelo e vincular uma atividade de obrigação a ele.`;
+          } else if (data.situacao === 'sem_modelo') {
+            dicaEl.innerHTML = `💡 Como o G-Click não possui nenhum validador compatível, use o botão <strong>"🛠️ Mapear no G-Click"</strong> para criar o layout dos 3 pilares.`;
+          } else if (data.situacao === 'sucesso_vinculado') {
+            dicaEl.innerHTML = `💡 O arquivo é 100% compatível e já possui modelo ativo vinculado no G-Click. Pronto para envio!`;
+          } else {
+            dicaEl.innerHTML = `💡 Validação realizada na tela oficial <code>https://appp.gclick.com.br/upload</code>.`;
+          }
+        }
+
+        if (msg) {
+          msg.textContent = JSON.stringify(data.detalhes || data, null, 2);
+        }
+      }
+
+      // Atualiza o status em nosso sistema para "Configurado" quando houver modelo correspondente
+      if (data.situacao === 'modelo_desvinculado_ou_incompleto' || data.situacao === 'sucesso_vinculado') {
+        currentInspectedResult.conciliacao = currentInspectedResult.conciliacao || {};
+        currentInspectedResult.conciliacao.situacaoGclick = 'ja_no_gclick';
+        currentInspectedResult.conciliacao.modelo = currentInspectedResult.conciliacao.modelo || {};
+        currentInspectedResult.conciliacao.modelo.id = data.modeloId;
+        currentInspectedResult.conciliacao.modelo.nome = data.modeloNome;
+        currentInspectedResult.conciliacao.modelo.isConfigurado = true;
+        currentInspectedResult.conciliacao.modelo.encontrado = true;
+        currentInspectedResult.conciliacao.precisaMapear = false;
+        currentInspectedResult.valido = true;
+        currentInspectedResult.statusGclickOracle = 'configurado';
+        currentInspectedResult.validadorGclick = data.validador;
+        renderValidaPdfResultsTable();
+      } else if (data.situacao === 'sem_modelo') {
+        currentInspectedResult.conciliacao = currentInspectedResult.conciliacao || {};
+        currentInspectedResult.conciliacao.situacaoGclick = 'sem_modelo';
+        currentInspectedResult.conciliacao.precisaMapear = true;
+        currentInspectedResult.statusGclickOracle = 'sem_modelo';
+        renderValidaPdfResultsTable();
+      }
+
+      toast.success(`Teste no /upload concluído: ${data.validador || 'Processado'}`, 'Oráculo G-Click');
+    } catch (err) {
+      toast.error(`Erro ao testar no /upload: ${err.message}`, 'Falha');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = origHtml;
+    }
+  });
+
+  // ==========================================
+  // JOB DE VALIDAÇÃO EM MASSA (1 POR VEZ COM F5)
+  // ==========================================
+  async function runBatchUploadOracleJob() {
+    if (isBatchUploadJobRunning) return;
+
+    let targetFiles = [];
+    if (selectedValidaPdfPaths.size > 0) {
+      targetFiles = validaPdfResults.filter(r => selectedValidaPdfPaths.has(r.filePath) && r.status !== 'erro_extracao');
+    } else {
+      targetFiles = validaPdfResults.filter(r => r.filePath && r.status !== 'erro_extracao');
+    }
+
+    if (!targetFiles.length) {
+      toast.warning('Nenhum arquivo legível selecionado para validação.', 'Validação em Lote');
+      return;
+    }
+
+    const accountId = $('accountId')?.value?.trim() || '6019';
+    const progressWrap = $('validaBatchJobProgressWrap');
+    const progressBar = $('validaBatchJobProgressBar');
+    const statusEl = $('validaBatchJobStatus');
+    const countEl = $('validaBatchJobCount');
+    const currentFileEl = $('validaBatchJobCurrentFile');
+    const btnBatch = $('btnBatchTestUploadGclick');
+
+    isBatchUploadJobRunning = true;
+    shouldCancelBatchUploadJob = false;
+
+    if (progressWrap) progressWrap.hidden = false;
+    if (btnBatch) {
+      btnBatch.disabled = true;
+      btnBatch.innerHTML = '<span>⏳</span> Processando…';
+    }
+
+    let processedCount = 0;
+    let configuradosCount = 0;
+    let semModeloCount = 0;
+    const total = targetFiles.length;
+
+    toast.info(`Iniciando validação de ${total} arquivo(s) selecionado(s) no G-Click. Envio sequencial (1 por vez) com F5 após cada validação…`, 'Job Iniciada');
+
+    try {
+      for (let i = 0; i < total; i++) {
+        if (shouldCancelBatchUploadJob) {
+          toast.warning('Operação em lote interrompida pelo operador.', 'Job Cancelada');
+          break;
+        }
+
+        const item = targetFiles[i];
+        const pct = Math.round(((i + 1) / total) * 100);
+
+        if (progressBar) progressBar.style.width = `${pct}%`;
+        if (countEl) countEl.textContent = `${i + 1} / ${total}`;
+        if (currentFileEl) currentFileEl.textContent = `Arquivo: ${item.fileName || 'arquivo.pdf'}`;
+        if (statusEl) statusEl.textContent = `[${i + 1}/${total}] Enviando "${item.fileName}" para o /upload do G-Click…`;
+
+        try {
+          const res = await fetch('/api/valida-pdf/test-upload-gclick', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              filePath: item.filePath,
+              accountId,
+              reloadAfter: true, // F5 no G-Click após cada envio!
+              keepPageOpen: true // Reutiliza a aba para o próximo arquivo
+            })
+          });
+
+          const data = await res.json();
+          if (res.ok && data.ok) {
+            if (data.situacao === 'modelo_desvinculado_ou_incompleto' || data.situacao === 'sucesso_vinculado') {
+              item.conciliacao = item.conciliacao || {};
+              item.conciliacao.situacaoGclick = 'ja_no_gclick';
+              item.conciliacao.modelo = item.conciliacao.modelo || {};
+              item.conciliacao.modelo.id = data.modeloId;
+              item.conciliacao.modelo.nome = data.modeloNome;
+              item.conciliacao.modelo.isConfigurado = true;
+              item.conciliacao.modelo.encontrado = true;
+              item.conciliacao.precisaMapear = false;
+              item.valido = true;
+              item.statusGclickOracle = 'configurado';
+              item.validadorGclick = data.validador;
+              configuradosCount++;
+            } else if (data.situacao === 'sem_modelo') {
+              item.conciliacao = item.conciliacao || {};
+              item.conciliacao.situacaoGclick = 'sem_modelo';
+              item.conciliacao.precisaMapear = true;
+              item.statusGclickOracle = 'sem_modelo';
+              semModeloCount++;
+            }
+          }
+        } catch (err) {
+          console.error(`Erro ao validar arquivo "${item.fileName}":`, err);
+        }
+
+        processedCount++;
+        // Remove da lista de selecionados após validação e atualiza a tela
+        selectedValidaPdfPaths.delete(item.filePath);
+        updateValidaSelectionUI();
+        renderValidaPdfResultsTable();
+      }
+
+      if (!shouldCancelBatchUploadJob) {
+        toast.success(`Validação concluída! ${configuradosCount} alterados para "Configurado", ${semModeloCount} sem modelo.`, 'Job Concluída');
+      }
+    } finally {
+      isBatchUploadJobRunning = false;
+      shouldCancelBatchUploadJob = false;
+      if (btnBatch) {
+        btnBatch.disabled = false;
+      }
+      updateValidaSelectionUI();
+      if (statusEl) {
+        statusEl.textContent = `Concluído: ${processedCount} processados (${configuradosCount} configurados).`;
+      }
+      setTimeout(() => {
+        if (!isBatchUploadJobRunning && progressWrap) {
+          progressWrap.hidden = true;
+        }
+      }, 5000);
+    }
+  }
+
+  $('btnBatchTestUploadGclick')?.addEventListener('click', () => {
+    runBatchUploadOracleJob();
+  });
+
+  $('btnCancelBatchUploadJob')?.addEventListener('click', () => {
+    if (isBatchUploadJobRunning) {
+      shouldCancelBatchUploadJob = true;
+      toast.info('Cancelando fila de validação… Aguarde o arquivo atual finalizar.', 'Cancelamento');
+    }
   });
 
   // Validação ao vivo no motor do G-Click
@@ -6209,6 +7061,14 @@ function setupValidaPdfListeners() {
     $('modalValidaPdfInspect').hidden = true;
   });
 
+  // Modal Detalhes do Modelo G-Click
+  $('btnCloseValidaModelDetail')?.addEventListener('click', () => {
+    if ($('modalValidaModelDetail')) $('modalValidaModelDetail').hidden = true;
+  });
+  $('btnCloseValidaModelDetailBtn')?.addEventListener('click', () => {
+    if ($('modalValidaModelDetail')) $('modalValidaModelDetail').hidden = true;
+  });
+
   // Clique em Mapear ou Inspecionar na tabela
   $('validaResultsBody')?.addEventListener('click', async (e) => {
     const mapBtn = e.target.closest('.btn-map-pdf');
@@ -6279,6 +7139,7 @@ function setupValidaPdfListeners() {
       });
 
       validaPdfResults = res.arquivos || res.validations || [];
+      validaPdfDuplicates = res.duplicidades || null;
       renderValidaPdfResultsTable();
 
       // Atualiza cards de estatísticas
@@ -6293,8 +7154,9 @@ function setupValidaPdfListeners() {
         if ($('statSubpastasCount')) $('statSubpastasCount').textContent = r.totalSubpastas || res.subpastas?.length || 0;
       }
 
+      const dupesCount = res.duplicidades?.totalConflitos || 0;
       toast.success(
-        `Varredura concluída: ${r.validos || 0} válidos e ${r.inconsistentes || 0} com pendências de ${r.total || 0} PDFs encontrados em ${r.totalSubpastas || 0} subpastas.`,
+        `Análise concluída: ${r.validos || 0} válidos, ${r.inconsistentes || 0} pendências e ${dupesCount} conflitos/duplicidades de ${r.total || 0} PDFs.`,
         'Varredura Concluída'
       );
     } catch (err) {
@@ -6539,8 +7401,14 @@ function setupValidaPdfListeners() {
     }
   });
 
+  $('btnCloseValidaMappingModal')?.addEventListener('click', () => {
+    if ($('modalValidaMapping')) $('modalValidaMapping').hidden = true;
+  });
+  $('btnCloseValidaMappingBtn')?.addEventListener('click', () => {
+    if ($('modalValidaMapping')) $('modalValidaMapping').hidden = true;
+  });
   $('btnReturnToFilesTab')?.addEventListener('click', () => {
-    switchValidaPdfTab('files');
+    if ($('modalValidaMapping')) $('modalValidaMapping').hidden = true;
   });
 
   $('btnGoToMappingFromFiles')?.addEventListener('click', () => {
@@ -6612,6 +7480,8 @@ function setupValidaPdfListeners() {
 
     const pilar1Linha = parseInt($('mapPilar1Linha').value);
     const pilar1Texto = $('mapPilar1Texto').value.trim();
+    const pilar1Linha2 = parseInt($('mapPilar1Linha2')?.value) || null;
+    const pilar1Texto2 = ($('mapPilar1Texto2')?.value || '').trim() || null;
     if (!pilar1Linha || !pilar1Texto) {
       toast.warning('Mapeie a linha e o texto da Obrigação (Pilar 1).', 'Validação');
       return;
@@ -6686,7 +7556,14 @@ function setupValidaPdfListeners() {
           multiLinhas,
           filePath: currentMapPdfPath,
           fileBase64: currentMapPdfBase64,
-          pilar1: { linha: pilar1Linha, texto: pilar1Texto, valor: pilar1Texto },
+          pilar1: {
+            linha: pilar1Linha,
+            texto: pilar1Texto,
+            valor: pilar1Texto,
+            linha2: pilar1Linha2,
+            texto2: pilar1Texto2,
+            valor2: pilar1Texto2
+          },
           pilar2: { linha: pilar2Linha, tipo: pilar2Tipo, texto: pilar2Valor, valor: pilar2Valor },
           pilar3: { linha: pilar3Linha, formato: pilar3Formato, texto: pilar3Texto, valor: pilar3Texto }
         })
@@ -6737,6 +7614,181 @@ function setupValidaPdfListeners() {
       btn.innerHTML = origHtml;
     }
   });
+
+  // LISTENERS DE CHIPS DO WORKSPACE UNIFICADO
+  ['chipValidaAll', 'chipValidaReady', 'chipValidaNeedsMap', 'chipValidaNoClient', 'chipValidaValid', 'chipValidaPending', 'chipValidaDupes', 'chipValidaModels'].forEach(id => {
+    $(id)?.addEventListener('click', (e) => {
+      const chip = e.currentTarget.dataset.chip || 'all';
+      switchValidaChip(chip);
+    });
+  });
+
+  // Fechamento do Modal de Comparação de Duplicidades
+  $('btnCloseValidaDuplicateCompare')?.addEventListener('click', () => {
+    if ($('modalValidaDuplicateCompare')) $('modalValidaDuplicateCompare').hidden = true;
+  });
+  $('btnCloseValidaDuplicateCompareFooter')?.addEventListener('click', () => {
+    if ($('modalValidaDuplicateCompare')) $('modalValidaDuplicateCompare').hidden = true;
+  });
+
+  // Clique em Comparar Duplicatas
+  $('validaDuplicatesContainer')?.addEventListener('click', (e) => {
+    const btn = e.target.closest('.btn-compare-dupe');
+    if (btn) {
+      const grupoId = btn.dataset.grupoid;
+      openValidaDuplicateCompareModal(grupoId);
+    }
+  });
+}
+
+function renderValidaPdfDuplicatesView() {
+  const container = $('validaDuplicatesContainer');
+  if (!container) return;
+
+  const dupData = validaPdfDuplicates;
+  const groups = dupData?.gruposConflito || [];
+
+  if (!groups.length) {
+    container.innerHTML = `
+      <div style="text-align:center;padding:36px;color:#64748b;background:#f8fafc;border-radius:8px;border:1px dashed #cbd5e1;">
+        <span style="font-size:32px;display:block;margin-bottom:8px;">✅</span>
+        <strong style="color:#1e293b;font-size:14px;display:block;margin-bottom:4px;">Nenhuma duplicidade ou conflito encontrado</strong>
+        <span style="font-size:12.5px;color:#64748b;">Todos os documentos processados possuem conteúdo, numerações ou competências distintas.</span>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = groups.map((g, idx) => {
+    let typeBadge = '';
+    let borderStyle = 'border-left: 4px solid #b45309;';
+    if (g.tipoConflito === 'duplicata_identica') {
+      typeBadge = '<span class="dupe-badge-identical">🚨 Duplicata 100% Idêntica</span>';
+      borderStyle = 'border-left: 4px solid #dc2626;';
+    } else if (g.tipoConflito === 'duplicata_guia') {
+      typeBadge = '<span class="dupe-badge-guide">⚠️ Mesma Guia / Reemissão</span>';
+      borderStyle = 'border-left: 4px solid #d97706;';
+    } else {
+      typeBadge = '<span class="dupe-badge-conflict">⚡ Possível Retificação / Valores Diferentes</span>';
+      borderStyle = 'border-left: 4px solid #ea580c;';
+    }
+
+    const filesTableRows = (g.arquivos || []).map(f => `
+      <tr style="border-bottom:1px solid #f1f5f9;">
+        <td style="padding:8px 10px;font-weight:600;font-size:12.5px;color:#1e293b;">
+          ${escapeHtml(f.fileName)}
+          ${f.subpasta ? `<div style="font-size:11px;color:#0f766e;font-weight:normal;">📁 ${escapeHtml(f.subpasta)}</div>` : ''}
+        </td>
+        <td style="padding:8px 10px;font-size:12px;color:#475569;">
+          ${f.numDoc ? `<code style="font-size:11px;background:#f1f5f9;padding:2px 6px;border-radius:4px;">${escapeHtml(f.numDoc)}</code>` : '<span style="color:#94a3b8;">--</span>'}
+        </td>
+        <td style="padding:8px 10px;font-weight:700;font-size:12px;color:#0f766e;">
+          ${f.valor ? `R$ ${escapeHtml(f.valor)}` : '<span style="color:#94a3b8;">--</span>'}
+        </td>
+        <td style="padding:8px 10px;font-size:12px;color:#475569;">
+          ${f.vencimento ? escapeHtml(f.vencimento) : '<span style="color:#94a3b8;">--</span>'}
+        </td>
+        <td style="padding:8px 10px;font-size:11px;font-family:monospace;color:#64748b;">
+          ${f.contentHash ? escapeHtml(f.contentHash.substring(0, 10)) + '…' : '--'}
+        </td>
+      </tr>
+    `).join('');
+
+    return `
+      <div class="dupe-card" style="${borderStyle}">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:12px;">
+          <div>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+              ${typeBadge}
+              <strong style="font-size:13.5px;color:#0f172a;">${escapeHtml(g.chave)}</strong>
+            </div>
+            <p style="margin:0;font-size:12px;color:#64748b;">${escapeHtml(g.detalhes || '')}</p>
+          </div>
+          <div>
+            <button type="button" class="btn btn-secondary btn-sm btn-compare-dupe" data-grupoid="${g.grupoId || idx}" style="font-size:12px;display:flex;align-items:center;gap:6px;">
+              <span>🔍</span> Comparar Detalhes
+            </button>
+          </div>
+        </div>
+
+        <div style="overflow-x:auto;border:1px solid #e2e8f0;border-radius:6px;background:#fff;">
+          <table style="width:100%;border-collapse:collapse;text-align:left;">
+            <thead>
+              <tr style="background:#f8fafc;border-bottom:1px solid #e2e8f0;font-size:11px;color:#64748b;text-transform:uppercase;">
+                <th style="padding:6px 10px;">Arquivo</th>
+                <th style="padding:6px 10px;">Nº Guia / DCTF</th>
+                <th style="padding:6px 10px;">Valor</th>
+                <th style="padding:6px 10px;">Vencimento</th>
+                <th style="padding:6px 10px;">Hash Resumo</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${filesTableRows}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function openValidaDuplicateCompareModal(grupoId) {
+  const dupData = validaPdfDuplicates;
+  const groups = dupData?.gruposConflito || [];
+  const g = groups.find((item, idx) => String(item.grupoId || idx) === String(grupoId));
+
+  if (!g) {
+    toast.error('Grupo de duplicidades não encontrado.', 'Erro');
+    return;
+  }
+
+  const modal = $('modalValidaDuplicateCompare');
+  const body = $('modalDupCompareBody');
+  const title = $('modalDupCompareTitle');
+  const sub = $('modalDupCompareSubtitle');
+
+  if (title) title.textContent = `Comparação: ${g.chave}`;
+  if (sub) sub.textContent = g.detalhes || 'Análise de campos extraídos dos documentos em conflito.';
+
+  if (body) {
+    const arquivos = g.arquivos || [];
+    body.innerHTML = `
+      <div style="margin-bottom:16px;background:#f8fafc;padding:12px 16px;border-radius:8px;border:1px solid #e2e8f0;">
+        <strong style="font-size:13px;color:#1e293b;display:block;margin-bottom:4px;">Tipo de Diagnóstico:</strong>
+        <span style="font-size:12.5px;color:#475569;">${escapeHtml(g.detalhes || '')}</span>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));gap:14px;">
+        ${arquivos.map((f, i) => `
+          <div style="background:#ffffff;border:1px solid #cbd5e1;border-radius:8px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;border-bottom:1px solid #e2e8f0;padding-bottom:6px;">
+              <span style="font-size:16px;">📄</span>
+              <strong style="font-size:12.5px;color:#0f172a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(f.fileName)}">
+                #${i + 1} · ${escapeHtml(f.fileName)}
+              </strong>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:6px;font-size:12px;">
+              <div><strong>Subpasta:</strong> <span style="color:#0f766e;">${escapeHtml(f.subpasta || 'Raiz')}</span></div>
+              <div><strong>Cliente:</strong> <span>${escapeHtml(f.clienteCnpj || f.clienteCpf || '--')}</span></div>
+              <div><strong>Competência:</strong> <span>${escapeHtml(f.competencia || '--')}</span></div>
+              <div><strong>Nº Documento / Guia:</strong> <code style="background:#f1f5f9;padding:1px 4px;border-radius:3px;">${escapeHtml(f.numDoc || 'Não detectado')}</code></div>
+              <div><strong>Valor Declarado:</strong> <strong style="color:#0f766e;">${f.valor ? 'R$ ' + escapeHtml(f.valor) : 'Não detectado'}</strong></div>
+              <div><strong>Vencimento:</strong> <span>${escapeHtml(f.vencimento || 'Não detectado')}</span></div>
+              <div style="font-size:11px;color:#64748b;margin-top:6px;border-top:1px dashed #e2e8f0;padding-top:6px;">
+                <strong>SHA-256 Hash:</strong>
+                <div style="word-break:break-all;font-family:monospace;font-size:10px;color:#334155;background:#f8fafc;padding:4px;border-radius:4px;margin-top:2px;">
+                  ${escapeHtml(f.contentHash || '--')}
+                </div>
+              </div>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }
+
+  if (modal) modal.hidden = false;
 }
 
 async function processUploadedPdfFiles(fileList) {
@@ -6778,5 +7830,86 @@ function readFileAsBase64(file) {
   });
 }
 
+function switchValidaPdfTab(tabKey) {
+  if (tabKey === 'models') {
+    switchValidaChip('needs_map');
+    const scanner = $('cardValidaScanner') || $('tabValidaFilesContent');
+    if (scanner) scanner.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } else if (tabKey === 'mapping') {
+    if ($('modalValidaMapping')) $('modalValidaMapping').hidden = false;
+  }
+}
 
+// ============================================================================
+// CENTRAL DE AJUDA & TUTORIAIS INTERNOS
+// ============================================================================
+let helpSectionInitialized = false;
 
+function initHelpSection() {
+  if (helpSectionInitialized) return;
+  helpSectionInitialized = true;
+
+  // Abas de navegação da Central de Ajuda
+  const helpTabs = document.querySelectorAll('.btn-help-tab');
+  helpTabs.forEach(tabBtn => {
+    tabBtn.addEventListener('click', () => {
+      const targetTab = tabBtn.dataset.helpTab;
+      if (targetTab) switchHelpTab(targetTab);
+    });
+  });
+
+  // Busca em tempo real nos cards e tutoriais
+  const searchInput = $('helpSearchInput');
+  if (searchInput) {
+    searchInput.addEventListener('input', (e) => {
+      filterHelpCards(e.target.value);
+    });
+  }
+}
+
+function switchHelpTab(tabKey) {
+  const tabs = document.querySelectorAll('.btn-help-tab');
+  const contents = document.querySelectorAll('.help-tab-content');
+
+  tabs.forEach(tab => {
+    const isCurrent = tab.dataset.helpTab === tabKey;
+    tab.classList.toggle('btn-chip-active', isCurrent);
+    tab.classList.toggle('btn-ghost', !isCurrent);
+  });
+
+  contents.forEach(content => {
+    const isTarget = content.id === `helpTabContent-${tabKey}`;
+    content.hidden = !isTarget;
+    content.style.display = isTarget ? 'block' : 'none';
+  });
+
+  const searchInput = $('helpSearchInput');
+  if (searchInput && searchInput.value) {
+    filterHelpCards(searchInput.value);
+  }
+}
+
+function filterHelpCards(query) {
+  const q = (query || '').toLowerCase().trim();
+  const activeContent = document.querySelector('.help-tab-content:not([hidden])');
+  if (!activeContent) return;
+
+  const cards = activeContent.querySelectorAll('.card');
+  cards.forEach(card => {
+    if (!q) {
+      card.style.display = '';
+    } else {
+      const text = (card.textContent || '').toLowerCase();
+      card.style.display = text.includes(q) ? '' : 'none';
+    }
+  });
+}
+
+// Inicialização da seção salva após o carregamento de todos os módulos
+initHelpSection();
+let savedSection = 'all';
+try {
+  savedSection = localStorage.getItem(SECTION_STORAGE_KEY) || 'all';
+} catch { /* sem localStorage */ }
+switchSection(savedSection);
+updateSidebarBadges();

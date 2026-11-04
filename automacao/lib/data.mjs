@@ -56,6 +56,30 @@ export function formatCnpj(v) {
   return d.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
 }
 
+export function isValidCpf(cpf) {
+  const d = normalizeCnpj(cpf);
+  if (!/^\d{11}$/.test(d) || /^(\d)\1{10}$/.test(d)) return false;
+
+  let sum = 0;
+  for (let i = 0; i < 9; i++) sum += parseInt(d[i], 10) * (10 - i);
+  let rem = (sum * 10) % 11;
+  if (rem === 10 || rem === 11) rem = 0;
+  if (rem !== parseInt(d[9], 10)) return false;
+
+  sum = 0;
+  for (let i = 0; i < 10; i++) sum += parseInt(d[i], 10) * (11 - i);
+  rem = (sum * 10) % 11;
+  if (rem === 10 || rem === 11) rem = 0;
+  if (rem !== parseInt(d[10], 10)) return false;
+
+  return true;
+}
+
+export function formatCpf(cpf) {
+  const d = normalizeCnpj(cpf);
+  return d.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4');
+}
+
 export async function readScope(path) {
   const items = (await fs.readFile(path, 'utf8')).split(/\r?\n/).map(x => x.trim()).filter(x => x && !x.startsWith('#'));
   if (!items.length) throw new Error('Arquivo de CNPJs vazio');

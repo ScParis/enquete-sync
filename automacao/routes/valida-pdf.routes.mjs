@@ -14,8 +14,17 @@ import {
   validatePdfOnGclickScreen,
   generateValidationDiagnosticReport,
   autoDetectPdfMapping,
-  createAndMapPdfLayoutOnGclick
+  createAndMapPdfLayoutOnGclick,
+  correlateModelsWithObrigacoes,
+  normalizeModelObject,
+  classifyModelStatus,
+  inspectGclickPdfModelDetails,
+  detectPdfDuplicatesAndConflicts,
+  reconcileFolderWithGclick,
+  validatePdfViaGclickUploadScreen
 } from '../lib/valida-pdf.mjs';
+
+const modelsCache = new Map();
 
 export async function handleValidaPdfRoutes(req, res, {
   url,
@@ -26,30 +35,128 @@ export async function handleValidaPdfRoutes(req, res, {
   loginContext,
   hasGclickActiveSession,
   catalogsDir,
+  exclusive,
+  jobManager,
   send
 }) {
-  // 1. Listagem de Modelos de PDF (suporta GET e POST)
+  const runExclusive = typeof exclusive === 'function' ? exclusive : (fn) => fn();
+
+  // 1. Listagem de Modelos de PDF (suporta GET e POST com enriquecimento, cache mtime e estatísticas)
   if (url.pathname === '/api/valida-pdf/models') {
     const accountId = payload?.accountId || url.searchParams?.get('accountId') || '6019';
-    let models = [];
     const targetFile = path.join(catalogsDir, `pdf-models-${accountId}.json`);
     const defaultFile = path.join(catalogsDir, `pdf-models-6019.json`);
+    const obFile = path.join(catalogsDir, `obrigacoes-${accountId}.json`);
+    const obDefault = path.join(catalogsDir, 'obrigacoes-6019.json');
 
+    // Checa cache de mtime
+    let fileToCheck = targetFile;
+    let fileMtime = 0;
     try {
-      models = JSON.parse(await fs.readFile(targetFile, 'utf8'));
+      const st = await fs.stat(targetFile);
+      fileMtime = st.mtimeMs;
     } catch {
       try {
-        models = JSON.parse(await fs.readFile(defaultFile, 'utf8'));
+        const st = await fs.stat(defaultFile);
+        fileMtime = st.mtimeMs;
+        fileToCheck = defaultFile;
+      } catch {}
+    }
+
+    let obMtime = 0;
+    try {
+      const st = await fs.stat(obFile);
+      obMtime = st.mtimeMs;
+    } catch {
+      try {
+        const st = await fs.stat(obDefault);
+        obMtime = st.mtimeMs;
+      } catch {}
+    }
+
+    const cached = modelsCache.get(accountId);
+    if (cached && cached.fileMtime === fileMtime && cached.obMtime === obMtime) {
+      return send(res, 200, cached.data);
+    }
+
+    let rawModels = [];
+    try {
+      rawModels = JSON.parse(await fs.readFile(targetFile, 'utf8'));
+    } catch {
+      try {
+        rawModels = JSON.parse(await fs.readFile(defaultFile, 'utf8'));
       } catch {
-        models = [];
+        rawModels = [];
       }
     }
 
-    return send(res, 200, {
+    // Carrega obrigações para cruzar vínculos
+    let obrigacoes = [];
+    try {
+      obrigacoes = JSON.parse(await fs.readFile(obFile, 'utf8'));
+    } catch {
+      try {
+        obrigacoes = JSON.parse(await fs.readFile(obDefault, 'utf8'));
+      } catch {}
+    }
+
+    const models = correlateModelsWithObrigacoes(rawModels, obrigacoes);
+
+    const configurados = models.filter(m => m.statusCode === 'configurado').length;
+    const pendentesCampos = models.filter(m => m.statusCode === 'pendente_campos').length;
+    const semArquivo = models.filter(m => m.statusCode === 'sem_arquivo').length;
+    const comObrigacao = models.filter(m => Boolean(m.obrigacao)).length;
+
+    const responsePayload = {
       accountId,
       total: models.length,
+      stats: {
+        total: models.length,
+        configurados,
+        pendentesCampos,
+        semArquivo,
+        comObrigacao
+      },
       models
+    };
+
+    modelsCache.set(accountId, {
+      fileMtime,
+      obMtime,
+      data: responsePayload
     });
+
+    return send(res, 200, responsePayload);
+  }
+
+  // 1.1 Detalhes de um Modelo Específico (3 Pilares e Configurações)
+  if (url.pathname === '/api/valida-pdf/model-details') {
+    const accountId = payload?.accountId || url.searchParams?.get('accountId') || '6019';
+    const modelId = payload?.modelId || url.searchParams?.get('modelId');
+    if (!modelId) {
+      return send(res, 400, { error: 'O parâmetro modelId é obrigatório.' });
+    }
+
+    if (loginContext && hasGclickActiveSession(loginContext)) {
+      try {
+        const details = await runExclusive(() => inspectGclickPdfModelDetails(loginContext, accountId, modelId));
+        return send(res, 200, { ok: true, details });
+      } catch (err) {
+        console.warn(`[valida-pdf] Falha ao inspecionar modelo ${modelId} no G-Click:`, err.message);
+      }
+    }
+
+    const targetFile = path.join(catalogsDir, `pdf-models-${accountId}.json`);
+    const defaultFile = path.join(catalogsDir, `pdf-models-6019.json`);
+    let rawList = [];
+    try { rawList = JSON.parse(await fs.readFile(targetFile, 'utf8')); }
+    catch { try { rawList = JSON.parse(await fs.readFile(defaultFile, 'utf8')); } catch {} }
+
+    const model = rawList.find(m => String(m.modelId || m.id) === String(modelId));
+    if (!model) return send(res, 404, { error: `Modelo ${modelId} não encontrado.` });
+
+    const norm = normalizeModelObject(model, accountId);
+    return send(res, 200, { ok: true, details: norm });
   }
 
   // 2. Sincronização ao vivo de Modelos com o G-Click
@@ -59,7 +166,8 @@ export async function handleValidaPdfRoutes(req, res, {
       throw new Error('Sessão no G-Click não conectada. Conecte a sessão na seção "Conexão G-Click" antes de sincronizar modelos.');
     }
 
-    const models = await syncGclickPdfModels(loginContext, accountId, catalogsDir);
+    modelsCache.delete(accountId);
+    const models = await runExclusive(() => syncGclickPdfModels(loginContext, accountId, catalogsDir));
     return send(res, 200, {
       ok: true,
       accountId,
@@ -76,7 +184,7 @@ export async function handleValidaPdfRoutes(req, res, {
       throw new Error('Sessão no G-Click não conectada. Conecte a sessão na seção "Conexão G-Click".');
     }
 
-    const screenData = await inspectGclickValidaPdfScreen(loginContext, accountId);
+    const screenData = await runExclusive(() => inspectGclickValidaPdfScreen(loginContext, accountId));
     return send(res, 200, {
       ok: true,
       accountId,
@@ -110,12 +218,53 @@ export async function handleValidaPdfRoutes(req, res, {
     }
 
     try {
-      const result = await validatePdfOnGclickScreen(loginContext, accountId, {
+      const result = await runExclusive(() => validatePdfOnGclickScreen(loginContext, accountId, {
         filePath,
         modelId: payload?.modelId || null
-      });
+      }));
 
       return send(res, 200, result);
+    } finally {
+      if (tempCreated) {
+        await fs.unlink(filePath).catch(() => {});
+      }
+    }
+  }
+
+  // 2.3 Teste Oficial de Validador na tela de Upload do G-Click (/upload)
+  if (req.method === 'POST' && url.pathname === '/api/valida-pdf/test-upload-gclick') {
+    const accountId = requireAccount(payload?.accountId || '6019');
+    if (!loginContext || !hasGclickActiveSession(loginContext)) {
+      return send(res, 400, {
+        ok: false,
+        error: 'Sessão no G-Click não conectada. Conecte a sessão na seção "Conexão G-Click" antes de validar no sistema da Omie/G-Click.'
+      });
+    }
+
+    let filePath = payload?.filePath;
+    let tempCreated = false;
+
+    if (!filePath && payload?.fileBase64) {
+      const fileName = (payload?.fileName || 'document.pdf').replace(/[^a-zA-Z0-9._-]/g, '_');
+      filePath = path.join('/tmp', `test_upload_${Date.now()}_${fileName}`);
+      const buffer = Buffer.from(payload.fileBase64.replace(/^data:application\/pdf;base64,/, ''), 'base64');
+      await fs.writeFile(filePath, buffer);
+      tempCreated = true;
+    }
+
+    if (!filePath) {
+      return send(res, 400, { error: 'O caminho do arquivo (filePath) ou o conteúdo (fileBase64) é obrigatório.' });
+    }
+
+    try {
+      const result = await runExclusive(() => validatePdfViaGclickUploadScreen(loginContext, accountId, {
+        filePath,
+        reloadAfter: payload?.reloadAfter !== false,
+        keepPageOpen: Boolean(payload?.keepPageOpen)
+      }));
+      return send(res, 200, result);
+    } catch (err) {
+      return send(res, 500, { ok: false, error: err.message });
     } finally {
       if (tempCreated) {
         await fs.unlink(filePath).catch(() => {});
@@ -217,6 +366,24 @@ export async function handleValidaPdfRoutes(req, res, {
       } catch {}
     }
 
+    let clientes = [];
+    try {
+      clientes = JSON.parse(await fs.readFile(path.join(catalogsDir, `clientes-${accountId}.json`), 'utf8'));
+    } catch {
+      try {
+        clientes = JSON.parse(await fs.readFile(path.join(catalogsDir, 'clientes-6019.json'), 'utf8'));
+      } catch {}
+    }
+
+    let obrigacoes = [];
+    try {
+      obrigacoes = JSON.parse(await fs.readFile(path.join(catalogsDir, `obrigacoes-${accountId}.json`), 'utf8'));
+    } catch {
+      try {
+        obrigacoes = JSON.parse(await fs.readFile(path.join(catalogsDir, 'obrigacoes-6019.json'), 'utf8'));
+      } catch {}
+    }
+
     // Busca recursiva de arquivos PDF
     async function getPdfFiles(dir) {
       let results = [];
@@ -264,10 +431,24 @@ export async function handleValidaPdfRoutes(req, res, {
       validations.push(...chunkResults);
     }
 
+    // 1. Detecção profunda de duplicidades e retificações por conteúdo
+    const duplicidades = detectPdfDuplicatesAndConflicts(validations);
+
+    // 2. Conciliação com o G-Click (Clientes, Modelos e Obrigações)
+    const { resumo: resumoConciliacao } = reconcileFolderWithGclick(validations, { models, clientes, obrigacoes });
+
     const resumo = {
       total: validations.length,
       validos: validations.filter(v => v.valido).length,
       inconsistentes: validations.filter(v => !v.valido).length,
+      prontosParaEnvio: resumoConciliacao.prontosParaEnvio || 0,
+      jaNoGclick: resumoConciliacao.jaNoGclick ?? resumoConciliacao.prontosParaEnvio ?? 0,
+      faltaMapear: resumoConciliacao.faltaMapear ?? resumoConciliacao.pendentesModelo ?? 0,
+      duplicatasIdenticas: duplicidades.totalArquivosDuplicados,
+      conflitosRetificacao: duplicidades.totalRetificacoes,
+      gruposDuplicidades: duplicidades.totalGrupos,
+      pendentesModelo: resumoConciliacao.pendentesModelo || 0,
+      clientesNaoCadastrados: resumoConciliacao.clientesNaoCadastrados || 0,
       semTextoOcr: validations.filter(v => v.status === 'erro_extracao').length,
       clienteInvalido: validations.filter(v => v.status === 'cliente_invalido').length,
       competenciaInvalida: validations.filter(v => v.status === 'competencia_invalida').length,
@@ -282,6 +463,8 @@ export async function handleValidaPdfRoutes(req, res, {
       ok: true,
       targetDir,
       resumo,
+      duplicidades,
+      conciliacao: resumoConciliacao,
       subpastas: Array.from(subpastasSet).sort(),
       arquivos: validations
     });
@@ -404,7 +587,8 @@ export async function handleValidaPdfRoutes(req, res, {
     }
 
     try {
-      const result = await createAndMapPdfLayoutOnGclick(loginContext, accountId, {
+      modelsCache.delete(accountId);
+      const result = await runExclusive(() => createAndMapPdfLayoutOnGclick(loginContext, accountId, {
         nomeModelo: payload?.nomeModelo,
         departamentoNome: payload?.departamentoNome || 'Departamento Pessoal',
         filePath,
@@ -413,7 +597,7 @@ export async function handleValidaPdfRoutes(req, res, {
         pilar3: payload?.pilar3,
         multiLinhas: payload?.multiLinhas !== false,
         obrigacaoNome: payload?.obrigacaoNome || null
-      });
+      }));
 
       return send(res, 200, result);
     } catch (err) {

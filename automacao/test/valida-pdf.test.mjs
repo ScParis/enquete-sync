@@ -20,7 +20,14 @@ import {
   parseGclickValidationHtml,
   generateValidationDiagnosticReport,
   autoDetectPdfMapping,
-  createAndMapPdfLayoutOnGclick
+  createAndMapPdfLayoutOnGclick,
+  classifyModelStatus,
+  parseGclickPillarText,
+  normalizeModelObject,
+  correlateModelsWithObrigacoes,
+  extractPdfContentDetails,
+  detectPdfDuplicatesAndConflicts,
+  reconcileFolderWithGclick
 } from '../lib/valida-pdf.mjs';
 
 import { handleValidaPdfRoutes } from '../routes/valida-pdf.routes.mjs';
@@ -248,18 +255,21 @@ test('UI: Estrutura HTML e scripts contêm elementos e controladores do Valida P
   const indexHtml = await fs.readFile(path.join(ROOT_DIR, 'ui/index.html'), 'utf8');
   const appJs = await fs.readFile(path.join(ROOT_DIR, 'ui/app.js'), 'utf8');
 
-  // Sidebar e Submódulo
+  // Sidebar e Submódulo Unificado
   assert.ok(indexHtml.includes('id="submoduleValidaPdf"'));
   assert.ok(indexHtml.includes('id="navValidaPdf"'));
-  assert.ok(indexHtml.includes('id="navValidaPdfModels"'));
 
-  // Seção principal e abas
+  // Seção principal unificada e componentes
   assert.ok(indexHtml.includes('id="section-valida-pdf"'));
   assert.ok(indexHtml.includes('id="tabValidaFilesContent"'));
-  assert.ok(indexHtml.includes('id="tabValidaModelsContent"'));
   assert.ok(indexHtml.includes('id="validaResultsTable"'));
   assert.ok(indexHtml.includes('id="validaModelsTable"'));
   assert.ok(indexHtml.includes('id="btnScanDirectory"'));
+  assert.ok(indexHtml.includes('id="chipValidaAll"'));
+  assert.ok(indexHtml.includes('id="chipValidaReady"'));
+  assert.ok(indexHtml.includes('id="chipValidaNeedsMap"'));
+  assert.ok(indexHtml.includes('id="chipValidaNoClient"'));
+  assert.ok(indexHtml.includes('id="wrapValidaDuplicatesView"'));
 
   // Modal de inspeção
   assert.ok(indexHtml.includes('id="modalValidaPdfInspect"'));
@@ -338,6 +348,41 @@ test('Rota /api/valida-pdf/validate-on-gclick bloqueia com 400 amigável quando 
     {},
     {
       url: new URL('http://127.0.0.1:8766/api/valida-pdf/validate-on-gclick'),
+      payload: {
+        accountId: '6019',
+        filePath: '/tmp/test.pdf'
+      },
+      currentUser: { id: 1 },
+      authService: {},
+      requireAccount: (id) => id,
+      loginContext: null, // sem sessão
+      hasGclickActiveSession: () => false,
+      catalogsDir: '/tmp',
+      send: mockSend
+    }
+  );
+
+  assert.notEqual(handled, false);
+  assert.equal(statusCode, 400);
+  assert.equal(responseData.ok, false);
+  assert.ok(responseData.error.includes('Sessão no G-Click não conectada'));
+});
+
+test('Rota /api/valida-pdf/test-upload-gclick bloqueia com 400 amigável quando sessão desconectada', async () => {
+  let responseData = null;
+  let statusCode = null;
+
+  const mockSend = (res, code, data) => {
+    statusCode = code;
+    responseData = data;
+    return data;
+  };
+
+  const handled = await handleValidaPdfRoutes(
+    { method: 'POST' },
+    {},
+    {
+      url: new URL('http://127.0.0.1:8766/api/valida-pdf/test-upload-gclick'),
       payload: {
         accountId: '6019',
         filePath: '/tmp/test.pdf'
@@ -716,11 +761,10 @@ test('autoDetectPdfMapping autodetecta os 3 pilares no Recibo de Pagamento (Magn
   assert.equal(res.pilares.pilar2_cliente.valor, '12.237.587/0001-36');
   assert.ok(res.pilares.pilar2_cliente.linha > 0);
 
-  // Pilar 3: Competência (trecho exato do documento)
+  // Pilar 3: Competência (ano para obrigação anual de 13º salário)
   assert.ok(res.pilares.pilar3_competencia);
-  assert.equal(res.pilares.pilar3_competencia.competenciaDetectada, 'Novembro/2025');
-  assert.equal(res.pilares.pilar3_competencia.competenciaNormalizada, '11/2025');
-  assert.equal(res.pilares.pilar3_competencia.formato, 'mes_ano');
+  assert.equal(res.pilares.pilar3_competencia.competenciaDetectada, '2025');
+  assert.equal(res.pilares.pilar3_competencia.formato, 'ano');
 });
 
 test('autoDetectPdfMapping autodetecta os 3 pilares na DARF DCTFWeb (Magnum)', async () => {
@@ -800,19 +844,17 @@ test('UI: Integração entre Validador de Arquivos e Mapeamento no G-Click', asy
   const indexHtml = await fs.readFile(path.join(ROOT_DIR, 'ui/index.html'), 'utf8');
   const appJs = await fs.readFile(path.join(ROOT_DIR, 'ui/app.js'), 'utf8');
 
-  // Elementos HTML de integração
-  assert.ok(indexHtml.includes('id="btnGoToMappingFromFiles"'));
-  assert.ok(indexHtml.includes('id="validaCountForMapping"'));
+  // Elementos HTML de integração e modal
+  assert.ok(indexHtml.includes('id="modalValidaMapping"'));
   assert.ok(indexHtml.includes('id="mapValidatedSourceBanner"'));
   assert.ok(indexHtml.includes('id="mapValidatedFilesSelect"'));
   assert.ok(indexHtml.includes('id="btnLoadSelectedValidatedFile"'));
-  assert.ok(indexHtml.includes('id="btnReturnToFilesTab"'));
+  assert.ok(indexHtml.includes('id="btnCloseValidaMappingModal"'));
 
   // Funções no app.js
   assert.ok(appJs.includes('updateMappingValidatedFilesDropdown'));
   assert.ok(appJs.includes('loadValidatedFileIntoMapping'));
   assert.ok(appJs.includes('btn-map-pdf'));
-  assert.ok(appJs.includes('btnGoToMappingFromFiles'));
 });
 
 test('createAndMapPdfLayoutOnGclick executa fluxo completo com seletores corretos do G-Click', async () => {
@@ -908,6 +950,359 @@ test('autoDetectPdfMapping detecta CPF do Empregador e Competência Mês/Ano no 
   assert.equal(mapping.pilares.pilar3_competencia?.formato, 'mes_ano');
   assert.equal(mapping.pilares.pilar3_competencia?.trechoExato, 'Setembro/2026');
 });
+
+test('classifyModelStatus classifica corretamente os status do G-Click', () => {
+  assert.equal(classifyModelStatus('Este modelo já está configurado e sendo usado para validação!'), 'configurado');
+  assert.equal(classifyModelStatus('Configure os campos para validação para seguir as configurações desse modelo.'), 'pendente_campos');
+  assert.equal(classifyModelStatus('Anexe um arquivo à este modelo para seguir com as configurações desse modelo.'), 'sem_arquivo');
+  assert.equal(classifyModelStatus(''), 'desconhecido');
+  assert.equal(classifyModelStatus(null), 'desconhecido');
+  assert.equal(classifyModelStatus('Status Desconhecido XYZ'), 'outro');
+});
+
+test('parseGclickPillarText analisa linha, posInicial e valores de pilares', () => {
+  const pilar1 = parseGclickPillarText('Obrigatório - Texto - linha 16 posInicial[0]GFD - Guia do FGTS Digital');
+  assert.equal(pilar1.linha, 16);
+  assert.equal(pilar1.posInicial, 0);
+  assert.equal(pilar1.valor, 'GFD - Guia do FGTS Digital');
+
+  const pilar2 = parseGclickPillarText('Inscrição - CNPJ - linha 21 posInicial[3] 17.308.338/0001-08');
+  assert.equal(pilar2.tipoInscricao, 'CNPJ');
+  assert.equal(pilar2.linha, 21);
+  assert.equal(pilar2.posInicial, 3);
+
+  const pilar3 = parseGclickPillarText('Competência - Mês/Ano - linha 5 posInicial[10] 09/2026');
+  assert.equal(pilar3.formatoCompetencia, 'Mês/Ano');
+  assert.equal(pilar3.linha, 5);
+  assert.equal(pilar3.posInicial, 10);
+
+  assert.equal(parseGclickPillarText(null), null);
+});
+
+test('normalizeModelObject assegura id, nome, statusCode e link do G-Click', () => {
+  const raw = {
+    modelId: '109038',
+    modelo: 'GFD - Guia do FGTS Digital',
+    departamento: 'Pessoal',
+    status: 'Este modelo já está configurado e sendo usado para validação!'
+  };
+
+  const norm = normalizeModelObject(raw, '6019');
+  assert.equal(norm.id, '109038');
+  assert.equal(norm.modelId, '109038');
+  assert.equal(norm.nome, 'GFD - Guia do FGTS Digital');
+  assert.equal(norm.modelo, 'GFD - Guia do FGTS Digital');
+  assert.equal(norm.departamento, 'Pessoal');
+  assert.equal(norm.statusCode, 'configurado');
+  assert.ok(norm.link.includes('id=109038'));
+  assert.ok(norm.link.includes('empId=6019'));
+});
+
+test('correlateModelsWithObrigacoes mapeia obrigações por nome e atividade PDF', () => {
+  const models = [
+    { modelId: '1', modelo: 'DARF Previdenciário DCTFWeb', departamento: 'Fiscal', status: 'Este modelo já está configurado' }
+  ];
+  const obrigacoes = [
+    {
+      nome: 'DARF Previdenciário DCTFWeb',
+      departamento: 'Fiscal',
+      atividades: [
+        { tipo: 'fa fa-file-pdf-o', nome: '$ DARF Previdenciário DCTFWeb' }
+      ]
+    }
+  ];
+
+  const enriched = correlateModelsWithObrigacoes(models, obrigacoes);
+  assert.equal(enriched.length, 1);
+  assert.equal(enriched[0].id, '1');
+  assert.equal(enriched[0].obrigacao, 'DARF Previdenciário DCTFWeb');
+  assert.equal(enriched[0].atividade, '$ DARF Previdenciário DCTFWeb');
+});
+
+test('Rota GET /api/valida-pdf/models retorna modelos normalizados com estatísticas', async () => {
+  const catalogsDir = path.join(ROOT_DIR, 'catalogos');
+  let responseData = null;
+  let responseStatus = 200;
+
+  const mockSend = (res, code, data) => {
+    responseStatus = code;
+    responseData = data;
+    return data;
+  };
+
+  const handled = await handleValidaPdfRoutes(
+    { method: 'GET' },
+    {},
+    {
+      url: new URL('http://127.0.0.1:8766/api/valida-pdf/models?accountId=6019'),
+      payload: null,
+      currentUser: { id: 1 },
+      authService: {},
+      requireAccount: (id) => id,
+      catalogsDir,
+      send: mockSend
+    }
+  );
+
+  assert.notEqual(handled, false);
+  assert.equal(responseStatus, 200);
+  assert.ok(responseData.models);
+  assert.ok(Array.isArray(responseData.models));
+  assert.ok(responseData.models.length > 0);
+  assert.ok(responseData.stats);
+  assert.ok(responseData.stats.total > 0);
+
+  // Verifica que o primeiro modelo possui id e nome preenchidos, não vazios e não '-'
+  const first = responseData.models[0];
+  assert.ok(first.id, 'Modelo deve conter id válido');
+  assert.notEqual(first.id, '-');
+  assert.ok(first.nome, 'Modelo deve conter nome válido');
+  assert.notEqual(first.nome, '-');
+  assert.ok(first.statusCode, 'Modelo deve conter statusCode');
+  assert.ok(first.link, 'Modelo deve conter link para o G-Click');
+});
+
+test('extractPdfContentDetails extrai valores, vencimentos, número de guia e gera contentHash consistente', () => {
+  const sampleText = `
+    DARF - DOCUMENTO DE ARRECADAÇÃO DE RECEITAS FEDERAIS
+    02 PERÍODO DE APURAÇÃO: 30/09/2026
+    03 NÚMERO DO DOCUMENTO: 07.25.26252.1234567-8
+    04 DATA DE VENCIMENTO: 20/10/2026
+    05 VALOR DO PRINCIPAL: 1.250,50
+    06 VALOR TOTAL: 1.250,50
+  `;
+  const lines = sampleText.split('\n');
+  const details = extractPdfContentDetails(sampleText, lines);
+
+  assert.ok(details.contentHash, 'Deve conter hash SHA-256');
+  assert.equal(details.numDoc, '07.25.26252.1234567-8');
+  assert.equal(details.valor, '1.250,50');
+  assert.equal(details.valorNumerico, 1250.5);
+  assert.equal(details.vencimento, '20/10/2026');
+});
+
+test('detectPdfDuplicatesAndConflicts detecta duplicata identica (100% hash)', () => {
+  const mockValidations = [
+    {
+      fileName: 'Guia_Original.pdf',
+      subpasta: 'Folha',
+      regras: {
+        identificacaoCliente: { cnpjs: ['17.308.338/0001-08'] },
+        competencia: { competenciaDetectada: '09/2026' },
+        nomeDocumento: { identificado: 'DARF DCTFWeb' }
+      },
+      contentHash: 'hash-abc-123',
+      numDoc: '11112222',
+      valor: '500,00',
+      valorNumerico: 500,
+      vencimento: '20/10/2026'
+    },
+    {
+      fileName: 'Guia_Copia.pdf',
+      subpasta: 'Folha',
+      regras: {
+        identificacaoCliente: { cnpjs: ['17.308.338/0001-08'] },
+        competencia: { competenciaDetectada: '09/2026' },
+        nomeDocumento: { identificado: 'DARF DCTFWeb' }
+      },
+      contentHash: 'hash-abc-123',
+      numDoc: '11112222',
+      valor: '500,00',
+      valorNumerico: 500,
+      vencimento: '20/10/2026'
+    }
+  ];
+
+  const result = detectPdfDuplicatesAndConflicts(mockValidations);
+  assert.equal(result.totalGrupos, 1);
+  assert.equal(result.grupos[0].tipo, 'duplicata_identica');
+  assert.equal(result.grupos[0].arquivos.length, 2);
+});
+
+test('detectPdfDuplicatesAndConflicts detecta retificacao quando os valores/guias divergem para a mesma competência', () => {
+  const mockValidations = [
+    {
+      fileName: 'Guia_Setembro_Original.pdf',
+      subpasta: 'Folha',
+      regras: {
+        identificacaoCliente: { cnpjs: ['17.308.338/0001-08'] },
+        competencia: { competenciaDetectada: '09/2026' },
+        nomeDocumento: { identificado: 'DARF DCTFWeb' }
+      },
+      contentHash: 'hash-versao-1',
+      numDoc: 'GUIA-001',
+      valor: '1.000,00',
+      valorNumerico: 1000,
+      vencimento: '20/10/2026'
+    },
+    {
+      fileName: 'Guia_Setembro_Retificada.pdf',
+      subpasta: 'Folha',
+      regras: {
+        identificacaoCliente: { cnpjs: ['17.308.338/0001-08'] },
+        competencia: { competenciaDetectada: '09/2026' },
+        nomeDocumento: { identificado: 'DARF DCTFWeb' }
+      },
+      contentHash: 'hash-versao-2',
+      numDoc: 'GUIA-002',
+      valor: '1.250,00',
+      valorNumerico: 1250,
+      vencimento: '20/10/2026'
+    }
+  ];
+
+  const result = detectPdfDuplicatesAndConflicts(mockValidations);
+  assert.equal(result.totalGrupos, 1);
+  assert.equal(result.grupos[0].tipo, 'retificacao_conflito');
+  assert.equal(result.grupos[0].arquivos[0].valor, '1.000,00');
+  assert.equal(result.grupos[0].arquivos[1].valor, '1.250,00');
+});
+
+test('reconcileFolderWithGclick cruza arquivos com a base de clientes, modelos e obrigações', () => {
+  const mockValidations = [
+    {
+      fileName: 'Recibo_Magnum.pdf',
+      valido: true,
+      regras: {
+        identificacaoCliente: { cnpjs: ['17.308.338/0001-08'] },
+        nomeDocumento: {
+          identificado: 'Recibo de Pagamento 2',
+          modelosCompativeis: [{ id: '900', nome: 'Recibo de Pagamento 2' }]
+        }
+      }
+    },
+    {
+      fileName: 'Documento_Cliente_Desconhecido.pdf',
+      valido: false,
+      regras: {
+        identificacaoCliente: { cnpjs: ['99.999.999/0001-99'] },
+        nomeDocumento: { identificado: 'Não identificado' }
+      }
+    }
+  ];
+
+  const mockClientes = [
+    { id: 101, cnpj: '17.308.338/0001-08', nome: 'MAGNUM COMERCIO E SERVICOS LTDA' }
+  ];
+
+  const mockModels = [
+    { id: '900', nome: 'Recibo de Pagamento 2', statusCode: 'configurado' }
+  ];
+
+  const conc = reconcileFolderWithGclick(mockValidations, {
+    clientes: mockClientes,
+    models: mockModels,
+    obrigacoes: []
+  });
+
+  assert.equal(conc.resumo.totalArquivos, 2);
+  assert.equal(conc.resumo.prontosParaEnvio, 1);
+  assert.equal(conc.resumo.jaNoGclick, 1);
+  assert.equal(conc.resumo.faltaMapear, 1);
+  assert.equal(conc.resumo.pendentesModelo, 1);
+  assert.equal(mockValidations[0].conciliacao.cliente.encontrado, true);
+  assert.equal(mockValidations[0].conciliacao.cliente.nome, 'MAGNUM COMERCIO E SERVICOS LTDA');
+  assert.equal(mockValidations[0].conciliacao.jaEstaNoGclick, true);
+  assert.equal(mockValidations[0].conciliacao.precisaMapear, false);
+  assert.equal(mockValidations[0].conciliacao.situacaoGclick, 'ja_no_gclick');
+  assert.equal(mockValidations[0].conciliacao.acaoRecomendada, 'pronto_envio');
+
+  assert.equal(mockValidations[1].conciliacao.cliente.encontrado, false);
+  assert.equal(mockValidations[1].conciliacao.jaEstaNoGclick, false);
+  assert.equal(mockValidations[1].conciliacao.precisaMapear, true);
+  assert.equal(mockValidations[1].conciliacao.situacaoGclick, 'sem_modelo');
+  assert.equal(mockValidations[1].conciliacao.acaoRecomendada, 'enviar_mapear');
+});
+
+test('reconcileFolderWithGclick categoriza modelos pendentes de linhas vs falta de modelo vs pronto', () => {
+  const mockValidations = [
+    {
+      fileName: 'Pronto.pdf',
+      valido: true,
+      regras: {
+        identificacaoCliente: { cnpjs: ['11.222.333/0001-44'] },
+        nomeDocumento: { identificado: 'DARF DCTFWeb' }
+      }
+    },
+    {
+      fileName: 'FaltaLinhas.pdf',
+      valido: false,
+      regras: {
+        identificacaoCliente: { cnpjs: ['11.222.333/0001-44'] },
+        nomeDocumento: { identificado: 'Modelo Incompleto' }
+      }
+    },
+    {
+      fileName: 'SemModelo.pdf',
+      valido: false,
+      regras: {
+        identificacaoCliente: { cnpjs: ['11.222.333/0001-44'] },
+        nomeDocumento: { identificado: 'Doc Inexistente' }
+      }
+    }
+  ];
+
+  const mockClientes = [{ id: 1, cnpj: '11.222.333/0001-44', nome: 'Empresa Teste' }];
+  const mockModels = [
+    { id: '10', modelo: 'DARF DCTFWeb', status: 'Este modelo já está configurado e sendo usado para validação!' },
+    { id: '20', modelo: 'Modelo Incompleto', status: 'Configure os campos para validação deste modelo.' }
+  ];
+
+  const res = reconcileFolderWithGclick(mockValidations, { clientes: mockClientes, models: mockModels });
+
+  assert.equal(res.resumo.jaNoGclick, 1);
+  assert.equal(res.resumo.faltaMapear, 2);
+  assert.equal(mockValidations[0].conciliacao.situacaoGclick, 'ja_no_gclick');
+  assert.equal(mockValidations[0].conciliacao.jaEstaNoGclick, true);
+  assert.equal(mockValidations[0].conciliacao.precisaMapear, false);
+
+  assert.equal(mockValidations[1].conciliacao.situacaoGclick, 'modelo_pendente');
+  assert.equal(mockValidations[1].conciliacao.jaEstaNoGclick, false);
+  assert.equal(mockValidations[1].conciliacao.precisaMapear, true);
+  assert.equal(mockValidations[1].conciliacao.acaoRecomendada, 'mapear_linhas');
+
+  assert.equal(mockValidations[2].conciliacao.situacaoGclick, 'sem_modelo');
+  assert.equal(mockValidations[2].conciliacao.jaEstaNoGclick, false);
+  assert.equal(mockValidations[2].conciliacao.precisaMapear, true);
+  assert.equal(mockValidations[2].conciliacao.acaoRecomendada, 'enviar_mapear');
+});
+
+test('UI e Motor: Suporte a Validação em Lote no Oráculo G-Click com F5 e atualização para Configurado', async () => {
+  const html = await fs.readFile(path.join(ROOT_DIR, 'ui/index.html'), 'utf8');
+  const js = await fs.readFile(path.join(ROOT_DIR, 'ui/app.js'), 'utf8');
+
+  // Elementos da UI
+  assert.ok(html.includes('id="btnBatchTestUploadGclick"'));
+  assert.ok(html.includes('id="validaBatchJobProgressWrap"'));
+  assert.ok(html.includes('id="validaBatchJobProgressBar"'));
+  assert.ok(html.includes('id="btnCancelBatchUploadJob"'));
+
+  // Lógica JS do worker
+  assert.ok(js.includes('runBatchUploadOracleJob'));
+  assert.ok(js.includes('reloadAfter: true'));
+  assert.ok(js.includes('item.statusGclickOracle = \'configurado\''));
+  assert.ok(js.includes('item.conciliacao.situacaoGclick = \'ja_no_gclick\''));
+  assert.ok(js.includes('item.conciliacao.modelo.isConfigurado = true'));
+  assert.ok(js.includes('renderValidaPdfResultsTable()'));
+});
+
+test('UI: Filtros separados para Situação G-Click e Validação Técnica com exclusão mútua rigorosa', async () => {
+  const html = await fs.readFile(path.join(ROOT_DIR, 'ui/index.html'), 'utf8');
+  const js = await fs.readFile(path.join(ROOT_DIR, 'ui/app.js'), 'utf8');
+
+  // Garante a existência dos 2 selects separados no HTML
+  assert.ok(html.includes('id="validaFilterGclick"'), 'Deve conter select validaFilterGclick');
+  assert.ok(html.includes('id="validaFilterValidacao"'), 'Deve conter select validaFilterValidacao');
+  assert.ok(!html.includes('id="validaFilterStatus"'), 'Não deve mais conter o select antigo misturado');
+
+  // Garante a sincronização e exclusão mútua no app.js
+  assert.ok(js.includes('validaFilterGclick'), 'app.js deve referenciar validaFilterGclick');
+  assert.ok(js.includes('validaFilterValidacao'), 'app.js deve referenciar validaFilterValidacao');
+  assert.ok(js.includes('if (getIsReady(r)) return false;'), 'getNeedsMap deve excluir estritamente itens que já estão ready');
+  assert.ok(js.includes("sit === 'sem_ocr' || r.status === 'erro_extracao'"), 'getNeedsMap deve excluir arquivos sem OCR / inválidos para mapeamento');
+});
+
+
 
 
 

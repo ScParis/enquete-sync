@@ -15,7 +15,7 @@ const catalog = { accountId: '6581', capturedAt: '2026-10-18T12:00:00Z', questio
     { ref: '02.02.02', value: '379', label: 'DAC', display: '02 - DAC' }
   ] }] };
 
-test('menu lateral alterna entre funcionalidades e atualiza visibilidade de seções', async () => {
+test('menu lateral por módulos unificados e navegação por abas na Enquete', async () => {
   const server = http.createServer(async (req, res) => {
     const file = req.url === '/' ? 'ui/index.html' : req.url === '/ui/app.js' ? 'ui/app.js' : 'ui/style.css';
     res.writeHead(200, { 'Content-Type': file.endsWith('.js') ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : 'text/html' });
@@ -34,7 +34,7 @@ test('menu lateral alterna entre funcionalidades e atualiza visibilidade de seç
     await page.route('**/api/mappings/preview', async route => {
       await route.fulfill({ json: { report: { mode: 'account_audit', createdAt: new Date().toISOString(), source: 'enquete.csv', sourceTaskCount: 1, sourceCnpjCount: 1,
         rules: { inputType: 'mixed', allowedTasks: ['DeSTDA'] }, mappings: [{ task: 'DeSTDA', questionRef: '02.02', answerRef: '02.02.01', clients: 1,
-          summary: { vazio: 0, ja_correto: 1, divergente: 0, nao_encontrado: 0, bloqueado: 0 } }], pendingTasks: [], excludedTasks: [], failedTasks: [], invalidSource: [],
+        summary: { vazio: 0, ja_correto: 1, divergente: 0, nao_encontrado: 0, bloqueado: 0 } }], pendingTasks: [], excludedTasks: [], failedTasks: [], invalidSource: [],
         inspected: [{ cnpj: '19.402.991/0001-67', empId: '1', empresa: 'Teste', mappingTask: 'DeSTDA', uiStatus: 'ja_correto' }],
         summary: { total: 1, vazio: 0, ja_correto: 1, divergente: 0, nao_encontrado: 0, bloqueado: 0, sem_mapeamento: 0, invalidSource: 0 } } } });
     });
@@ -42,54 +42,81 @@ test('menu lateral alterna entre funcionalidades e atualiza visibilidade de seç
     await page.goto(`http://127.0.0.1:${server.address().port}/`);
     await page.waitForFunction(() => document.querySelector('#sidebarNav') !== null);
 
-    // No modo padrão (Visão Geral), todas as seções estão visíveis
-    assert.equal(await page.locator('#section-connection').isVisible(), true);
-    assert.equal(await page.locator('#section-source').isVisible(), true);
-    assert.equal(await page.locator('#section-mapping').isVisible(), true);
-    assert.equal(await page.locator('#section-audit').isVisible(), true);
-    assert.equal(await page.locator('#section-writer').isVisible(), true);
+    // Verificação de Remoção do Stepper Inconsistente e Dashboard Geral
+    assert.equal(await page.locator('#enquetePipeline').count(), 0);
+    assert.equal(await page.locator('#navAll').count(), 0);
 
-    // Clicar em Auditoria & Conferência
-    await page.locator('#navAudit').click();
-    assert.equal(await page.locator('#section-audit').isVisible(), true);
+    // Navega para Enquete G-Click via Sidebar
+    await page.locator('#navEnquete').click();
+    assert.equal(await page.locator('#section-enquete').isVisible(), true);
+    assert.match(await page.locator('#navEnquete').getAttribute('class'), /active/);
+
+    // As outras seções ficam ocultas
     assert.equal(await page.locator('#section-connection').isVisible(), false);
-    assert.equal(await page.locator('#section-source').isVisible(), false);
-    assert.equal(await page.locator('#section-mapping').isVisible(), false);
-    assert.equal(await page.locator('#section-writer').isVisible(), false);
-    assert.match(await page.locator('#navAudit').getAttribute('class'), /active/);
+    assert.equal(await page.locator('#section-obrigacoes').isVisible(), false);
+    assert.equal(await page.locator('#section-carteira').isVisible(), false);
+    assert.equal(await page.locator('#section-valida-pdf').isVisible(), false);
 
-    // Clicar em Mapeamento
-    await page.locator('#navMapping').click();
-    assert.equal(await page.locator('#section-mapping').isVisible(), true);
-    assert.equal(await page.locator('#section-audit').isVisible(), false);
-    assert.match(await page.locator('#navMapping').getAttribute('class'), /active/);
+    // No Workspace da Enquete, o painel principal de operação (Planilha, Mapeamento, Conferência & Gravação) inicia ativo
+    assert.equal(await page.locator('#enqueteTabPaneDados').isVisible(), true);
+    assert.match(await page.locator('#tabEnqueteDados').getAttribute('class'), /active/);
 
-    // Clicar em Conexão
+    // Alternar sub-aba para Cadastro de Respostas (Particularidades)
+    await page.locator('#tabEnqueteCadastro').click();
+    assert.equal(await page.locator('#enqueteTabPaneCadastro').isVisible(), true);
+    assert.equal(await page.locator('#enqueteTabPaneDados').isVisible(), false);
+    assert.match(await page.locator('#tabEnqueteCadastro').getAttribute('class'), /active/);
+
+    // Alternar sub-aba para Sincronização Sheets
+    await page.locator('#tabEnqueteSheets').click();
+    assert.equal(await page.locator('#enqueteTabPaneSheets').isVisible(), true);
+    assert.equal(await page.locator('#enqueteTabPaneCadastro').isVisible(), false);
+    assert.match(await page.locator('#tabEnqueteSheets').getAttribute('class'), /active/);
+
+    // Retornar para Operação da Enquete
+    await page.locator('#tabEnqueteDados').click();
+    assert.equal(await page.locator('#enqueteTabPaneDados').isVisible(), true);
+    assert.match(await page.locator('#tabEnqueteDados').getAttribute('class'), /active/);
+
+    // Navegar para Obrigações & Canais via Sidebar
+    await page.locator('#navObrigacoes').click();
+    assert.equal(await page.locator('#section-obrigacoes').isVisible(), true);
+    assert.equal(await page.locator('#section-enquete').isVisible(), false);
+    assert.match(await page.locator('#navObrigacoes').getAttribute('class'), /active/);
+
+    // Navegar para Carteira de Clientes via Sidebar
+    await page.locator('#navCarteira').click();
+    assert.equal(await page.locator('#section-carteira').isVisible(), true);
+    assert.equal(await page.locator('#section-obrigacoes').isVisible(), false);
+    assert.match(await page.locator('#navCarteira').getAttribute('class'), /active/);
+
+    // Navegar para Validador de PDF via Sidebar
+    await page.locator('#navValidaPdf').click();
+    assert.equal(await page.locator('#section-valida-pdf').isVisible(), true);
+    assert.equal(await page.locator('#section-carteira').isVisible(), false);
+    assert.match(await page.locator('#navValidaPdf').getAttribute('class'), /active/);
+
+    // Navegar para Conexão G-Click via Sidebar
     await page.locator('#navConnection').click();
     assert.equal(await page.locator('#section-connection').isVisible(), true);
-    assert.equal(await page.locator('#section-mapping').isVisible(), false);
+    assert.equal(await page.locator('#section-valida-pdf').isVisible(), false);
     assert.match(await page.locator('#navConnection').getAttribute('class'), /active/);
 
-    // Clicar em Visão Geral para voltar a ver todas
-    await page.locator('#navAll').click();
-    assert.equal(await page.locator('#section-connection').isVisible(), true);
-    assert.equal(await page.locator('#section-source').isVisible(), true);
-    assert.equal(await page.locator('#section-mapping').isVisible(), true);
-    assert.equal(await page.locator('#section-audit').isVisible(), true);
-    assert.match(await page.locator('#navAll').getAttribute('class'), /active/);
+    // Navegar para Central de Ajuda via Sidebar
+    await page.locator('#navHelp').click();
+    assert.equal(await page.locator('#section-help').isVisible(), true);
+    assert.equal(await page.locator('#section-connection').isVisible(), false);
+    assert.match(await page.locator('#navHelp').getAttribute('class'), /active/);
 
-    // Badges atualizados
+    // Retornar para Enquete
+    await page.locator('#navEnquete').click();
+    assert.equal(await page.locator('#section-enquete').isVisible(), true);
+    assert.equal(await page.locator('#section-help').isVisible(), false);
+    assert.match(await page.locator('#navEnquete').getAttribute('class'), /active/);
+
+    // Badge de Conexão reflete estado
     await page.waitForFunction(() => document.querySelector('#navBadgeConnection')?.innerText.includes('Conectado'));
     assert.match(await page.locator('#navBadgeConnection').innerText(), /Conectado/);
-
-    // Fluxo de etapas só aparece nas seções da Enquete
-    assert.equal(await page.locator('#enquetePipeline').isVisible(), true);
-    await page.locator('#navWriter').click(); // Sincronização com Sheets faz parte da Enquete
-    assert.equal(await page.locator('#enquetePipeline').isVisible(), true);
-    await page.locator('#navCarteira').click();
-    assert.equal(await page.locator('#enquetePipeline').isHidden(), true);
-    await page.locator('#navConnection').click();
-    assert.equal(await page.locator('#enquetePipeline').isVisible(), true);
 
     assert.equal(errors.length, 0);
   } finally {

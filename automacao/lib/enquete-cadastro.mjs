@@ -452,12 +452,22 @@ export async function createAndAttachResposta(page, accountId, rawItem, onLog = 
 /**
  * Processador em lote (Batch Runner)
  */
-export async function executeBatchCadastro(page, accountId, items = [], onProgress = () => {}) {
+export async function executeBatchCadastro(page, accountId, items = [], onProgress = () => {}, isCancelled = () => false) {
   const results = [];
   let current = 0;
   const total = items.length;
 
   for (const item of items) {
+    if (typeof isCancelled === 'function' && isCancelled()) {
+      onProgress({
+        step: 'cancelled',
+        current,
+        total,
+        results,
+        message: 'Operação cancelada pelo operador.'
+      });
+      break;
+    }
     current++;
     const aName = item.answerName || item.resposta || 'Resposta';
     const qName = item.questionRef || item.perguntaId || item.questionNome || item.perguntaNome || item.pergunta || 'Pergunta';

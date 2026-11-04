@@ -28,3 +28,7 @@ automacao/backups/
 *.swp
 *.swo
 
+# Documentos internos locais (regras negociais e especificações proprietárias)
+REGRAS_NEGOCIAIS_VALIDA_PDF.md
+REGRAS_NEGOCIAIS_ENQUETE.md
+REGRAS_NEGOCIAIS_OBRIGACOES.md
